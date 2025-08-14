@@ -1,0 +1,369 @@
+﻿using System;
+using System.Collections.Generic;
+using cAlgo.API;
+using cAlgo.API.Internals;
+
+namespace cAlgo.Robots
+{
+    [Robot(AccessRights = AccessRights.None, AddIndicators = false)]
+    public class BotG : Robot
+    {
+        // ====== PARAM CHUNG ======
+        [Parameter("Risk % Per Trade", DefaultValue = 0.7, MinValue = 0.1, MaxValue = 3.0, Step = 0.1)] public double RiskPercent { get; set; }
+        [Parameter("Max Open Positions", DefaultValue = 3, MinValue = 1, MaxValue = 10)] public int MaxOpenPositions { get; set; }
+        [Parameter("Spread Max (pips)", DefaultValue = 70, MinValue = 5, MaxValue = 120)] public double MaxSpreadPips { get; set; }
+        [Parameter("KillSwitch On", DefaultValue = true)] public bool EnableKillSwitch { get; set; }
+        [Parameter("Max Daily DD %", DefaultValue = 5.0, MinValue = 1, MaxValue = 30, Step = 0.5)] public double MaxDailyDdPercent { get; set; }
+        [Parameter("Debug", DefaultValue = true)] public bool DebugMode { get; set; }
+        [Parameter("CSV Log", DefaultValue = true)] public bool EnableCsv { get; set; }
+        [Parameter("CSV File", DefaultValue = "BotG_v2.csv")] public string CsvFile { get; set; }
+
+        // ====== BẬT / TẮT CHIẾN LƯỢC ======
+        [Parameter("Enable 1 Sweep+FVG", DefaultValue = true)] public bool EnableSweepFvg { get; set; }
+        [Parameter("Enable 2 OR Expansion/Failure", DefaultValue = true)] public bool EnableOpeningRange { get; set; }
+        [Parameter("Enable 3 Compression", DefaultValue = true)] public bool EnableCompression { get; set; }
+        [Parameter("Enable 4 VWAP Revert", DefaultValue = true)] public bool EnableVwapReversion { get; set; }
+        [Parameter("Enable 5 Liquidity Ladder", DefaultValue = true)] public bool EnableLadder { get; set; }
+
+        // ====== SWEEP + FVG BASE ======
+        [Parameter("Swing Lookback", DefaultValue = 40, MinValue = 5, MaxValue = 200)] public int SwingLookback { get; set; }
+        [Parameter("Sweep Min Penetration (pips)", DefaultValue = 15, MinValue = 2, MaxValue = 100)] public double SweepMinPenetrationPips { get; set; }
+        [Parameter("FVG Max Size (pips)", DefaultValue = 70, MinValue = 5, MaxValue = 200)] public double FvgMaxSizePips { get; set; }
+        [Parameter("FVG Min Size (pips)", DefaultValue = 15, MinValue = 2, MaxValue = 100)] public double FvgMinSizePips { get; set; }
+        [Parameter("FVG Entry Retrace %", DefaultValue = 50, MinValue = 10, MaxValue = 90)] public int FvgEntryRetracePct { get; set; }
+        [Parameter("Sweep RR", DefaultValue = 1.4, MinValue = 0.5, MaxValue = 4.0, Step = 0.1)] public double SweepBaseRR { get; set; }
+        [Parameter("FVG Entry Type (Market/Limit50/Limit33)", DefaultValue = "Limit50")] public string FvgEntryType { get; set; }
+        [Parameter("Pending FVG Expire Bars", DefaultValue = 6, MinValue = 1, MaxValue = 30)] public int FvgPendingExpireBars { get; set; }
+        [Parameter("Sweep Stop ATR Mult", DefaultValue = 1.5, MinValue = 0.2, MaxValue = 2.0, Step = 0.05)] public double SweepStopAtrMult { get; set; }
+        [Parameter("Min Displacement ATR", DefaultValue = 0.8, MinValue = 0.1, MaxValue = 4.0, Step = 0.1)] public double MinDisplacementAtr { get; set; }
+        [Parameter("Max Bars Since Sweep", DefaultValue = 2, MinValue = 1, MaxValue = 5)] public int MaxBarsSinceSweep { get; set; }
+        [Parameter("Use Adaptive Sweep Stop", DefaultValue = true)] public bool UseAdaptiveSweepStop { get; set; }
+        [Parameter("Min Sweep Stop (pips)", DefaultValue = 120, MinValue = 5, MaxValue = 300)] public double MinSweepStopPips { get; set; }
+        [Parameter("Sweep Stop Penetration Frac", DefaultValue = 0.5, MinValue = 0.1, MaxValue = 1.0, Step = 0.05)] public double SweepStopPenetrationFrac { get; set; }
+        // ====== SWEEP + FVG ADVANCED (Option C) ======
+        [Parameter("Displacement Min Range ATR", DefaultValue = 0.9, MinValue = 0.2, MaxValue = 5.0, Step = 0.1)] public double DisplacementMinRangeAtr { get; set; }
+        [Parameter("Displacement Min Close %", DefaultValue = 70, MinValue = 40, MaxValue = 100)] public int DisplacementMinClosePct { get; set; }
+        [Parameter("Sweep Min Close %", DefaultValue = 65, MinValue = 30, MaxValue = 100)] public int SweepMinClosePct { get; set; }
+        [Parameter("Volume Spike Factor", DefaultValue = 1.2, MinValue = 1.0, MaxValue = 5.0, Step = 0.1)] public double VolumeSpikeFactor { get; set; }
+        [Parameter("Volume Lookback", DefaultValue = 30, MinValue = 10, MaxValue = 200)] public int VolumeLookback { get; set; }
+        [Parameter("Return Leg Max Bars", DefaultValue = 5, MinValue = 1, MaxValue = 20)] public int ReturnLegMaxBars { get; set; }
+        [Parameter("Micro Shift Lookback", DefaultValue = 3, MinValue = 2, MaxValue = 10)] public int MicroShiftLookback { get; set; }
+        [Parameter("Quality Weight Sweep", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 3.0, Step = 0.1)] public double QWeightSweep { get; set; }
+        [Parameter("Quality Weight Gap", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 3.0, Step = 0.1)] public double QWeightGap { get; set; }
+        [Parameter("Quality Weight Disp", DefaultValue = 1.0, MinValue = 0.1, MaxValue = 3.0, Step = 0.1)] public double QWeightDisp { get; set; }
+        [Parameter("Quality RR Base", DefaultValue = 1.1, MinValue = 0.5, MaxValue = 3.0, Step = 0.1)] public double QualityRrBase { get; set; }
+        [Parameter("Quality RR Max", DefaultValue = 2.2, MinValue = 0.8, MaxValue = 5.0, Step = 0.1)] public double QualityRrMax { get; set; }
+        [Parameter("Quality Use Dynamic RR", DefaultValue = true)] public bool QualityUseDynamicRr { get; set; }
+        [Parameter("FVG Require Limit Only", DefaultValue = true)] public bool FvgRequireLimitOnly { get; set; }
+        [Parameter("Log Extended Sweep", DefaultValue = true)] public bool LogExtendedSweep { get; set; }
+
+        // ====== OPENING RANGE ======
+        [Parameter("OR Start (HH:mm)", DefaultValue = "07:00")] public string OrStart { get; set; }
+        [Parameter("OR End (HH:mm)", DefaultValue = "07:15")] public string OrEnd { get; set; }
+        [Parameter("OR Min Range (pips)", DefaultValue = 150, MinValue = 10, MaxValue = 500)] public double OrMinRangePips { get; set; }
+        [Parameter("OR Expansion RR", DefaultValue = 1.2, MinValue = 0.5, MaxValue = 4.0, Step = 0.1)] public double OrExpansionRR { get; set; }
+        [Parameter("OR Failure RR", DefaultValue = 1.5, MinValue = 0.5, MaxValue = 5.0, Step = 0.1)] public double OrFailureRR { get; set; }
+        [Parameter("OR Failure Penetration %", DefaultValue = 25, MinValue = 5, MaxValue = 60)] public int OrFailurePenetrationPct { get; set; }
+
+        // ====== COMPRESSION ======
+        [Parameter("Compression Lookback", DefaultValue = 30, MinValue = 10, MaxValue = 300)] public int CompressionLookback { get; set; }
+        [Parameter("Compression Range Factor", DefaultValue = 0.45, MinValue = 0.1, MaxValue = 0.9, Step = 0.05)] public double CompressionRangeFactor { get; set; }
+        [Parameter("Compression ATR Contraction %", DefaultValue = 55, MinValue = 10, MaxValue = 90)] public int CompressionAtrContractPct { get; set; }
+        [Parameter("Compression RR", DefaultValue = 1.8, MinValue = 0.8, MaxValue = 5.0, Step = 0.1)] public double CompressionRR { get; set; }
+
+        // ====== VWAP ======
+        [Parameter("VWAP Deviations ATR Mult", DefaultValue = 1.2, MinValue = 0.3, MaxValue = 3.0, Step = 0.1)] public double VwapAtrMult { get; set; }
+        [Parameter("VWAP RR", DefaultValue = 1.1, MinValue = 0.5, MaxValue = 3.0, Step = 0.1)] public double VwapRR { get; set; }
+        [Parameter("VWAP Min Dist ATR", DefaultValue = 0.8, MinValue = 0.2, MaxValue = 3.0, Step = 0.1)] public double VwapMinDistAtr { get; set; }
+
+        // ====== LADDER ======
+        [Parameter("Ladder Swing Confirm", DefaultValue = 3, MinValue = 2, MaxValue = 10)] public int LadderSwingConfirm { get; set; }
+        [Parameter("Ladder RR", DefaultValue = 1.6, MinValue = 0.6, MaxValue = 5.0, Step = 0.1)] public double LadderRR { get; set; }
+        [Parameter("Ladder Pullback Max %", DefaultValue = 55, MinValue = 10, MaxValue = 90)] public int LadderPullbackMaxPct { get; set; }
+
+        // ====== POSITION MANAGEMENT ======
+        [Parameter("Partial R (0=off)", DefaultValue = 1.0, MinValue = 0.0, MaxValue = 2.0, Step = 0.1)] public double PartialR { get; set; }
+        [Parameter("Trailing Trigger R", DefaultValue = 0.9, MinValue = 0.3, MaxValue = 3.0, Step = 0.1)] public double TrailingTriggerR { get; set; }
+        [Parameter("TimeStop Minutes", DefaultValue = 15, MinValue = 3, MaxValue = 120)] public int TimeStopMinutes { get; set; }
+
+        // ====== STATE ======
+        private string _csvPath; private DateTime _day; private double _dayBalance; private bool _kill;
+        private double _sessionOrHigh, _sessionOrLow; private bool _orFinalized;
+        private List<double> _atrWindow = new List<double>(); private double _lastAtr; private int _lastProcessedBar = -1;
+
+        private class FvgPending
+        {
+            public bool Bullish; public double Entry; public double Stop; public double Rr; public double PartialR; public int CreatedBarIndex; public double ZoneLow; public double ZoneHigh; public string Tag;
+            // Extended quality metrics
+            public double SweepDepthPips, SweepDepthAtr, GapSizePips, DispRangeAtr, QualityScore, PlannedRR, StopPipsPlanned; public string EntryMode;
+        }
+        private readonly List<FvgPending> _pendingFvgs = new List<FvgPending>();
+
+        private class PosState
+        {
+            public long Id; public double StopPips; public double Entry; public double FullTarget; public double PartialTarget; public bool PartialDone; public DateTime OpenTime; public string Tag; public double TrailingTrigger; public double RiskMoney; public double MAE; public double MFE;
+            public double SweepDepthPips, SweepDepthAtr, GapSizePips, DispRangeAtr, QualityScore, PlannedRR, StopPipsPlanned; public string EntryMode;
+        }
+        private readonly Dictionary<long, PosState> _states = new();
+        private class SweepMetrics { public double SweepDepthPips, SweepDepthAtr, GapSizePips, DispRangeAtr, QualityScore, PlannedRR, StopPipsPlanned; public string EntryMode; }
+        private SweepMetrics _lastSweepMetrics;
+
+        protected override void OnStart()
+        {
+            _day = Server.Time.Date; _dayBalance = Account.Balance; _kill = false; Positions.Closed += OnPositionClosed;
+            if (EnableCsv)
+            {
+                try
+                {
+                    string doc = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                    _csvPath = System.IO.Path.Combine(doc, CsvFile);
+                    if (!System.IO.File.Exists(_csvPath))
+                        System.IO.File.AppendAllText(_csvPath, "Time,Id,Setup,Side,Entry,SL,TP,Volume,StopPips,R,RiskMoney,ExitTime,ExitPrice,Profit,MAE,MFE,SweepDepthPips,SweepDepthAtr,GapSizePips,DispRangeAtr,QualityScore,PlannedRR,EntryMode,StopPipsPlan\n");
+                }
+                catch (Exception ex) { Print("CSV init error: " + ex.Message); }
+            }
+            Print("BotG v2 started - Option C advanced Sweep+FVG.");
+        }
+        protected override void OnTick() => ManagePositions();
+        protected override void OnBar()
+        {
+            if (Server.Time.Date != _day) { _day = Server.Time.Date; _dayBalance = Account.Balance; _kill = false; _orFinalized = false; _sessionOrHigh = double.MinValue; _sessionOrLow = double.MaxValue; }
+            if (EnableKillSwitch && !_kill) { double dd = 100.0 * (_dayBalance - Account.Balance) / _dayBalance; if (dd >= MaxDailyDdPercent) { _kill = true; Print($"KillSwitch ON DD={dd:F2}%"); } }
+            if (_kill) return; if (SpreadTooHigh()) { if (DebugMode) Print("Skip spread"); return; } if (Positions.Count >= MaxOpenPositions) return;
+            UpdateAtr(); UpdateOpeningRange(); bool entered = false;
+            if (!entered && EnableSweepFvg) entered = TryEnterSweepFvg(); if (EnableSweepFvg) ProcessPendingFvgOrders();
+            if (!entered && EnableOpeningRange) entered = TryEnterOpeningRange();
+            if (!entered && EnableCompression) entered = TryEnterCompression();
+            if (!entered && EnableVwapReversion) entered = TryEnterVwapReversion();
+            if (!entered && EnableLadder) entered = TryEnterLadder();
+        }
+        protected override void OnStop() { Print("BotG v2 stopped"); }
+
+        private bool SpreadTooHigh() => Symbol.Spread / Symbol.PipSize > MaxSpreadPips;
+        private double CalcPositionSize(double stopPips)
+        {
+            if (stopPips <= 0) return 0; double riskMoney = Account.Balance * (RiskPercent / 100.0); double vol = riskMoney / (Symbol.PipValue * stopPips); double step = Symbol.VolumeInUnitsStep; vol = Math.Floor(vol / step) * step; if (vol < Symbol.VolumeInUnitsMin) return 0; if (vol > Symbol.VolumeInUnitsMax) vol = Symbol.VolumeInUnitsMax; return vol;
+        }
+        private void Execute(string tag, TradeType side, double entryRefPrice, double stopPrice, double rr, double partialR)
+        {
+            double entry = side == TradeType.Buy ? Symbol.Ask : Symbol.Bid; double stopPips = Math.Abs(entry - stopPrice) / Symbol.PipSize; if (stopPips < 0.5) return; double vol = CalcPositionSize(stopPips); if (vol <= 0) return;
+            double fullTarget = side == TradeType.Buy ? entry + stopPips * rr * Symbol.PipSize : entry - stopPips * rr * Symbol.PipSize; double partialTarget = partialR > 0 && partialR < rr ? (side == TradeType.Buy ? entry + stopPips * partialR * Symbol.PipSize : entry - stopPips * partialR * Symbol.PipSize) : fullTarget;
+            var res = ExecuteMarketOrder(side, Symbol.Name, vol, "BotG", stopPips, 0, tag); if (!res.IsSuccessful || res.Position == null) return; var pos = res.Position;
+#pragma warning disable CS0618
+            ModifyPosition(pos, stopPrice, fullTarget);
+#pragma warning restore CS0618
+            var st = new PosState { Id = pos.Id, StopPips = stopPips, Entry = pos.EntryPrice, FullTarget = fullTarget, PartialTarget = partialTarget, PartialDone = false, OpenTime = Server.Time, Tag = tag, TrailingTrigger = TrailingTriggerR, RiskMoney = stopPips * Symbol.PipValue * vol, MAE = 0, MFE = 0,
+                SweepDepthPips = _lastSweepMetrics?.SweepDepthPips ?? 0, SweepDepthAtr = _lastSweepMetrics?.SweepDepthAtr ?? 0, GapSizePips = _lastSweepMetrics?.GapSizePips ?? 0, DispRangeAtr = _lastSweepMetrics?.DispRangeAtr ?? 0, QualityScore = _lastSweepMetrics?.QualityScore ?? 0, PlannedRR = _lastSweepMetrics?.PlannedRR ?? rr, EntryMode = _lastSweepMetrics?.EntryMode ?? "NA", StopPipsPlanned = _lastSweepMetrics?.StopPipsPlanned ?? stopPips };
+            _states[pos.Id] = st; if (DebugMode) Print($"ENTER {tag} {side} stopPips={stopPips:F1} RR={rr:F2} Q={st.QualityScore:F2} plannedRR={st.PlannedRR:F2}"); _lastSweepMetrics = null;
+        }
+        private void ManagePositions()
+        {
+            foreach (var p in Positions)
+            {
+                if (p.SymbolName != Symbol.Name) continue; if (!_states.TryGetValue(p.Id, out var st)) continue; double cur = p.TradeType == TradeType.Buy ? Symbol.Bid : Symbol.Ask; double profitPips = (p.TradeType == TradeType.Buy ? cur - st.Entry : st.Entry - cur) / Symbol.PipSize; if (profitPips < st.MAE) st.MAE = profitPips; if (profitPips > st.MFE) st.MFE = profitPips; double rNow = profitPips / st.StopPips;
+                if (!st.PartialDone && PartialR > 0 && st.PartialTarget != st.FullTarget)
+                {
+                    if ((p.TradeType == TradeType.Buy && cur >= st.PartialTarget) || (p.TradeType == TradeType.Sell && cur <= st.PartialTarget))
+                    {
+                        var half = p.VolumeInUnits / 2;
+                        if (half >= Symbol.VolumeInUnitsMin)
+                        {
+                            ClosePosition(p, half);
+                            st.PartialDone = true;
+                            double be = st.Entry;
+                            try
+                            {
+#pragma warning disable CS0618
+                                ModifyPosition(p, be, p.TakeProfit);
+#pragma warning restore CS0618
+                            }
+                            catch { }
+                            if (DebugMode) Print($"Partial done {p.Id}");
+                        }
+                    }
+                }
+                if (rNow >= st.TrailingTrigger && p.StopLoss.HasValue)
+                {
+                    double newSL = p.TradeType == TradeType.Buy ? (st.Entry + 0.3 * st.StopPips * Symbol.PipSize) : (st.Entry - 0.3 * st.StopPips * Symbol.PipSize);
+                    bool improve = (p.TradeType == TradeType.Buy && (!p.StopLoss.HasValue || newSL > p.StopLoss)) || (p.TradeType == TradeType.Sell && (!p.StopLoss.HasValue || newSL < p.StopLoss));
+                    if (improve)
+                    {
+                        try
+                        {
+#pragma warning disable CS0618
+                            ModifyPosition(p, newSL, p.TakeProfit);
+#pragma warning restore CS0618
+                        }
+                        catch { }
+                    }
+                }
+                if ((Server.Time - st.OpenTime).TotalMinutes >= TimeStopMinutes && rNow < 0.3) { ClosePosition(p); if (DebugMode) Print($"TimeStop close {p.Id}"); }
+            }
+        }
+        private void OnPositionClosed(PositionClosedEventArgs args)
+        {
+            if (!_states.TryGetValue(args.Position.Id, out var st)) return; double exitPrice = args.Position.TradeType == TradeType.Buy ? Symbol.Bid : Symbol.Ask; double profitPips = (args.Position.GrossProfit) / (Symbol.PipValue * args.Position.VolumeInUnits);
+            if (EnableCsv && !string.IsNullOrEmpty(_csvPath))
+            {
+                try
+                {
+                    string line = string.Join(",", new string[] { args.Position.EntryTime.ToString("yyyy-MM-dd HH:mm:ss"), args.Position.Id.ToString(), st.Tag, args.Position.TradeType.ToString(), args.Position.EntryPrice.ToString("F2"), (args.Position.StopLoss ?? 0).ToString("F2"), (args.Position.TakeProfit ?? 0).ToString("F2"), args.Position.VolumeInUnits.ToString(), st.StopPips.ToString("F2"), (profitPips / st.StopPips).ToString("F2"), st.RiskMoney.ToString("F2"), Server.Time.ToString("yyyy-MM-dd HH:mm:ss"), exitPrice.ToString("F2"), args.Position.GrossProfit.ToString("F2"), st.MAE.ToString("F2"), st.MFE.ToString("F2"), st.SweepDepthPips.ToString("F2"), st.SweepDepthAtr.ToString("F2"), st.GapSizePips.ToString("F2"), st.DispRangeAtr.ToString("F2"), st.QualityScore.ToString("F2"), st.PlannedRR.ToString("F2"), st.EntryMode ?? "NA", st.StopPipsPlanned.ToString("F2") });
+                    System.IO.File.AppendAllText(_csvPath, line + "\n");
+                }
+                catch (Exception ex) { Print("CSV write error: " + ex.Message); }
+            }
+            _states.Remove(args.Position.Id);
+        }
+        private void UpdateAtr()
+        {
+            int n = Bars.ClosePrices.Count; if (n < 2) return; double tr = Bars.HighPrices[n - 1] - Bars.LowPrices[n - 1]; _atrWindow.Add(tr); if (_atrWindow.Count > 50) _atrWindow.RemoveAt(0); double sum = 0; foreach (var v in _atrWindow) sum += v; _lastAtr = _atrWindow.Count > 0 ? sum / _atrWindow.Count : tr;
+        }
+        private bool TryEnterSweepFvg()
+        {
+            int last = Bars.ClosePrices.Count - 1; if (last < SwingLookback + 5) return false; double swingHigh = double.MinValue, swingLow = double.MaxValue; for (int i = last - SwingLookback; i <= last - 2; i++) { if (Bars.HighPrices[i] > swingHigh) swingHigh = Bars.HighPrices[i]; if (Bars.LowPrices[i] < swingLow) swingLow = Bars.LowPrices[i]; }
+            double curHigh = Bars.HighPrices[last - 1]; double curLow = Bars.LowPrices[last - 1]; double penUpPips = (curHigh - swingHigh) / Symbol.PipSize; double penDownPips = (swingLow - curLow) / Symbol.PipSize; bool created = false;
+            // Bullish sweep
+            if (penDownPips >= SweepMinPenetrationPips)
+            {
+                double sweepClose = Bars.ClosePrices[last - 1]; double sweepClosePct = 100.0 * (sweepClose - curLow) / (Bars.HighPrices[last - 1] - Bars.LowPrices[last - 1] + 1e-9); double bodyDispAtr = Math.Abs(sweepClose - curLow) / (_lastAtr + 1e-9);
+                if (bodyDispAtr >= MinDisplacementAtr && sweepClosePct >= SweepMinClosePct)
+                {
+                    if (HasBullishFvg(last - 2, out double gapLow, out double gapHigh))
+                    {
+                        double gapSizePips = (gapHigh - gapLow) / Symbol.PipSize; if (gapSizePips >= FvgMinSizePips && gapSizePips <= FvgMaxSizePips)
+                        {
+                            var mode = (FvgEntryType ?? "LIMIT50").ToUpperInvariant(); if (FvgRequireLimitOnly && mode.StartsWith("MARKET")) mode = "LIMIT50"; double entry = mode.StartsWith("MARKET") ? sweepClose : gapLow + (mode.Contains("33") ? 0.33 : 0.5) * (gapHigh - gapLow);
+                            double atrStopPips = (_lastAtr * SweepStopAtrMult) / Symbol.PipSize; double penComponent = penDownPips * SweepStopPenetrationFrac; double adaptiveStopPips = UseAdaptiveSweepStop ? Math.Max(Math.Max(atrStopPips, penComponent), MinSweepStopPips) : atrStopPips; double stop = curLow - adaptiveStopPips * Symbol.PipSize;
+                            double dispRange = Bars.HighPrices[last - 2] - Bars.LowPrices[last - 2]; double dispRangeAtr = dispRange / (_lastAtr + 1e-9); double dispClosePct = 100.0 * (Bars.ClosePrices[last - 2] - Bars.LowPrices[last - 2]) / (dispRange + 1e-9);
+                            if (dispRangeAtr >= DisplacementMinRangeAtr && dispClosePct >= DisplacementMinClosePct && VolumeSpikeOk(last - 2))
+                            {
+                                double atrPips = _lastAtr / Symbol.PipSize; double sweepDepthAtr = penDownPips / (atrPips + 1e-9); double gapSizeAtr = gapSizePips / (atrPips + 1e-9);
+                                double dispScore = Math.Min(1.0, dispRangeAtr / DisplacementMinRangeAtr); double sweepScore = Math.Min(1.0, sweepDepthAtr / (SweepMinPenetrationPips / (atrPips + 1e-9))); double gapScore = Math.Min(1.0, gapSizeAtr / (FvgMinSizePips / (atrPips + 1e-9)));
+                                double q = sweepScore * QWeightSweep + gapScore * QWeightGap + dispScore * QWeightDisp; double qMax = QWeightSweep + QWeightGap + QWeightDisp; double dynRr = SweepBaseRR; if (QualityUseDynamicRr) { double frac = Math.Min(1.0, q / (qMax + 1e-9)); dynRr = QualityRrBase + (QualityRrMax - QualityRrBase) * frac; }
+                                _lastSweepMetrics = new SweepMetrics { SweepDepthPips = penDownPips, SweepDepthAtr = sweepDepthAtr, GapSizePips = gapSizePips, DispRangeAtr = dispRangeAtr, QualityScore = q, PlannedRR = dynRr, EntryMode = mode, StopPipsPlanned = adaptiveStopPips };
+                                if (mode.StartsWith("MARKET")) { Execute("SWEEP_FVG_BUY", TradeType.Buy, entry, stop, dynRr, PartialR); return true; }
+                                else { _pendingFvgs.Add(new FvgPending { Bullish = true, Entry = entry, Stop = stop, Rr = dynRr, PartialR = PartialR, CreatedBarIndex = last, ZoneLow = gapLow, ZoneHigh = gapHigh, Tag = "SWEEP_FVG_BUY", SweepDepthPips = penDownPips, SweepDepthAtr = sweepDepthAtr, GapSizePips = gapSizePips, DispRangeAtr = dispRangeAtr, QualityScore = q, PlannedRR = dynRr, EntryMode = mode, StopPipsPlanned = adaptiveStopPips }); created = true; }
+                            }
+                        }
+                    }
+                }
+            }
+            // Bearish sweep
+            if (penUpPips >= SweepMinPenetrationPips)
+            {
+                double sweepClose = Bars.ClosePrices[last - 1]; double sweepClosePct = 100.0 * (curHigh - sweepClose) / (Bars.HighPrices[last - 1] - Bars.LowPrices[last - 1] + 1e-9); double bodyDispAtr = Math.Abs(curHigh - sweepClose) / (_lastAtr + 1e-9);
+                if (bodyDispAtr >= MinDisplacementAtr && sweepClosePct >= SweepMinClosePct)
+                {
+                    if (HasBearishFvg(last - 2, out double gapLow2, out double gapHigh2))
+                    {
+                        double gapSizePips = (gapHigh2 - gapLow2) / Symbol.PipSize; if (gapSizePips >= FvgMinSizePips && gapSizePips <= FvgMaxSizePips)
+                        {
+                            var mode = (FvgEntryType ?? "LIMIT50").ToUpperInvariant(); if (FvgRequireLimitOnly && mode.StartsWith("MARKET")) mode = "LIMIT50"; double entry = mode.StartsWith("MARKET") ? sweepClose : gapHigh2 - (mode.Contains("33") ? 0.33 : 0.5) * (gapHigh2 - gapLow2);
+                            double atrStopPips = (_lastAtr * SweepStopAtrMult) / Symbol.PipSize; double penComponent = penUpPips * SweepStopPenetrationFrac; double adaptiveStopPips = UseAdaptiveSweepStop ? Math.Max(Math.Max(atrStopPips, penComponent), MinSweepStopPips) : atrStopPips; double stop = curHigh + adaptiveStopPips * Symbol.PipSize; double dispRange = Bars.HighPrices[last - 2] - Bars.LowPrices[last - 2]; double dispRangeAtr = dispRange / (_lastAtr + 1e-9); double dispClosePct = 100.0 * (Bars.HighPrices[last - 2] - Bars.ClosePrices[last - 2]) / (dispRange + 1e-9);
+                            if (dispRangeAtr >= DisplacementMinRangeAtr && dispClosePct >= DisplacementMinClosePct && VolumeSpikeOk(last - 2))
+                            {
+                                double atrPips = _lastAtr / Symbol.PipSize; double sweepDepthAtr = penUpPips / (atrPips + 1e-9); double gapSizeAtr = gapSizePips / (atrPips + 1e-9); double dispScore = Math.Min(1.0, dispRangeAtr / DisplacementMinRangeAtr); double sweepScore = Math.Min(1.0, sweepDepthAtr / (SweepMinPenetrationPips / (atrPips + 1e-9))); double gapScore = Math.Min(1.0, gapSizeAtr / (FvgMinSizePips / (atrPips + 1e-9)));
+                                double q = sweepScore * QWeightSweep + gapScore * QWeightGap + dispScore * QWeightDisp; double qMax = QWeightSweep + QWeightGap + QWeightDisp; double dynRr = SweepBaseRR; if (QualityUseDynamicRr) { double frac = Math.Min(1.0, q / (qMax + 1e-9)); dynRr = QualityRrBase + (QualityRrMax - QualityRrBase) * frac; }
+                                _lastSweepMetrics = new SweepMetrics { SweepDepthPips = penUpPips, SweepDepthAtr = sweepDepthAtr, GapSizePips = gapSizePips, DispRangeAtr = dispRangeAtr, QualityScore = q, PlannedRR = dynRr, EntryMode = mode, StopPipsPlanned = adaptiveStopPips };
+                                if (mode.StartsWith("MARKET")) { Execute("SWEEP_FVG_SELL", TradeType.Sell, entry, stop, dynRr, PartialR); return true; }
+                                else { _pendingFvgs.Add(new FvgPending { Bullish = false, Entry = entry, Stop = stop, Rr = dynRr, PartialR = PartialR, CreatedBarIndex = last, ZoneLow = gapLow2, ZoneHigh = gapHigh2, Tag = "SWEEP_FVG_SELL", SweepDepthPips = penUpPips, SweepDepthAtr = sweepDepthAtr, GapSizePips = gapSizePips, DispRangeAtr = dispRangeAtr, QualityScore = q, PlannedRR = dynRr, EntryMode = mode, StopPipsPlanned = adaptiveStopPips }); created = true; }
+                            }
+                        }
+                    }
+                }
+            }
+            return created;
+        }
+        private void ProcessPendingFvgOrders()
+        {
+            int last = Bars.ClosePrices.Count - 1; if (last == _lastProcessedBar) return; _lastProcessedBar = last; if (_pendingFvgs.Count == 0) return;
+            for (int i = _pendingFvgs.Count - 1; i >= 0; i--)
+            {
+                var z = _pendingFvgs[i]; if (last - z.CreatedBarIndex > FvgPendingExpireBars) { _pendingFvgs.RemoveAt(i); if (DebugMode) Print($"Expire FVG {z.Tag}"); continue; }
+                if (SpreadTooHigh()) continue; double bid = Symbol.Bid; double ask = Symbol.Ask;
+                if (z.Bullish)
+                {
+                    if (bid <= z.Entry && bid >= z.ZoneLow - 1e-6 && MicroShiftOk(true, z.CreatedBarIndex))
+                    { _lastSweepMetrics = new SweepMetrics { SweepDepthPips = z.SweepDepthPips, SweepDepthAtr = z.SweepDepthAtr, GapSizePips = z.GapSizePips, DispRangeAtr = z.DispRangeAtr, QualityScore = z.QualityScore, PlannedRR = z.PlannedRR, EntryMode = z.EntryMode, StopPipsPlanned = z.StopPipsPlanned }; Execute(z.Tag, TradeType.Buy, z.Entry, z.Stop, z.Rr, z.PartialR); _pendingFvgs.RemoveAt(i); }
+                }
+                else
+                {
+                    if (ask >= z.Entry && ask <= z.ZoneHigh + 1e-6 && MicroShiftOk(false, z.CreatedBarIndex))
+                    { _lastSweepMetrics = new SweepMetrics { SweepDepthPips = z.SweepDepthPips, SweepDepthAtr = z.SweepDepthAtr, GapSizePips = z.GapSizePips, DispRangeAtr = z.DispRangeAtr, QualityScore = z.QualityScore, PlannedRR = z.PlannedRR, EntryMode = z.EntryMode, StopPipsPlanned = z.StopPipsPlanned }; Execute(z.Tag, TradeType.Sell, z.Entry, z.Stop, z.Rr, z.PartialR); _pendingFvgs.RemoveAt(i); }
+                }
+            }
+        }
+        private bool VolumeSpikeOk(int index)
+        {
+            if (VolumeLookback < 5 || index < VolumeLookback) return true; double[] vols = new double[VolumeLookback]; int start = index - VolumeLookback + 1; for (int i = 0; i < VolumeLookback; i++) vols[i] = Bars.TickVolumes[start + i]; Array.Sort(vols); double median = vols[VolumeLookback / 2]; double curVol = Bars.TickVolumes[index]; return curVol >= median * VolumeSpikeFactor;
+        }
+        private bool MicroShiftOk(bool bullish, int createdBarIdx)
+        {
+            int last = Bars.ClosePrices.Count - 1; if (last - createdBarIdx < 1) return false; int start = Math.Max(createdBarIdx + 1, last - MicroShiftLookback - 1);
+            if (bullish)
+            { double minAfter = double.MaxValue; for (int i = start; i <= last - 1; i++) if (Bars.LowPrices[i] < minAfter) minAfter = Bars.LowPrices[i]; double prevLow = Bars.LowPrices[Math.Max(0, createdBarIdx - 1)]; return minAfter > prevLow; }
+            else
+            { double maxAfter = double.MinValue; for (int i = start; i <= last - 1; i++) if (Bars.HighPrices[i] > maxAfter) maxAfter = Bars.HighPrices[i]; double prevHigh = Bars.HighPrices[Math.Max(0, createdBarIdx - 1)]; return maxAfter < prevHigh; }
+        }
+        private bool HasBullishFvg(int midIndex, out double low, out double high)
+        { low = high = 0; if (midIndex < 1 || midIndex >= Bars.ClosePrices.Count - 1) return false; double midHigh = Bars.HighPrices[midIndex]; double nextLow = Bars.LowPrices[midIndex + 1]; if (midHigh < nextLow) { low = midHigh; high = nextLow; return true; } return false; }
+        private bool HasBearishFvg(int midIndex, out double low, out double high)
+        { low = high = 0; if (midIndex < 1 || midIndex >= Bars.ClosePrices.Count - 1) return false; double midLow = Bars.LowPrices[midIndex]; double nextHigh = Bars.HighPrices[midIndex + 1]; if (midLow > nextHigh) { low = nextHigh; high = midLow; return true; } return false; }
+
+        // ====== OPENING RANGE ======
+        private void UpdateOpeningRange()
+        {
+            var t = Server.Time.TimeOfDay; if (!TimeSpan.TryParse(OrStart, out var orS) || !TimeSpan.TryParse(OrEnd, out var orE)) return; if (!_orFinalized && t >= orS && t <= orE) { double h = Bars.HighPrices.Last(0); double l = Bars.LowPrices.Last(0); if (h > _sessionOrHigh) _sessionOrHigh = h; if (l < _sessionOrLow) _sessionOrLow = l; }
+            if (!_orFinalized && t > orE) { _orFinalized = true; if (DebugMode) Print($"OR fixed H={_sessionOrHigh:F2} L={_sessionOrLow:F2}"); }
+        }
+        private bool TryEnterOpeningRange()
+        {
+            if (!_orFinalized) return false; double orRangePips = (_sessionOrHigh - _sessionOrLow) / Symbol.PipSize; if (orRangePips < OrMinRangePips) return false; double mid = (_sessionOrHigh + _sessionOrLow) / 2; double cur = Symbol.Bid; double filter = _lastAtr * 0.25;
+            if (cur > _sessionOrHigh + filter) { double stop = mid; Execute("OR_EXP_BUY", TradeType.Buy, cur, stop, OrExpansionRR, PartialR); return true; }
+            if (cur < _sessionOrLow - filter) { double stop = mid; Execute("OR_EXP_SELL", TradeType.Sell, cur, stop, OrExpansionRR, PartialR); return true; }
+            double penetrationUp = (Bars.HighPrices.Last(0) - _sessionOrHigh) / (_sessionOrHigh - _sessionOrLow + 1e-9) * 100.0; double penetrationDown = (_sessionOrLow - Bars.LowPrices.Last(0)) / (_sessionOrHigh - _sessionOrLow + 1e-9) * 100.0;
+            if (penetrationUp >= OrFailurePenetrationPct && cur < _sessionOrHigh) { double stop = Bars.HighPrices.Last(0) + _lastAtr * 0.4; Execute("OR_FAIL_SELL", TradeType.Sell, cur, stop, OrFailureRR, PartialR); return true; }
+            if (penetrationDown >= OrFailurePenetrationPct && cur > _sessionOrLow) { double stop = Bars.LowPrices.Last(0) - _lastAtr * 0.4; Execute("OR_FAIL_BUY", TradeType.Buy, cur, stop, OrFailureRR, PartialR); return true; }
+            return false;
+        }
+        // ====== COMPRESSION ======
+        private bool TryEnterCompression()
+        {
+            int last = Bars.ClosePrices.Count - 1; if (last < CompressionLookback + 5) return false; double high = double.MinValue, low = double.MaxValue; for (int i = last - CompressionLookback; i <= last; i++) { if (Bars.HighPrices[i] > high) high = Bars.HighPrices[i]; if (Bars.LowPrices[i] < low) low = Bars.LowPrices[i]; }
+            double range = high - low; if (range <= 0) return false; double avgRecent = AvgRange(last, 5); double avgLook = AvgRange(last, CompressionLookback); if (avgLook <= 0) return false; double contractPct = 100.0 * avgRecent / avgLook; double relRangeFactor = (avgRecent * 5) / range;
+            if (contractPct <= CompressionAtrContractPct && relRangeFactor <= CompressionRangeFactor)
+            {
+                double triggerUp = Bars.HighPrices[last]; double triggerDown = Bars.LowPrices[last]; double buffer = _lastAtr * 0.35;
+                if (Symbol.Bid > triggerUp + buffer) { double stop = Bars.LowPrices[last] - _lastAtr * 0.6; Execute("COMP_BRK_BUY", TradeType.Buy, Symbol.Bid, stop, CompressionRR, PartialR); return true; }
+                if (Symbol.Ask < triggerDown - buffer) { double stop = Bars.HighPrices[last] + _lastAtr * 0.6; Execute("COMP_BRK_SELL", TradeType.Sell, Symbol.Bid, stop, CompressionRR, PartialR); return true; }
+            }
+            return false;
+        }
+        private double AvgRange(int last, int len) { if (last < len) return 0; double s = 0; for (int i = last - len + 1; i <= last; i++) s += (Bars.HighPrices[i] - Bars.LowPrices[i]); return s / len; }
+        // ====== VWAP REVERSION ======
+        private bool TryEnterVwapReversion()
+        {
+            int n = Bars.ClosePrices.Count; if (n < 10) return false; double cumTpVol = 0, cumVol = 0; for (int i = 0; i < n; i++) { double tp = (Bars.HighPrices[i] + Bars.LowPrices[i] + Bars.ClosePrices[i]) / 3.0; double vol = Bars.TickVolumes[i]; cumTpVol += tp * vol; cumVol += vol; }
+            if (cumVol <= 0) return false; double vwap = cumTpVol / cumVol; double distAtr = Math.Abs(Bars.ClosePrices[n - 1] - vwap) / (_lastAtr + 1e-9); if (distAtr < VwapMinDistAtr) return false;
+            if (Bars.ClosePrices[n - 1] > vwap) { double stop = Bars.HighPrices[n - 1] + _lastAtr * 0.5; Execute("VWAP_REV_SELL", TradeType.Sell, Bars.ClosePrices[n - 1], stop, VwapRR, PartialR); return true; }
+            if (Bars.ClosePrices[n - 1] < vwap) { double stop = Bars.LowPrices[n - 1] - _lastAtr * 0.5; Execute("VWAP_REV_BUY", TradeType.Buy, Bars.ClosePrices[n - 1], stop, VwapRR, PartialR); return true; }
+            return false;
+        }
+        // ====== LADDER ======
+        private bool TryEnterLadder()
+        {
+            int last = Bars.ClosePrices.Count - 1; if (last < LadderSwingConfirm * 4) return false; bool bullish = IsSequenceHigherLows(LadderSwingConfirm, last, out double lastSwingLow); bool bearish = IsSequenceLowerHighs(LadderSwingConfirm, last, out double lastSwingHigh); double close = Bars.ClosePrices[last];
+            if (bullish) { double impulseHigh = Bars.HighPrices[last]; double impulseRange = impulseHigh - lastSwingLow; if (impulseRange <= 0) return false; double maxPull = impulseRange * (LadderPullbackMaxPct / 100.0); if (impulseHigh - close <= maxPull) { double stop = lastSwingLow - _lastAtr * 0.4; Execute("LADDER_BUY", TradeType.Buy, close, stop, LadderRR, PartialR); return true; } }
+            if (bearish) { double impulseLow = Bars.LowPrices[last]; double impulseRange = lastSwingHigh - impulseLow; if (impulseRange <= 0) return false; double maxPull = impulseRange * (LadderPullbackMaxPct / 100.0); if (close - impulseLow <= maxPull) { double stop = lastSwingHigh + _lastAtr * 0.4; Execute("LADDER_SELL", TradeType.Sell, close, stop, LadderRR, PartialR); return true; } }
+            return false;
+        }
+        private bool IsSequenceHigherLows(int seq, int last, out double lastSwingLow)
+        {
+            lastSwingLow = 0; double prevLow = double.MinValue; int count = 0; for (int i = last - 2; i >= 2 && count < seq; i -= 2) { double swingLow = Math.Min(Bars.LowPrices[i], Math.Min(Bars.LowPrices[i - 1], Bars.LowPrices[i + 1])); if (prevLow != double.MinValue && swingLow <= prevLow) return false; prevLow = swingLow; count++; lastSwingLow = swingLow; } return count == seq;
+        }
+        private bool IsSequenceLowerHighs(int seq, int last, out double lastSwingHigh)
+        {
+            lastSwingHigh = 0; double prevHigh = double.MaxValue; int count = 0; for (int i = last - 2; i >= 2 && count < seq; i -= 2) { double swingHigh = Math.Max(Bars.HighPrices[i], Math.Max(Bars.HighPrices[i - 1], Bars.HighPrices[i + 1])); if (prevHigh != double.MaxValue && swingHigh >= prevHigh) return false; prevHigh = swingHigh; count++; lastSwingHigh = swingHigh; } return count == seq;
+        }
+    }
+}

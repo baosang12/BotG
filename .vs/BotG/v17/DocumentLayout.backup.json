@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{B1D16A06-3E96-4496-88F8-AD277438DE8A}|BotG\\BotG.csproj|d:\\onedrive\\ta\u0300i li\u00EA\u0323u\\calgo\\sources\\robots\\botg\\botg\\botg.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B1D16A06-3E96-4496-88F8-AD277438DE8A}|BotG\\BotG.csproj|solutionrelative:botg\\botg.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "BotG.cs",
+              "DocumentMoniker": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\BotG\\BotG.cs",
+              "RelativeDocumentMoniker": "BotG\\BotG.cs",
+              "ToolTip": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\BotG\\BotG.cs",
+              "RelativeToolTip": "BotG\\BotG.cs",
+              "ViewState": "AgIAABwAAAAAAAAAAIAwwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-08-12T02:29:48.25Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
