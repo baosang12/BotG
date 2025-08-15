@@ -1,0 +1,19 @@
+﻿{
+    "branch":  "botg/telemetry-instrumentation",
+    "commit":  "92583da1ab991ac82ef3ef5e97239d8a3597e506",
+    "build_status":  "SUCCESS",
+    "build_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321\\build.log",
+    "artifacts":  {
+                      "orders_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321\\orders.csv",
+                      "risk_snapshots_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321\\risk_snapshots.csv",
+                      "telemetry_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321\\telemetry.csv",
+                      "datafetcher_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321\\datafetcher.log",
+                      "zip":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_133321.zip"
+                  },
+    "counts":  {
+                   "orders_rows":  1,
+                   "risk_snapshots_rows":  1,
+                   "telemetry_rows":  1
+               },
+    "timestamp":  "2025-08-15T13:33:21"
+}

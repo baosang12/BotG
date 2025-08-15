@@ -4,5 +4,11 @@
   "FlushIntervalSeconds": 60,
   "OrderLogFile": "orders.csv",
   "RiskSnapshotFile": "risk_snapshots.csv",
-  "TelemetryFile": "telemetry.csv"
+  "TelemetryFile": "telemetry.csv",
+  "Risk": {
+    "PointValuePerUnit": 1.0,
+    "RiskPercentPerTrade": 0.01,
+    "MinRiskUsdPerTrade": 3.0,
+    "StopLossAtrMultiplier": 1.8
+  }
 }

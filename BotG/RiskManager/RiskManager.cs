@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using cAlgo.API;
 using Position = cAlgo.API.Position;
 using TradeResult = cAlgo.API.TradeResult;
@@ -33,6 +35,8 @@ namespace RiskManager
         // telemetry
         private readonly System.Threading.Timer _snapshotTimer;
         private AccountInfo? _lastAccountInfo;
+    // testing-only equity override (used by unit tests where cAlgo AccountInfo isn't available)
+    private double? _equityOverride;
 
         // IModule implementation from Bot3.Core
         void IModule.Initialize(BotContext ctx)
@@ -61,6 +65,97 @@ namespace RiskManager
         {
             _settings = settings;
             _lastReportTime = DateTime.UtcNow;
+            // Minimal runtime config reader for Risk.PointValuePerUnit (non-throwing)
+            try
+            {
+                var cfgPath = Path.Combine(AppContext.BaseDirectory ?? Directory.GetCurrentDirectory(), "config.runtime.json");
+                if (File.Exists(cfgPath))
+                {
+                    var json = File.ReadAllText(cfgPath);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("Risk", out var r))
+                    {
+                        if (r.TryGetProperty("PointValuePerUnit", out var pvp) && pvp.ValueKind == JsonValueKind.Number)
+                        {
+                            var v = pvp.GetDouble();
+                            if (v > 0) _settings.PointValuePerUnit = v;
+                        }
+                        // Optionally hydrate instance risk knobs if present (backward compatible)
+                        if (r.TryGetProperty("RiskPercentPerTrade", out var rpt) && rpt.ValueKind == JsonValueKind.Number)
+                        {
+                            var v = rpt.GetDouble();
+                            if (v > 0 && v < 1) this.RiskPercentPerTrade = v;
+                        }
+                        if (r.TryGetProperty("MinRiskUsdPerTrade", out var mr) && mr.ValueKind == JsonValueKind.Number)
+                        {
+                            var v = mr.GetDouble();
+                            if (v > 0) this.MinRiskUsdPerTrade = v;
+                        }
+                    }
+                }
+            }
+            catch { /* ignore config errors; use defaults */ }
+        }
+
+        /// <summary>
+        /// Testing-only: override equity used for sizing when AccountInfo is not available in unit tests.
+        /// </summary>
+        public void SetEquityOverrideForTesting(double equity)
+        {
+            _equityOverride = equity;
+        }
+
+        /// <summary>
+        /// Calculate order size (units) based on risk in USD divided by (stop distance * point value per unit).
+        /// units = floor(riskUsd / max(eps, stopDistancePriceUnits * pointValuePerUnit))
+        /// Enforces minimum 1 unit and a reasonable cap.
+        /// </summary>
+    public double CalculateOrderSize(double stopDistancePriceUnits, double pointValuePerUnit)
+        {
+            try
+            {
+                double equity = 0.0;
+                if (_equityOverride.HasValue) equity = _equityOverride.Value;
+                else if (_lastAccountInfo != null) equity = (double)_lastAccountInfo.Equity;
+                if (equity <= 0) return 1.0;
+
+                // Prefer instance properties; keep existing semantics (RiskPercentPerTrade is a fraction, e.g., 0.01 for 1%)
+                double riskPercent = this.RiskPercentPerTrade;
+                if (riskPercent <= 0) riskPercent = 0.01;
+                double minRiskUsd = this.MinRiskUsdPerTrade;
+                if (minRiskUsd <= 0) minRiskUsd = 1.0;
+                double riskUsd = Math.Max(minRiskUsd, equity * riskPercent);
+
+                // determine effective point value per unit
+                double effectivePointValue = pointValuePerUnit;
+                if (effectivePointValue <= 0)
+                {
+                    if (_settings != null && _settings.PointValuePerUnit > 0)
+                    {
+                        effectivePointValue = _settings.PointValuePerUnit;
+                        try { Console.WriteLine("[RiskManager] Using PointValuePerUnit from settings: " + effectivePointValue.ToString("G")); } catch {}
+                    }
+                    else
+                    {
+                        effectivePointValue = 1.0;
+                        try { Console.WriteLine("[RiskManager] Using fallback PointValuePerUnit=1.0; configure Risk.PointValuePerUnit to correct broker value"); } catch {}
+                    }
+                }
+
+                // ensure positive non-zero riskPerUnit
+                double riskPerUnit = Math.Max(1e-8, stopDistancePriceUnits * effectivePointValue);
+                double units = Math.Floor(riskUsd / riskPerUnit);
+
+                if (units < 1) units = 1;
+                // optional cap to avoid absurd sizes; use config if exists
+                double cap = 1_000_000; // safe cap
+                if (units > cap) units = cap;
+                return units;
+            }
+            catch
+            {
+                return 1.0;
+            }
         }
 
         // Hook for external components to provide latest account info

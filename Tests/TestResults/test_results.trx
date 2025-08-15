@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="ef25a8df-fe1d-4501-a4a6-73594cfd9427" name="TechCare@DESKTOP-584MV4B 2025-08-15 14:08:30" runUser="DESKTOP-584MV4B\TechCare" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2025-08-15T14:08:30.2155260+07:00" queuing="2025-08-15T14:08:30.2155261+07:00" start="2025-08-15T14:08:28.0186172+07:00" finish="2025-08-15T14:08:30.2188187+07:00" />
+  <TestSettings name="default" id="d2d51dc1-a5f9-4b15-8b08-7ca09ca2d652">
+    <Deployment runDeploymentRoot="TechCare_DESKTOP-584MV4B_2025-08-15_14_08_30" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="5cff268e-c835-4f12-8d2e-cee86fac9d31" testId="88305911-52b3-312b-383e-cf12cf876653" testName="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" computerName="DESKTOP-584MV4B" duration="00:00:00.0000911" startTime="2025-08-15T14:08:30.1174875+07:00" endTime="2025-08-15T14:08:30.1174876+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5cff268e-c835-4f12-8d2e-cee86fac9d31" />
+    <UnitTestResult executionId="63e894d1-54fc-4d99-ab9d-7dd70311bcf3" testId="84a7bb35-41de-037a-877a-8039308090fd" testName="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_MinUnitAndCap" computerName="DESKTOP-584MV4B" duration="00:00:00.1865122" startTime="2025-08-15T14:08:30.1150712+07:00" endTime="2025-08-15T14:08:30.1150833+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="63e894d1-54fc-4d99-ab9d-7dd70311bcf3" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="88305911-52b3-312b-383e-cf12cf876653">
+      <Execution id="5cff268e-c835-4f12-8d2e-cee86fac9d31" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" />
+    </UnitTest>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_MinUnitAndCap" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="84a7bb35-41de-037a-877a-8039308090fd">
+      <Execution id="63e894d1-54fc-4d99-ab9d-7dd70311bcf3" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="CalculateOrderSize_MinUnitAndCap" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="88305911-52b3-312b-383e-cf12cf876653" executionId="5cff268e-c835-4f12-8d2e-cee86fac9d31" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="84a7bb35-41de-037a-877a-8039308090fd" executionId="63e894d1-54fc-4d99-ab9d-7dd70311bcf3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="2" executed="2" passed="2" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.4.1+b9eacec401 (64-bit .NET 6.0.36)&#xD;
+[xUnit.net 00:00:00.37]   Discovering: BotG.Tests&#xD;
+[xUnit.net 00:00:00.41]   Discovered:  BotG.Tests&#xD;
+[xUnit.net 00:00:00.41]   Starting:    BotG.Tests&#xD;
+[xUnit.net 00:00:00.64]   Finished:    BotG.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

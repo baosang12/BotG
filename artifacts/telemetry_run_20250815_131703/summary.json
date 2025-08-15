@@ -1,0 +1,19 @@
+﻿{
+    "branch":  "botg/telemetry-instrumentation",
+    "commit":  "92583da1ab991ac82ef3ef5e97239d8a3597e506",
+    "build_status":  "SUCCESS",
+    "build_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703\\build.log",
+    "artifacts":  {
+                      "orders_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703\\orders.csv",
+                      "risk_snapshots_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703\\risk_snapshots.csv",
+                      "telemetry_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703\\telemetry.csv",
+                      "datafetcher_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703\\datafetcher.log",
+                      "zip":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250815_131703.zip"
+                  },
+    "counts":  {
+                   "orders_rows":  "MISSING",
+                   "risk_snapshots_rows":  "MISSING",
+                   "telemetry_rows":  "MISSING"
+               },
+    "timestamp":  "2025-08-15T13:17:03"
+}

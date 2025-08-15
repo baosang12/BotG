@@ -12,6 +12,8 @@ namespace RiskManager
         public double StopLossAtrMultiplier { get; set; } = 1.8;
         public double TakeProfitAtrMultiplier { get; set; } = 3.0;
         public double VolatilitySizeAdjustment { get; set; } = 1.0;
+    // Point value per 1 unit volume in account currency
+    public double PointValuePerUnit { get; set; } = 1.0; // TODO: replace with broker-specific point value for XAUUSD (ICMarkets RAW)
 
         // Portfolio risk
         public int MaxConcurrentPositions { get; set; } = 5;
