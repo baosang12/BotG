@@ -1,6 +1,6 @@
 {
   "Mode": "paper",
-  "LogPath": "C:/botg/logs",
+  "LogPath": "D:/botg/logs",
   "FlushIntervalSeconds": 60,
   "OrderLogFile": "orders.csv",
   "RiskSnapshotFile": "risk_snapshots.csv",
