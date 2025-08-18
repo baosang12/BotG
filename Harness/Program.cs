@@ -1,7 +1,10 @@
 using System;
+using System.IO;
+using System.Globalization;
 using System.Threading;
 using Telemetry;
 using DataFetcher.Models;
+using RiskManager;
 
 // Simple harness to exercise telemetry without cTrader runtime
 class Program
@@ -13,25 +16,56 @@ class Program
         cfg.FlushIntervalSeconds = 2;
         TelemetryContext.InitOnce(cfg);
 
+        // Provide a fake symbol so RiskManager can auto-compute PointValuePerUnit (e.g., XAUUSD-like)
+        try
+        {
+            var rm = new RiskManager.RiskManager();
+            rm.Initialize(new RiskSettings());
+            // Fake symbol: TickSize=0.01, TickValue=0.01 per tick per lot -> tickValuePerLot = 0.01/0.01 = 1.0 USD per price-unit per lot
+            // LotSize = 100 units per lot to match default
+            var fakeSym = new cAlgo.API.Symbol { TickSize = 0.01, TickValue = 0.01, LotSize = 100.0 };
+            // ensure config value doesn't block auto-compute in this harness
+            rm.GetSettings().PointValuePerUnit = 0.0;
+            rm.SetSymbolReference(fakeSym);
+            // Force equity override for consistent sizing tests
+            rm.SetEquityOverrideForTesting(10000);
+            Console.WriteLine("[Harness] Auto PointValuePerUnit = " + rm.GetSettings().PointValuePerUnit.ToString("G"));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[Harness] Failed to set test PointValuePerUnit: " + ex.Message);
+        }
+
         // Simulate ticks/signals/orders
         var collector = TelemetryContext.Collector!;
-        for (int i = 0; i < 120; i++)
+        var start = DateTime.UtcNow;
+        var duration = TimeSpan.FromSeconds(60); // use 60s if environment is constrained
+        if (args.Length > 0 && int.TryParse(args[0], out var sec) && sec > 0) duration = TimeSpan.FromSeconds(sec);
+        int i = 0;
+        while (DateTime.UtcNow - start < duration)
         {
             collector.IncTick();
             if (i % 10 == 0) collector.IncSignal();
             if (i % 15 == 0)
             {
                 collector.IncOrderRequested();
-                TelemetryContext.OrderLogger?.Log("REQUEST", $"ORD-{i}", 100.0 + i * 0.01, null, 1, null, null);
-                TelemetryContext.OrderLogger?.Log("ACK", $"ORD-{i}", 100.0 + i * 0.01, null, 1, null, null);
+                double entry = 100.0 + i * 0.01;
+                double? stop = (i % 30 == 0) ? entry - 0.05 : (double?)null; // add stop every 30 ticks as example
+                // phase,orderId,intendedPrice,stopLoss,execPrice,theoreticalLots,theoreticalUnits,requestedVolume,filledSize,brokerMsg
+                TelemetryContext.OrderLogger?.Log("REQUEST", $"ORD-{i}", entry, stop, null, null, null, 1, null);
+                TelemetryContext.OrderLogger?.Log("ACK", $"ORD-{i}", entry, stop, null, null, null, 1, null);
             }
             if (i % 30 == 0)
             {
                 collector.IncOrderFilled();
-                TelemetryContext.OrderLogger?.Log("FILL", $"ORD-{i}", 100.0 + i * 0.01, 100.0 + i * 0.01 + 0.0005, 1, 1, null);
+                double entry = 100.0 + i * 0.01;
+                double exec = entry + 0.0005;
+                double? stop = entry - 0.05;
+                TelemetryContext.OrderLogger?.Log("FILL", $"ORD-{i}", entry, stop, exec, null, null, 1, 1, null);
             }
             if (i % 37 == 0) collector.IncError();
             Thread.Sleep(5);
+            i++;
         }
 
         // Persist an example account snapshot
@@ -46,5 +80,72 @@ class Program
         // Allow time for a flush tick
         Thread.Sleep(2500);
         Console.WriteLine("Harness run complete. Telemetry written to: " + TelemetryContext.Config.LogPath);
+
+        // Optional: compute simple size comparison for the last 3 fills
+        try
+        {
+            var logPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "orders.csv");
+            var riskPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "risk_snapshots.csv");
+            if (File.Exists(logPath))
+            {
+                var lines = File.ReadAllLines(logPath);
+                // header: phase,timestamp_iso,epoch_ms,orderId,intendedPrice,stopLoss,execPrice,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg
+                var fills = new System.Collections.Generic.List<string[]>();
+                for (int idx = lines.Length - 1; idx >= 1 && fills.Count < 3; idx--)
+                {
+                    var parts = lines[idx].Split(',');
+                    if (parts.Length >= 13 && parts[0] == "FILL") fills.Add(parts);
+                }
+                fills.Reverse();
+                double equity = 10000; // as overridden
+                // Prepare an RM instance mirroring harness assumptions to compute theoretical lots/units with clamp
+                var rm2 = new RiskManager.RiskManager();
+                rm2.Initialize(new RiskSettings { MaxLotsPerTrade = 10.0, LotSizeDefault = 100 });
+                var fake2 = new cAlgo.API.Symbol { TickSize = 0.01, TickValue = 0.01, LotSize = 100.0 };
+                rm2.GetSettings().PointValuePerUnit = 0.0; // force auto-compute
+                rm2.SetSymbolReference(fake2);
+                rm2.SetEquityOverrideForTesting(equity);
+                double lotSizeForOut = rm2.GetSettings().LotSizeDefault;
+                try {
+                    var lsProp = fake2.GetType().GetProperty("LotSize");
+                    if (lsProp != null)
+                    {
+                        var v = lsProp.GetValue(fake2);
+                        if (v != null) lotSizeForOut = Convert.ToDouble(v);
+                    }
+                } catch {}
+
+                var results = new System.Collections.Generic.List<object>();
+                foreach (var f in fills)
+                {
+                    string orderId = f[3].Trim('"');
+                    double entry = double.TryParse(f[4], NumberStyles.Any, CultureInfo.InvariantCulture, out var e) ? e : 0;
+                    double stop = double.TryParse(f[5], NumberStyles.Any, CultureInfo.InvariantCulture, out var s) ? s : 0;
+                    double exec = double.TryParse(f[6], NumberStyles.Any, CultureInfo.InvariantCulture, out var x) ? x : 0;
+                    double requested = double.TryParse(f[9], NumberStyles.Any, CultureInfo.InvariantCulture, out var rq) ? rq : 0;
+                    double filled = double.TryParse(f[10], NumberStyles.Any, CultureInfo.InvariantCulture, out var fl) ? fl : 0;
+                    double slippage = double.TryParse(f[11], NumberStyles.Any, CultureInfo.InvariantCulture, out var sl) ? sl : 0;
+                    double stopDist = Math.Abs(entry - stop);
+                    double theoreticalUnits = 0;
+                    double theoreticalLots = 0;
+                    if (stopDist > 0) {
+                        theoreticalUnits = rm2.CalculateOrderSize(stopDist, 0.0); // uses lot-based path and clamps internally
+                        theoreticalLots = lotSizeForOut > 0 ? theoreticalUnits / lotSizeForOut : 0;
+                    }
+                    results.Add(new {
+                        orderId, entry, stopLoss = (double?) (stop > 0 ? stop : (double?)null), stopDistance = stopDist,
+                        equity_used = equity, theoretical_lots = theoreticalLots, theoretical_units = theoreticalUnits, requestedSize = requested, filledSize = filled, slippage
+                    });
+                }
+                var json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions{ WriteIndented = true });
+                Console.WriteLine(json);
+                var outPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "size_comparison.json");
+                File.WriteAllText(outPath, json);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[Harness] size comparison failed: " + ex.Message);
+        }
     }
 }

@@ -1,10 +1,15 @@
 namespace cAlgo.API
 {
-    // Minimal enum shim only if the real package does not define ErrorCode.NoError in build context.
-    public enum ErrorCode
+    // Minimal Symbol shim to support RiskManager.SetPointValueFromSymbol in unit tests/build
+    public class Symbol
     {
-        NoError = 0,
-        // Other values left unspecified
-        Unknown = 1
+        // Optional properties; may not be present in real API but used reflectively
+        public double TickSize { get; set; }
+        public double TickValue { get; set; }
+        public double PipSize { get; set; }
+        public double PipValue { get; set; }
+        public double LotSize { get; set; }
+
+        public double LotsToVolumeInUnits(double lots) => lots * LotSize;
     }
 }

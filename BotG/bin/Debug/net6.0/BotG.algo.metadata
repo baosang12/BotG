@@ -18,7 +18,11 @@
     "Lines": [],
     "Clouds": [],
     "Parameters": [],
-    "Capabilities": [],
+    "Capabilities": [
+      {
+        "CapabilityType": "FullTrust"
+      }
+    ],
     "CustomAttributes": [],
     "Sets": [],
     "AddIndicatorsToChart": false,

@@ -15,10 +15,10 @@ namespace Telemetry
         public string TelemetryFile { get; set; } = "telemetry.csv";
 
         public static string DefaultBasePath => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? "C:\\botg\\logs"
+            ? "D:\\botg\\logs"
             : "/var/log/botg";
 
-        public static TelemetryConfig Load(string? rootHint = null)
+    public static TelemetryConfig Load(string rootHint = null)
         {
             try
             {
@@ -29,9 +29,9 @@ namespace Telemetry
 
                 string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
                 string searchRoot = !string.IsNullOrWhiteSpace(rootHint) ? rootHint : baseDir;
-                string? cfgPath = FindConfigPath(searchRoot);
+                string cfgPath = FindConfigPath(searchRoot);
                 TelemetryConfig cfg = new TelemetryConfig();
-                if (cfgPath != null && File.Exists(cfgPath))
+                if (!string.IsNullOrEmpty(cfgPath) && File.Exists(cfgPath))
                 {
                     var json = File.ReadAllText(cfgPath);
                     var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
@@ -44,20 +44,51 @@ namespace Telemetry
                 if (!string.IsNullOrWhiteSpace(envMode)) cfg.Mode = envMode!;
                 if (int.TryParse(envFlush, out var sec) && sec > 0) cfg.FlushIntervalSeconds = sec;
 
-                // Ensure directory exists
-                Directory.CreateDirectory(cfg.LogPath);
+                // Ensure directory exists; fallback if access denied
+                try
+                {
+                    Directory.CreateDirectory(cfg.LogPath);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
+                        Directory.CreateDirectory(local);
+                        cfg.LogPath = local;
+                    }
+                    else
+                    {
+                        var tmp = Path.Combine(Path.GetTempPath(), "botg", "logs");
+                        Directory.CreateDirectory(tmp);
+                        cfg.LogPath = tmp;
+                    }
+                }
                 return cfg;
             }
             catch
             {
                 // Fallback defaults
                 var cfg = new TelemetryConfig();
-                Directory.CreateDirectory(cfg.LogPath);
+                try
+                {
+                    Directory.CreateDirectory(cfg.LogPath);
+                }
+                catch
+                {
+                    try
+                    {
+                        var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
+                        Directory.CreateDirectory(local);
+                        cfg.LogPath = local;
+                    }
+                    catch { }
+                }
                 return cfg;
             }
         }
 
-        private static string? FindConfigPath(string start)
+        private static string FindConfigPath(string start)
         {
             try
             {

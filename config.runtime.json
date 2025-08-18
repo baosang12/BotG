@@ -5,10 +5,15 @@
   "OrderLogFile": "orders.csv",
   "RiskSnapshotFile": "risk_snapshots.csv",
   "TelemetryFile": "telemetry.csv",
-  "Risk": {
-    "PointValuePerUnit": 1.0,
-    "RiskPercentPerTrade": 0.01,
-    "MinRiskUsdPerTrade": 3.0,
-    "StopLossAtrMultiplier": 1.8
-  }
+ "Risk": {
+  "PointValuePerUnit": 0.0,
+  "PointValuePerLot": 0.0,
+  "RiskPercentPerTrade": 0.01,
+  "MinRiskUsdPerTrade": 3.0,
+  "StopLossAtrMultiplier": 1.8,
+  "MaxLotsPerTrade": 1.0,
+  "LotSizeDefault": 100,
+  "MaxMarginUsagePercent": 10.0
+}
+
 }

@@ -16,7 +16,7 @@ namespace TradeManager
         /// <param name="stopLossPips">Stop loss (pips).</param>
         /// <param name="symbol">Đối tượng Symbol từ cAlgo để lấy pip value và volume min.</param>
         /// <returns>Khối lượng lệnh (units) tối thiểu đạt broker yêu cầu.</returns>
-        public static double Calculate(double riskUsd, double stopLossPips, Symbol symbol)
+    public static double Calculate(double riskUsd, double stopLossPips, cAlgo.API.Internals.Symbol symbol)
         {
             if (symbol == null)
                 throw new ArgumentNullException(nameof(symbol));

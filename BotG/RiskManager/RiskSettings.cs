@@ -14,6 +14,14 @@ namespace RiskManager
         public double VolatilitySizeAdjustment { get; set; } = 1.0;
     // Point value per 1 unit volume in account currency
     public double PointValuePerUnit { get; set; } = 1.0; // TODO: replace with broker-specific point value for XAUUSD (ICMarkets RAW)
+    // Optional: value per 1.0 price unit for 1 lot (if provided, used for lot-based sizing)
+    public double PointValuePerLot { get; set; } = 0.0;
+    // Clamp for per-lot sizing (safer default)
+    public double MaxLotsPerTrade { get; set; } = 0.1;
+    // Default lot size in units if symbol LotSize is unavailable
+    public int LotSizeDefault { get; set; } = 100;
+    // Fallback default stop distance (price units) when no SL/ATR is available
+    public double DefaultStopDistance { get; set; } = 0.05;
 
         // Portfolio risk
         public int MaxConcurrentPositions { get; set; } = 5;

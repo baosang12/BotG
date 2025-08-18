@@ -17,15 +17,17 @@ namespace Telemetry
             EnsureHeader();
         }
 
-        private void EnsureHeader()
+    private void EnsureHeader()
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "phase,timestamp_iso,epoch_ms,orderId,intendedPrice,execPrice,requestedSize,filledSize,slippage,brokerMsg" + Environment.NewLine);
+        // Added stopLoss column after intendedPrice
+    File.AppendAllText(_filePath, "phase,timestamp_iso,epoch_ms,orderId,intendedPrice,stopLoss,execPrice,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg" + Environment.NewLine);
             }
         }
 
-        public void Log(string phase, string orderId, double? intendedPrice, double? execPrice, double? requestedSize, double? filledSize, string? brokerMsg = null)
+    // Added stopLoss parameter between intendedPrice and execPrice
+    public void Log(string phase, string orderId, double? intendedPrice, double? stopLoss, double? execPrice, double? theoreticalLots, double? theoreticalUnits, double? requestedVolume, double? filledSize, string brokerMsg = null)
         {
             try
             {
@@ -38,8 +40,11 @@ namespace Telemetry
                     epoch.ToString(CultureInfo.InvariantCulture),
                     Escape(orderId),
                     F(intendedPrice),
+            F(stopLoss),
                     F(execPrice),
-                    F(requestedSize),
+                    F(theoreticalLots),
+                    F(theoreticalUnits),
+                    F(requestedVolume),
                     F(filledSize),
                     F(slippage),
                     Escape(brokerMsg)
@@ -53,7 +58,7 @@ namespace Telemetry
         }
 
         private static string F(double? v) => v.HasValue ? v.Value.ToString(CultureInfo.InvariantCulture) : "";
-        private static string Escape(string? s)
+    private static string Escape(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
             if (s.Contains(',') || s.Contains('"'))

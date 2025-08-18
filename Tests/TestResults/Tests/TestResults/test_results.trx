@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="353927e0-dfcb-43d4-b381-100a6458572f" name="TechCare@DESKTOP-584MV4B 2025-08-16 12:06:50" runUser="DESKTOP-584MV4B\TechCare" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2025-08-16T12:06:50.9861001+07:00" queuing="2025-08-16T12:06:50.9861007+07:00" start="2025-08-16T12:06:49.4385157+07:00" finish="2025-08-16T12:06:50.9994859+07:00" />
+  <TestSettings name="default" id="0ac15016-b044-4748-8168-77f4fcdb4d42">
+    <Deployment runDeploymentRoot="TechCare_DESKTOP-584MV4B_2025-08-16_12_06_50" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="6f104645-8386-4284-aaff-13f3e5ed5a8f" testId="152ace0f-8de4-238a-b7d0-610365ce6e04" testName="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesSettingsPointValue_WhenParamZero" computerName="DESKTOP-584MV4B" duration="00:00:00.2515402" startTime="2025-08-16T12:06:50.7753671+07:00" endTime="2025-08-16T12:06:50.7753901+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6f104645-8386-4284-aaff-13f3e5ed5a8f" />
+    <UnitTestResult executionId="0a7f7642-aa3a-4cec-b43c-93722b78e00d" testId="84a7bb35-41de-037a-877a-8039308090fd" testName="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_MinUnitAndCap" computerName="DESKTOP-584MV4B" duration="00:00:00.0002886" startTime="2025-08-16T12:06:50.7801281+07:00" endTime="2025-08-16T12:06:50.7801282+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0a7f7642-aa3a-4cec-b43c-93722b78e00d" />
+    <UnitTestResult executionId="23eda8d7-d5ce-4c48-ad6a-49ac1de68048" testId="88305911-52b3-312b-383e-cf12cf876653" testName="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" computerName="DESKTOP-584MV4B" duration="00:00:00.0002227" startTime="2025-08-16T12:06:50.7802399+07:00" endTime="2025-08-16T12:06:50.7802399+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="23eda8d7-d5ce-4c48-ad6a-49ac1de68048" />
+    <UnitTestResult executionId="0f5ecef5-62cb-4738-b1a6-c31002847c74" testId="1d44198d-65ce-8062-1899-93013bf85174" testName="BotG.Tests.RiskManagerSizingTests.SetPointValueFromSymbol_Computes_FromSymbolMetadata" computerName="DESKTOP-584MV4B" duration="00:00:00.0017761" startTime="2025-08-16T12:06:50.7802066+07:00" endTime="2025-08-16T12:06:50.7802067+07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0f5ecef5-62cb-4738-b1a6-c31002847c74" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="88305911-52b3-312b-383e-cf12cf876653">
+      <Execution id="23eda8d7-d5ce-4c48-ad6a-49ac1de68048" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue" />
+    </UnitTest>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.SetPointValueFromSymbol_Computes_FromSymbolMetadata" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="1d44198d-65ce-8062-1899-93013bf85174">
+      <Execution id="0f5ecef5-62cb-4738-b1a6-c31002847c74" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="SetPointValueFromSymbol_Computes_FromSymbolMetadata" />
+    </UnitTest>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_MinUnitAndCap" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="84a7bb35-41de-037a-877a-8039308090fd">
+      <Execution id="0a7f7642-aa3a-4cec-b43c-93722b78e00d" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="CalculateOrderSize_MinUnitAndCap" />
+    </UnitTest>
+    <UnitTest name="BotG.Tests.RiskManagerSizingTests.CalculateOrderSize_UsesSettingsPointValue_WhenParamZero" storage="d:\onedrive\tài liệu\calgo\sources\robots\botg\tests\bin\debug\net6.0\botg.tests.dll" id="152ace0f-8de4-238a-b7d0-610365ce6e04">
+      <Execution id="6f104645-8386-4284-aaff-13f3e5ed5a8f" />
+      <TestMethod codeBase="D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="BotG.Tests.RiskManagerSizingTests" name="CalculateOrderSize_UsesSettingsPointValue_WhenParamZero" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="152ace0f-8de4-238a-b7d0-610365ce6e04" executionId="6f104645-8386-4284-aaff-13f3e5ed5a8f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="84a7bb35-41de-037a-877a-8039308090fd" executionId="0a7f7642-aa3a-4cec-b43c-93722b78e00d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="88305911-52b3-312b-383e-cf12cf876653" executionId="23eda8d7-d5ce-4c48-ad6a-49ac1de68048" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1d44198d-65ce-8062-1899-93013bf85174" executionId="0f5ecef5-62cb-4738-b1a6-c31002847c74" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="4" executed="4" passed="4" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.4.1+b9eacec401 (64-bit .NET 6.0.36)&#xD;
+[xUnit.net 00:00:00.12]   Discovering: BotG.Tests&#xD;
+[xUnit.net 00:00:00.18]   Discovered:  BotG.Tests&#xD;
+[xUnit.net 00:00:00.18]   Starting:    BotG.Tests&#xD;
+[RiskManager] Using PointValuePerUnit from settings: 2,5&#xD;
+[RiskManager] Computed PointValuePerUnit=0,001&#xD;
+[xUnit.net 00:00:00.51]   Finished:    BotG.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
