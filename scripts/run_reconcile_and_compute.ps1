@@ -5,6 +5,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Ensure UTF-8 for console and file outputs
+try {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+} catch {}
+$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
+
 function Write-Log {
   param([string]$Message,[string]$Level='INFO')
   $ts = (Get-Date).ToUniversalTime().ToString("s") + 'Z'
