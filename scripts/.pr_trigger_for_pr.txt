@@ -1,6 +1,0 @@
-﻿Temporary PR trigger file created by automation on 2025-08-21T15:28:15.0117263+07:00.
-Purpose: create a small safe commit so GitHub Compare shows a diff and allows PR creation.
-Delete this file after PR created/merged.touch at 2025-08-21T16:15:54.1338203+07:00
-touch at 2025-08-21T16:16:58.8474422+07:00
-touch at 2025-08-21T16:18:08.0876403+07:00
-touch at 2025-08-21T18:54:13.4378615+07:00
