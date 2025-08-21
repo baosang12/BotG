@@ -60,3 +60,17 @@ TestResults/
 # Artifacts that should be committed only when explicitly needed
 # Uncomment if you want to exclude certain artifacts folders:
 # artifacts/
+
+# --- Repo-specific transient files (keep clean commits) ---
+# Analysis/telemetry outputs and logs
+artifacts/**
+logs/**
+
+# Script-generated reports and logs
+scripts/*.json
+scripts/*_log.txt
+scripts/run_*_log.txt
+scripts/.tmp_pr_backup/**
+
+# PR NOOP trigger (used only to force a diff)
+scripts/.pr_trigger_for_pr.txt
