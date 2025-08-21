@@ -973,7 +973,7 @@
         "runtime": {
           "lib/netstandard2.0/xunit.abstractions.dll": {
             "assemblyVersion": "2.0.0.0",
-            "fileVersion": "2.0.0.0"
+            "fileVersion": "0.0.0.0"
           }
         }
       },
@@ -1022,10 +1022,7 @@
           "cTrader.Automate": "1.0.13"
         },
         "runtime": {
-          "BotG.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
-          }
+          "BotG.dll": {}
         }
       }
     }

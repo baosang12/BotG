@@ -1,10 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "XjBk93V82y4=",
+  "dgSpecHash": "sg6KwN6NI/2a4dHp/BJfhLHikph6cJ4Mf8WhTLBNdh3o0RDHuMjO+jQKxKdZggJ1tvceo7lsljbbPjruG3pmHQ==",
   "success": true,
-  "projectFilePath": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Harness\\Harness.csproj",
+  "projectFilePath": "/home/runner/work/BotG/BotG/Harness/Harness.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\TechCare\\.nuget\\packages\\ctrader.automate\\1.0.13\\ctrader.automate.1.0.13.nupkg.sha512"
+    "/home/runner/.nuget/packages/ctrader.automate/1.0.13/ctrader.automate.1.0.13.nupkg.sha512",
+    "/home/runner/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "/home/runner/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.36/microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512",
+    "/home/runner/.nuget/packages/microsoft.netcore.app.host.linux-x64/6.0.36/microsoft.netcore.app.host.linux-x64.6.0.36.nupkg.sha512"
   ],
   "logs": []
 }

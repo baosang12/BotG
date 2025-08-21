@@ -27,10 +27,7 @@
           "cTrader.Automate": "1.0.13"
         },
         "runtime": {
-          "BotG.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
-          }
+          "BotG.dll": {}
         }
       }
     }
