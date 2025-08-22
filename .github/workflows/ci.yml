@@ -11,30 +11,32 @@ on:
 
 jobs:
   build-test:
-    name: Build and Test (${{ matrix.os }} / .NET ${{ matrix.dotnet }})
+    name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        dotnet: ['6.0', '7.0']
+        # Pin to ubuntu-22.04 because .NET 6 runtime isn't available on ubuntu-24.04 runners
+        os: [ubuntu-22.04, windows-latest]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET SDK ${{ matrix.dotnet }}
-        uses: actions/setup-dotnet@v3
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet }}
+          dotnet-version: |
+            6.0.x
+            9.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ matrix.dotnet }}-${{ hashFiles('**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            nuget-${{ matrix.dotnet }}-
+            nuget-${{ runner.os }}-
 
       - name: Restore
         run: dotnet restore
@@ -42,12 +44,17 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
+      - name: Show installed runtimes
+        run: |
+          dotnet --info
+          dotnet --list-runtimes
+
       - name: Test
-        run: dotnet test --no-build --verbosity normal --results-directory ./test-results || true
+        run: dotnet test --no-build --verbosity normal --results-directory ./test-results
 
       - name: Upload test results (optional)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}-dotnet-${{ matrix.dotnet }}
+          name: test-results-${{ matrix.os }}
           path: ./test-results
