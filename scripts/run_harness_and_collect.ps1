@@ -132,7 +132,7 @@ function Start-Run($projectPath, $durationSec, $envVars) {
     Write-Info "Starting run: dotnet run --project `"$projectPath`""
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'dotnet'
-    $psi.Arguments = "run --project `"$projectPath`""
+        $psi.Arguments = "run --project `"$projectPath`" -- $durationSec"
     $psi.WorkingDirectory = (Split-Path -Parent $projectPath)
     $psi.RedirectStandardOutput = $false
     $psi.RedirectStandardError = $false
@@ -144,8 +144,8 @@ function Start-Run($projectPath, $durationSec, $envVars) {
         }
     }
     $proc = [System.Diagnostics.Process]::Start($psi)
-    Start-Sleep -Seconds $durationSec
-    Write-Info "Stopping run (PID=$($proc.Id))"
+        Start-Sleep -Seconds $durationSec
+        Write-Info "Stopping run (PID=$($proc.Id)) for $durationSec sec"
     try { Stop-Process -Id $proc.Id -ErrorAction Stop } catch { Write-Warn "Graceful stop failed; trying -Force"; try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch { Write-Warn "Could not stop process; continuing" } }
 }
 
