@@ -1,0 +1,66 @@
+name: Smoke — 60m paper run
+
+on:
+  workflow_dispatch:
+    inputs:
+      durationSeconds:
+        description: Duration in seconds
+        required: false
+        default: '3600'
+  schedule:
+    - cron: '30 18 * * *'  # daily at 18:30 UTC
+
+jobs:
+  smoke:
+    name: Smoke (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Run smoke (simulate)
+        shell: pwsh
+        run: |
+          $dur = '${{ inputs.durationSeconds }}'
+          if (-not $dur) { $dur = '3600' }
+          ./scripts/run_harness_and_collect.ps1 -DurationSeconds ([int]$dur) -Simulate -ForceRun
+
+      - name: Find latest artifact dir
+        id: findart
+        shell: pwsh
+        run: |
+          $artRoot = Join-Path $PWD 'artifacts'
+          if (-not (Test-Path $artRoot)) { throw 'artifacts folder not found' }
+          $dir = Get-ChildItem -Path $artRoot -Directory | Where-Object { $_.Name -like 'telemetry_run_*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dir) { throw 'No telemetry_run_* directory found' }
+          echo "dir=$($dir.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Analyze smoke outputs
+        shell: pwsh
+        run: |
+          python --version
+          python scripts/analyze_smoke.py --base '${{ steps.findart.outputs.dir }}'
+
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: |
+            ${{ steps.findart.outputs.dir }}
+            ${{ steps.findart.outputs.dir }}/*.json
+            ${{ steps.findart.outputs.dir }}/*.csv
