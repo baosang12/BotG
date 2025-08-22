@@ -42,7 +42,7 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build --no-restore --configuration Debug
 
       - name: Show installed runtimes
         run: |
@@ -50,7 +50,7 @@ jobs:
           dotnet --list-runtimes
 
       - name: Test
-        run: dotnet test --no-build --verbosity normal --results-directory ./test-results
+        run: dotnet test --configuration Debug --verbosity normal --results-directory ./test-results
 
       - name: Upload test results (optional)
         if: always()
