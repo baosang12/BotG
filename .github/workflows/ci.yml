@@ -1,6 +1,7 @@
-name: CI — build & test
+name: CI - build & test
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -15,8 +16,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Pin to ubuntu-22.04 because .NET 6 runtime isn't available on ubuntu-24.04 runners
-        os: [ubuntu-22.04, windows-latest]
+        os: [windows-latest]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build --no-restore --configuration Debug
 
       - name: Show installed runtimes
         run: |
@@ -50,7 +50,7 @@ jobs:
           dotnet --list-runtimes
 
       - name: Test
-        run: dotnet test --no-build --verbosity normal --results-directory ./test-results
+        run: dotnet test --configuration Debug --verbosity normal --results-directory ./test-results
 
       - name: Upload test results (optional)
         if: always()
