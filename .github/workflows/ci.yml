@@ -8,6 +8,8 @@ on:
   pull_request:
     branches:
       - main
+      - master
+      - develop
 
 jobs:
   build-test:
@@ -16,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dotnet: ['6.0', '7.0']
+        dotnet: ['8.0']
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
