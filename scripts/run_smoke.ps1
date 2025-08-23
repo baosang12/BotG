@@ -292,6 +292,33 @@ try {
     $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
     $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
   }
+  # Fallback: if reconcile_report.json was not created, compute a minimal version inline
+  $rrFile = Join-Path $runDir 'reconcile_report.json'
+  if (-not (Test-Path -LiteralPath $rrFile)) {
+    try {
+      $ordersRows = @(); $closedRows = @()
+      if (Test-Path -LiteralPath $orders) { $ordersRows = Import-Csv -LiteralPath $orders }
+      if (Test-Path -LiteralPath $closed) { $closedRows = Import-Csv -LiteralPath $closed }
+      $fills = $ordersRows | Where-Object { $_.phase -eq 'FILL' -or $_.status -eq 'FILL' }
+      $fillIds = @{}
+      foreach ($f in $fills) { $fillIds[$f.orderId] = $true }
+      $closedIds = @{}
+      foreach ($c in $closedRows) { if ($c.entry_order_id) { $closedIds[$c.entry_order_id] = $true }; if ($c.exit_order_id) { $closedIds[$c.exit_order_id] = $true } }
+      $orphanFills = @(); foreach ($key in $fillIds.Keys) { if (-not $closedIds.ContainsKey($key)) { $orphanFills += $key } }
+      $orphanCloses = @(); foreach ($c in $closedRows) { if ($c.entry_order_id -and -not $fillIds.ContainsKey($c.entry_order_id)) { $orphanCloses += ($c.entry_order_id) }; if ($c.exit_order_id -and -not $fillIds.ContainsKey($c.exit_order_id)) { $orphanCloses += ($c.exit_order_id) } }
+      $report = [pscustomobject]@{
+        request_count = ($ordersRows | Where-Object { $_.phase -eq 'REQUEST' -or $_.status -eq 'REQUEST' }).Count
+        fill_count = $fills.Count
+        closed_trades_count = ($closedRows | Measure-Object).Count
+        orphan_fills_count = $orphanFills.Count
+        orphan_closes_count = $orphanCloses.Count
+        sample_orphan_fills = ($orphanFills | Select-Object -First 50)
+        sample_orphan_closes = ($orphanCloses | Select-Object -First 50)
+      }
+      $utf8 = New-Object System.Text.UTF8Encoding $false
+      [System.IO.File]::WriteAllText($rrFile, ($report | ConvertTo-Json -Depth 6), $utf8)
+    } catch {}
+  }
 } catch {}
 
 # 3) Monitoring summary
@@ -399,11 +426,21 @@ try {
   $lines = @()
   $lines += "SMOKE_ARTIFACT_PATH=$runDir"
   $lines += ("git branch: " + $branch + " @ " + $commit)
-  $lines += ("requests=" + $req + ", fills=" + $fills + ", fill_rate=" + ((if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 })))
+  $fillRate = if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 }
+  $lines += ("requests=" + $req + ", fills=" + $fills + ", fill_rate=" + $fillRate)
   $lines += ("closed_trades_count=" + $trades + ", total_pnl=" + $totalPnl)
   if ($orph -ne '') { $lines += $orph }
   $utf8NoBom = New-Object System.Text.UTF8Encoding $false
   [System.IO.File]::WriteAllLines($reportPath, $lines, $utf8NoBom)
-} catch {}
+  Write-Host "[smoke] Wrote preflight report: $reportPath"
+} catch {
+  try {
+    $errPath = Join-Path $runDir 'preflight_error.log'
+    $msg = "preflight failed: " + $_.Exception.Message
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($errPath, $msg, $utf8NoBom)
+    Write-Warning $msg
+  } catch {}
+}
 
 Write-Host "[smoke] Done."

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # scripts/make_closes_from_reconstructed.py (no pandas)
-import sys, csv, json
+import sys, csv, json, argparse
 from pathlib import Path
 from datetime import datetime, timezone
 
-ART = Path(r'.\artifacts\telemetry_run_20250819_154459')
-IN = ART / 'closed_trades_fifo_reconstructed.csv'
-CLEAN = ART / 'closed_trades_fifo_reconstructed_cleaned.csv'
-DUPS = ART / 'duplicate_groups_from_reconstructed.csv'
-CLOSES_CSV = ART / 'trade_closes_like_from_reconstructed.csv'
-CLOSES_JSONL = ART / 'trade_closes_like_from_reconstructed.jsonl'
+# Accept --artifact and optional --input; default to using reconstructed file if present,
+# otherwise fall back to closed_trades_fifo.csv inside the artifact directory.
+def parse_args():
+    p = argparse.ArgumentParser(description='Prepare cleaned closes and trade_closes CSV/JSONL for reconcile.')
+    p.add_argument('--artifact', default='.', help='Artifact directory containing CSVs')
+    p.add_argument('--input', default=None, help='Explicit input CSV (overrides autodetect)')
+    return p.parse_args()
 
 
 def to_iso_utc(val: str) -> str:
@@ -28,17 +29,37 @@ def to_iso_utc(val: str) -> str:
 
 
 def main():
-    if not IN.exists():
-        print('ERROR: input not found:', IN)
+    args = parse_args()
+    art = Path(args.artifact)
+    art.mkdir(parents=True, exist_ok=True)
+
+    # Determine input file
+    if args.input:
+        inp = Path(args.input)
+    else:
+        recon = art / 'closed_trades_fifo_reconstructed.csv'
+        if recon.exists():
+            inp = recon
+        else:
+            fallback = art / 'closed_trades_fifo.csv'
+            inp = fallback
+
+    if not inp.exists():
+        print('ERROR: input not found:', inp)
         sys.exit(2)
-    print('Loading', IN)
+    print('Loading', inp)
 
     rows_in = 0
     seen_keys = set()
     dup_counts = {}
     key_cols = ['open_time','close_time','open_price','close_price','pnl','side','volume','symbol']
 
-    with IN.open('r', encoding='utf-8-sig', newline='') as fin, \
+    CLEAN = art / 'closed_trades_fifo_reconstructed_cleaned.csv'
+    DUPS = art / 'duplicate_groups_from_reconstructed.csv'
+    CLOSES_CSV = art / 'trade_closes_like_from_reconstructed.csv'
+    CLOSES_JSONL = art / 'trade_closes_like_from_reconstructed.jsonl'
+
+    with inp.open('r', encoding='utf-8-sig', newline='') as fin, \
          CLEAN.open('w', encoding='utf-8', newline='') as fclean, \
          CLOSES_CSV.open('w', encoding='utf-8', newline='') as fcsv, \
          CLOSES_JSONL.open('w', encoding='utf-8') as fjsonl:
