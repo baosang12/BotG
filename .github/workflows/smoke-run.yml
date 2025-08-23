@@ -7,7 +7,7 @@ on:
       seconds:
         description: 'Duration in seconds'
         required: false
-        default: '30'
+  default: '60'
 
 jobs:
   smoke:
@@ -36,7 +36,7 @@ jobs:
           $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
           New-Item -ItemType Directory -Path $art -Force | Out-Null
           $smokeLog = Join-Path $env:RUNNER_TEMP 'smoke_stdout.log'
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_smoke.ps1 -Seconds [int]$sec -ArtifactPath $art -FillProb 1.0 -FeePerTrade 0.02 2>&1 | Tee-Object -FilePath $smokeLog
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_smoke.ps1 -Seconds [int]$sec -ArtifactPath $art -FillProb 1.0 -FeePerTrade 0.02 -DrainSeconds 10 -GeneratePlots:$false 2>&1 | Tee-Object -FilePath $smokeLog
           $artFromLog = $null
           try {
             $m = Select-String -Path $smokeLog -Pattern '^SMOKE_ARTIFACT_PATH=(.+)$' -SimpleMatch:$false | Select-Object -First 1

@@ -1,3 +1,70 @@
+#!/usr/bin/env python3
+import json, sys, argparse, os
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+except Exception:
+    matplotlib = None
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--artifacts', required=True)
+    args = ap.parse_args()
+    art = args.artifacts
+    js = os.path.join(art, 'analysis_summary.json')
+    if not os.path.exists(js):
+        print('analysis_summary.json not found; nothing to plot')
+        return 0
+    try:
+        data = json.load(open(js, 'r', encoding='utf-8'))
+    except Exception as e:
+        print('failed to read analysis_summary.json:', e)
+        return 0
+    # Generate a couple of simple summary plots if matplotlib is available
+    if matplotlib is None:
+        print('matplotlib not available; skipping plots')
+        return 0
+    # Equity over trades (synthetic if not present)
+    equity = data.get('equity_curve') or []
+    if not equity and 'trades' in data:
+        # create a trivial equity curve from avg pnl
+        trades = int(data.get('trades') or 0)
+        avg = float(data.get('total_pnl') or 0.0) / trades if trades>0 else 0.0
+        s = 10000.0
+        equity = [s + avg*i for i in range(trades+1)]
+    if equity:
+        plt.figure(figsize=(6,3))
+        plt.plot(equity)
+        plt.title('Equity Curve')
+        plt.tight_layout()
+        plt.savefig(os.path.join(art, 'equity_curve.png'))
+        plt.close()
+    # PnL histogram (if pnl_by_trade exists)
+    pnl = data.get('pnl_by_trade') or []
+    if pnl:
+        plt.figure(figsize=(6,3))
+        plt.hist(pnl, bins=20)
+        plt.title('PnL per trade')
+        plt.tight_layout()
+        plt.savefig(os.path.join(art, 'pnl_histogram.png'))
+        plt.close()
+    # Dummy pnl_by_hour plot if available
+    byh = data.get('pnl_by_hour') or {}
+    if byh:
+        xs = sorted(byh.keys())
+        ys = [byh[k] for k in xs]
+        plt.figure(figsize=(6,3))
+        plt.plot(range(len(xs)), ys)
+        plt.title('PnL by Hour')
+        plt.tight_layout()
+        plt.savefig(os.path.join(art, 'pnl_by_hour.png'))
+        plt.close()
+    print('plots generated into', art)
+    return 0
+
+if __name__=='__main__':
+    sys.exit(main())
 import argparse, os, json, csv
 import math
 from pathlib import Path

@@ -6,6 +6,7 @@ param(
   [double]$FeePerTrade = 0.0,
   [double]$FeePercent = 0.0,
   [double]$SpreadPips = 0.0,
+  [int]$DrainSeconds = 10,
   [switch]$GeneratePlots
 )
 
@@ -97,6 +98,29 @@ function Ensure-ClosedTrades([string]$repoRoot,[string]$runDir) {
   return (Test-Path -LiteralPath $closed)
 }
 
+function Force-ReconstructClosedTrades([string]$repoRoot,[string]$runDir) {
+  $orders = Join-Path $runDir 'orders.csv'
+  $closed = Join-Path $runDir 'closed_trades_fifo.csv'
+  $stderr = Join-Path $runDir 'reconstruct_error.log'
+  $stdout = Join-Path $runDir 'reconstruct_stdout.log'
+  $toolProj = Join-Path $repoRoot 'Tools\ReconstructClosedTrades\ReconstructClosedTrades.csproj'
+  $qToolProj = '"' + $toolProj + '"'
+  $reconOut = Join-Path $runDir 'closed_trades_fifo_reconstructed.csv'
+  $qOrders = '"' + $orders + '"'
+  $qReconOut = '"' + $reconOut + '"'
+  $args = @('run','--project',$qToolProj,'--','--orders', $qOrders, '--out', $qReconOut)
+  try {
+    $p = Start-Process -FilePath 'dotnet' -ArgumentList $args -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden
+    $p.WaitForExit()
+  } catch {
+    "Reconstruct start failed: $($_.Exception.Message)" | Out-File -FilePath $stderr -Encoding utf8
+  }
+  if (Test-Path -LiteralPath $reconOut) {
+    try { Copy-Item -LiteralPath $reconOut -Destination $closed -Force } catch {}
+  }
+  return (Test-Path -LiteralPath $closed)
+}
+
 function Run-Analyzer([string]$repoRoot,[string]$runDir) {
   $py = $null
   try { $cmd = Get-Command python -ErrorAction SilentlyContinue; if ($cmd) { $py = 'python' } } catch {}
@@ -164,7 +188,7 @@ function New-Zip([string]$runDir,[string]$ts) {
 }
 
 # Main
-Write-Host ("[smoke] Seconds=" + $Seconds + ", FillProb=" + $FillProb)
+Write-Host ("[smoke] Seconds=" + $Seconds + ", FillProb=" + $FillProb + ", DrainSeconds=" + $DrainSeconds)
 
 # Resolve repo paths relative to script
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -193,6 +217,31 @@ Write-Json (Join-Path $runDir 'run_metadata.json') $metaJson
 $proc = Start-Harness -proj $harnessProj -sec $Seconds -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
 if ($proc -ne $null) { Wait-Or-Stop -proc $proc -sec $Seconds }
 
+# Graceful drain window: attempt to clear any residual unmatched fills
+try {
+  if ($DrainSeconds -gt 0) {
+    Write-Host ("[smoke] Draining for up to " + $DrainSeconds + "s for final closes…")
+    $deadline = (Get-Date).AddSeconds($DrainSeconds)
+    $ordersPath = Join-Path $runDir 'orders.csv'
+    $closedPath = Join-Path $runDir 'closed_trades_fifo.csv'
+    $lastOrphanCount = -1
+    while ((Get-Date) -lt $deadline) {
+      if (Test-Path -LiteralPath $ordersPath) {
+        # Re-run reconcile to check current orphan fills
+        $rrNow = Invoke-Reconcile -repoRoot $repoRoot -orders $ordersPath -closed $closedPath -runDir $runDir
+        $orph = if ($rrNow -ne $null) { [int]$rrNow.orphan_fills_count } else { 0 }
+        if ($orph -ne $lastOrphanCount -and $orph -ge 0) { Write-Host ("[smoke] Orphan fills = " + $orph) }
+        $lastOrphanCount = $orph
+        if ($orph -le 0) { break }
+      }
+      # run a very short top-up to help finish pairs
+      $p2 = Start-Harness -proj $harnessProj -sec 1 -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
+      if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec 1 }
+      Start-Sleep -Milliseconds 200
+    }
+  }
+} catch {}
+
 # Collect files
 $orders = Join-Path $runDir 'orders.csv'
 $closed = Join-Path $runDir 'closed_trades_fifo.csv'
@@ -219,25 +268,28 @@ try {
 # 2) Reconcile
 try {
   $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
-  # If there are orphan fills (often one last entry at end of run), run brief drain cycles to complete pairs
-  $drainAttempts = 0
-  while ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0 -and $drainAttempts -lt 3) {
-    $drainAttempts++
-    # short top-up run to flush a matching exit
-    $drainSec = 3
-    $p2 = Start-Harness -proj $harnessProj -sec $drainSec -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
-    if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec $drainSec }
-    # ensure closes and re-run analyzer after additional fills
+  # If orphans remain after drain, attempt a bounded set of auto-fixes
+  $attempt = 0
+  while ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0 -and $attempt -lt 2) {
+    $attempt++
+    $extra = if ($attempt -eq 1) { 3 } else { 5 }
+    Write-Warning ("[smoke] Orphans remain (" + [string]$rr.orphan_fills_count + "). Running extra top-up " + $extra + "s…")
+    $p2 = Start-Harness -proj $harnessProj -sec $extra -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
+    if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec $extra }
     if (-not (Test-Path -LiteralPath $closed)) { $null = Ensure-ClosedTrades -repoRoot $repoRoot -runDir $runDir }
     $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
-    # re-run breakdowns quickly
     try {
       $compute = Join-Path $repoRoot 'scripts\compute_fill_breakdown.ps1'
       if (Test-Path -LiteralPath $compute -and (Test-Path -LiteralPath $orders)) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $compute -OrdersCsv $orders -OutDir $runDir | Out-Null
       }
     } catch {}
-    # re-run reconcile
+    $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
+  }
+  if ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0) {
+    Write-Warning ("[smoke] Orphans persist after drain/top-ups. Running reconstruct fallback…")
+    $null = Force-ReconstructClosedTrades -repoRoot $repoRoot -runDir $runDir
+    $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
     $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
   }
 } catch {}

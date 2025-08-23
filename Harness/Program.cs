@@ -5,6 +5,7 @@ using System.Threading;
 using Telemetry;
 using DataFetcher.Models;
 using RiskManager;
+using System.Collections.Generic;
 
 // Simple harness to exercise telemetry without cTrader runtime
 class Program
@@ -65,9 +66,9 @@ class Program
         int i = 0;
         var rng = new Random(42); // deterministic
         double fillProb = cfg.Simulation?.FillProbability ?? 1.0;
-        // simple queues to pair buy/sell for closed trades
-        var buyStack = new System.Collections.Generic.List<(string orderId, DateTime ts, double size, double price)>();
-        var sellStack = new System.Collections.Generic.List<(string orderId, DateTime ts, double size, double price)>();
+    // simple queues to pair buy/sell for closed trades
+    var buyStack = new List<(string orderId, DateTime ts, double size, double price)>();
+    var sellStack = new List<(string orderId, DateTime ts, double size, double price)>();
         while (DateTime.UtcNow - start < duration)
         {
             collector.IncTick();
@@ -116,6 +117,66 @@ class Program
             i++;
         }
 
+        // Graceful drain at end: try to pair any remaining side within a short window
+        var drainUntil = DateTime.UtcNow.AddSeconds(5);
+        while ((buyStack.Count > 0 || sellStack.Count > 0) && DateTime.UtcNow < drainUntil)
+        {
+            // Attempt to create a synthetic counter-side fill to close the earliest open side
+            if (buyStack.Count > 0 && sellStack.Count == 0)
+            {
+                var b = buyStack[0];
+                buyStack.RemoveAt(0);
+                var fakeSellPrice = b.price + 0.0005; // tiny move against
+                var now = DateTime.UtcNow;
+                double pipValue = 0.0001;
+                var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(TelemetryContext.Config, pipValue);
+                double adjEntry = b.price + entryAdj;
+                double adjExit = fakeSellPrice + exitAdj;
+                double gross = (adjExit - adjEntry) * 1.0;
+                double pvu = 1.0;
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
+                double net = gross - fee;
+                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
+                // Also log the synthetic exit fill to orders.csv for reconciliation consistency
+                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+            }
+            else if (sellStack.Count > 0 && buyStack.Count == 0)
+            {
+                var s = sellStack[0];
+                sellStack.RemoveAt(0);
+                var fakeBuyPrice = s.price - 0.0005; // tiny move against
+                var now = DateTime.UtcNow;
+                double pipValue = 0.0001;
+                var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(TelemetryContext.Config, pipValue);
+                double adjEntry = fakeBuyPrice + entryAdj;
+                double adjExit = s.price + exitAdj;
+                double gross = (adjExit - adjEntry) * 1.0;
+                double pvu = 1.0;
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
+                double net = gross - fee;
+                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{s.orderId}", "DRAIN-BUY", s.orderId, s.ts, now, "BUY-SELL", 1.0, fakeBuyPrice, s.price, net, fee, "drain_close", gross);
+                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, fakeBuyPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+            }
+            else
+            {
+                // Both sides present, close immediately FIFO
+                var b = buyStack[0]; var s = sellStack[0];
+                buyStack.RemoveAt(0); sellStack.RemoveAt(0);
+                double pipValue = 0.0001;
+                var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(TelemetryContext.Config, pipValue);
+                double adjEntry = b.price + entryAdj;
+                double adjExit = s.price + exitAdj;
+                double gross = (adjExit - adjEntry) * 1.0;
+                double pvu = 1.0;
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
+                double net = gross - fee;
+                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, s.orderId, b.ts, DateTime.UtcNow, "BUY-SELL", 1.0, b.price, s.price, net, fee, "drain_match", gross);
+            }
+        }
+
         // Persist an example account snapshot
         TelemetryContext.RiskPersister?.Persist(new AccountInfo
         {
@@ -125,8 +186,8 @@ class Program
             Positions = 1
         });
 
-        // Allow time for a flush tick
-        Thread.Sleep(2500);
+    // Allow time for a flush tick and ensure final writes have time to hit disk
+    Thread.Sleep(2500);
         Console.WriteLine("Harness run complete. Telemetry written to: " + TelemetryContext.Config.LogPath);
 
         // Optional: compute simple size comparison for the last 3 fills

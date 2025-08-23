@@ -20,6 +20,7 @@ namespace Telemetry
                     if (needHeader && !string.IsNullOrEmpty(header)) sw.WriteLine(header);
                     sw.WriteLine(line);
                     sw.Flush();
+                    try { fs.Flush(true); } catch { try { fs.Flush(); } catch { } }
                 }
             }
         }
