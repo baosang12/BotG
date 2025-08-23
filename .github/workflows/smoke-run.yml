@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           $sec = '${{ github.event.inputs.seconds }}'
-          if (-not $sec) { $sec = '30' }
+          if (-not $sec) { $sec = '60' }
           $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
           New-Item -ItemType Directory -Path $art -Force | Out-Null
           $smokeLog = Join-Path $env:RUNNER_TEMP 'smoke_stdout.log'

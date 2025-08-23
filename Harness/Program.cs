@@ -177,6 +177,60 @@ class Program
             }
         }
 
+        // Drain: close any leftover positions by issuing synthetic opposing fills
+        try
+        {
+            if (buyStack.Count > 0 || sellStack.Count > 0)
+            {
+                Console.WriteLine($"[Harness] Draining leftovers: buys={buyStack.Count} sells={sellStack.Count}");
+            }
+            int drainSeq = 0;
+            while (buyStack.Count > 0)
+            {
+                var b = buyStack[0]; buyStack.RemoveAt(0);
+                var oid = $"ORD-DRAIN-S-{i + (++drainSeq)}"; // synthetic sell to close the buy
+                double exec = b.price + 0.0003; // small offset
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "REQUEST", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "ACK", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Sell", "SELL", "Market", b.price, null, exec, null, null, 1, 1, "FILL", "drain", "HARNESS");
+                var closeTs = DateTime.UtcNow;
+                double pipValue = 0.0001; // simplistic default
+                var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
+                double adjEntry = b.price + entryAdj;
+                double adjExit = exec + exitAdj;
+                double gross = (adjExit - adjEntry) * 1.0;
+                double pvu = 1.0;
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
+                double net = gross - fee;
+                TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, oid, b.ts, closeTs, "BUY-SELL", 1.0, b.price, exec, net, fee, "drain", gross);
+            }
+            while (sellStack.Count > 0)
+            {
+                var s = sellStack[0]; sellStack.RemoveAt(0);
+                var oid = $"ORD-DRAIN-B-{i + (++drainSeq)}"; // synthetic buy to close the sell
+                double exec = s.price - 0.0003; // small offset
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "REQUEST", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "ACK", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Buy", "BUY", "Market", s.price, null, exec, null, null, 1, 1, "FILL", "drain", "HARNESS");
+                var closeTs = DateTime.UtcNow;
+                double pipValue = 0.0001;
+                var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
+                double adjEntry = s.price - entryAdj; // sell entry worse => invert sign carefully
+                double adjExit = exec - exitAdj;
+                double gross = (adjExit - adjEntry) * 1.0;
+                double pvu = 1.0;
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
+                double net = gross - fee;
+                TelemetryContext.ClosedTrades?.Append($"T-{oid}", s.orderId, oid, s.ts, closeTs, "SELL-BUY", 1.0, s.price, exec, net, fee, "drain", gross);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[Harness] Drain failed: " + ex.Message);
+        }
+
         // Persist an example account snapshot
         TelemetryContext.RiskPersister?.Persist(new AccountInfo
         {
