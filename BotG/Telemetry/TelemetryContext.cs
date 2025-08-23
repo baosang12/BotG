@@ -10,6 +10,7 @@ namespace Telemetry
         public static OrderLifecycleLogger? OrderLogger { get; private set; }
         public static RiskSnapshotPersister? RiskPersister { get; private set; }
         public static TelemetryCollector? Collector { get; private set; }
+    public static ClosedTradesWriter? ClosedTrades { get; private set; }
 
         public static void InitOnce(TelemetryConfig? cfg = null)
         {
@@ -18,9 +19,13 @@ namespace Telemetry
             {
                 if (_initialized) return;
                 Config = cfg ?? TelemetryConfig.Load();
-                OrderLogger = new OrderLifecycleLogger(Config.LogPath, Config.OrderLogFile);
-                RiskPersister = new RiskSnapshotPersister(Config.LogPath, Config.RiskSnapshotFile);
-                Collector = new TelemetryCollector(Config.LogPath, Config.TelemetryFile, Config.FlushIntervalSeconds);
+        // ensure run folder and write metadata
+        var runDir = RunInitializer.EnsureRunFolderAndMetadata(Config);
+        // write runtime files inside runDir, but keep RiskSnapshot in base folder for continuity
+        OrderLogger = new OrderLifecycleLogger(runDir, "orders.csv");
+        ClosedTrades = new ClosedTradesWriter(runDir);
+        RiskPersister = new RiskSnapshotPersister(Config.LogPath, Config.RiskSnapshotFile);
+        Collector = new TelemetryCollector(runDir, Config.TelemetryFile, Config.FlushIntervalSeconds);
                 _initialized = true;
             }
         }
