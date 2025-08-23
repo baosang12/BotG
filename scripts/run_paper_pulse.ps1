@@ -4,6 +4,7 @@ param(
   [string]$ArtifactPath = $(Join-Path $env:TEMP ("botg_paper_runs")),
   [double]$FillProb = 0.9,
   [double]$FeePerTrade = 0.02,
+  [int]$DrainSeconds = 10,
   [switch]$GeneratePlots
 )
 
@@ -34,7 +35,13 @@ for ($h = 0; $h -lt $Hours; $h++) {
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   # 55 minutes per hour to reduce overlap
   $sec = 55 * 60
-  pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\run_smoke.ps1') -Seconds $sec -ArtifactPath $tmp -FillProb $FillProb -FeePerTrade $FeePerTrade -GeneratePlots:$GeneratePlots | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
+  $shell = $null
+  try { $shell = Get-Command pwsh -ErrorAction SilentlyContinue } catch {}
+  if ($shell) {
+    pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\run_smoke.ps1') -Seconds $sec -ArtifactPath $tmp -FillProb $FillProb -FeePerTrade $FeePerTrade -DrainSeconds $DrainSeconds -GeneratePlots:$GeneratePlots | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
+  } else {
+    powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\run_smoke.ps1') -Seconds $sec -ArtifactPath $tmp -FillProb $FillProb -FeePerTrade $FeePerTrade -DrainSeconds $DrainSeconds -GeneratePlots:$GeneratePlots | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
+  }
   # Copy summaries into hourly
   $sum = Join-Path $tmp (Get-ChildItem -Path $tmp -Directory -Filter 'telemetry_run_*' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name
   if ($sum) {
