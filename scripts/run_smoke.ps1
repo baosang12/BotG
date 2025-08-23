@@ -126,6 +126,20 @@ function Run-Analyzer([string]$repoRoot,[string]$runDir) {
   }
 }
 
+function Invoke-Reconcile([string]$repoRoot,[string]$orders,[string]$closed,[string]$runDir) {
+  try {
+    $recon = Join-Path $repoRoot 'scripts\reconcile_fills_vs_closed.ps1'
+    if (Test-Path -LiteralPath $recon -and (Test-Path -LiteralPath $orders) -and (Test-Path -LiteralPath $closed)) {
+      & powershell -NoProfile -ExecutionPolicy Bypass -File $recon -OrdersCsv $orders -ClosedCsv $closed -OutDir $runDir | Out-Null
+      $rrPath = Join-Path $runDir 'reconcile_report.json'
+      if (Test-Path -LiteralPath $rrPath) {
+        try { return (Get-Content -LiteralPath $rrPath -Raw | ConvertFrom-Json) } catch { return $null }
+      }
+    }
+  } catch {}
+  return $null
+}
+
 function New-Zip([string]$runDir,[string]$ts) {
   $zip = Join-Path $runDir ("telemetry_run_" + $ts + ".zip")
   $toZip = @(
@@ -204,10 +218,27 @@ try {
 
 # 2) Reconcile
 try {
-  $recon = Join-Path $repoRoot 'scripts\reconcile_fills_vs_closed.ps1'
-  if (Test-Path -LiteralPath $recon -and (Test-Path -LiteralPath $orders) -and (Test-Path -LiteralPath $closed)) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $recon -OrdersCsv $orders -ClosedCsv $closed -OutDir $runDir
-    $LASTEXITCODE | Out-Null
+  $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
+  # If there are orphan fills (often one last entry at end of run), run brief drain cycles to complete pairs
+  $drainAttempts = 0
+  while ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0 -and $drainAttempts -lt 3) {
+    $drainAttempts++
+    # short top-up run to flush a matching exit
+    $drainSec = 3
+    $p2 = Start-Harness -proj $harnessProj -sec $drainSec -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
+    if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec $drainSec }
+    # ensure closes and re-run analyzer after additional fills
+    if (-not (Test-Path -LiteralPath $closed)) { $null = Ensure-ClosedTrades -repoRoot $repoRoot -runDir $runDir }
+    $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
+    # re-run breakdowns quickly
+    try {
+      $compute = Join-Path $repoRoot 'scripts\compute_fill_breakdown.ps1'
+      if (Test-Path -LiteralPath $compute -and (Test-Path -LiteralPath $orders)) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $compute -OrdersCsv $orders -OutDir $runDir | Out-Null
+      }
+    } catch {}
+    # re-run reconcile
+    $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
   }
 } catch {}
 
@@ -285,5 +316,42 @@ if (Test-Path -LiteralPath (Join-Path $runDir 'reconcile_report.txt')) {
   Write-Host "--- reconcile_report.txt (first 50 lines) ---"
   try { Get-Content -Path (Join-Path $runDir 'reconcile_report.txt') -TotalCount 50 | ForEach-Object { Write-Host $_ } } catch {}
 }
+
+# Preflight summary report
+try {
+  $branch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+} catch { $branch = "unknown" }
+try {
+  $commit = (git rev-parse --short HEAD 2>$null).Trim()
+} catch { $commit = "unknown" }
+try {
+  $reportPath = Join-Path $runDir 'preflight_report.txt'
+  $req = 0; $fills = 0
+  if (Test-Path -LiteralPath $orders) {
+    try {
+      $rows = Import-Csv -LiteralPath $orders
+      $req = ($rows | Where-Object { $_.status -eq 'REQUEST' -or $_.phase -eq 'REQUEST' }).Count
+      $fills = ($rows | Where-Object { $_.status -eq 'FILL' -or $_.phase -eq 'FILL' }).Count
+    } catch {}
+  }
+  $asPath = Join-Path $runDir 'analysis_summary.json'
+  $trades = 0; $totalPnl = 0.0
+  if (Test-Path -LiteralPath $asPath) {
+    try { $as = Get-Content -LiteralPath $asPath -Raw | ConvertFrom-Json; $trades = [int]$as.trades; $totalPnl = [double]$as.total_pnl } catch {}
+  }
+  $rrPath = Join-Path $runDir 'reconcile_report.json'
+  $orph = ''
+  if (Test-Path -LiteralPath $rrPath) {
+    try { $rr = Get-Content -LiteralPath $rrPath -Raw | ConvertFrom-Json; $orph = "orphans_fills=" + [string]$rr.orphan_fills_count } catch {}
+  }
+  $lines = @()
+  $lines += "SMOKE_ARTIFACT_PATH=$runDir"
+  $lines += ("git branch: " + $branch + " @ " + $commit)
+  $lines += ("requests=" + $req + ", fills=" + $fills + ", fill_rate=" + ((if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 })))
+  $lines += ("closed_trades_count=" + $trades + ", total_pnl=" + $totalPnl)
+  if ($orph -ne '') { $lines += $orph }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllLines($reportPath, $lines, $utf8NoBom)
+} catch {}
 
 Write-Host "[smoke] Done."
