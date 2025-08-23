@@ -14,7 +14,21 @@ class Program
         // Load config and shorten flush interval for a quick demo
         var cfg = TelemetryConfig.Load();
         cfg.FlushIntervalSeconds = 2;
+        // parse optional args: --seconds N, --fill-prob p, --artifactPath path
+        for (int a = 0; a < args.Length - 1; a++)
+        {
+            if (args[a].Equals("--fill-prob", StringComparison.OrdinalIgnoreCase))
+            {
+                if (double.TryParse(args[a + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out var fp) && fp >= 0 && fp <= 1)
+                    cfg.Simulation.FillProbability = fp;
+            }
+            if (args[a].Equals("--artifactPath", StringComparison.OrdinalIgnoreCase))
+            {
+                var p = args[a + 1]; if (!string.IsNullOrWhiteSpace(p)) { Directory.CreateDirectory(p); cfg.RunFolder = p; }
+            }
+        }
         TelemetryContext.InitOnce(cfg);
+        var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg);
 
         // Provide a fake symbol so RiskManager can auto-compute PointValuePerUnit (e.g., XAUUSD-like)
         try
@@ -40,8 +54,20 @@ class Program
         var collector = TelemetryContext.Collector!;
         var start = DateTime.UtcNow;
         var duration = TimeSpan.FromSeconds(60); // use 60s if environment is constrained
-        if (args.Length > 0 && int.TryParse(args[0], out var sec) && sec > 0) duration = TimeSpan.FromSeconds(sec);
+        if (args.Length > 0 && int.TryParse(args[0], out var sec0) && sec0 > 0) duration = TimeSpan.FromSeconds(sec0);
+        for (int a = 0; a < args.Length - 1; a++)
+        {
+            if (args[a].Equals("--seconds", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(args[a + 1], out var sec) && sec > 0) duration = TimeSpan.FromSeconds(sec);
+            }
+        }
         int i = 0;
+        var rng = new Random(42); // deterministic
+        double fillProb = cfg.Simulation?.FillProbability ?? 1.0;
+        // simple queues to pair buy/sell for closed trades
+        var buyStack = new System.Collections.Generic.List<(string orderId, DateTime ts, double size, double price)>();
+        var sellStack = new System.Collections.Generic.List<(string orderId, DateTime ts, double size, double price)>();
         while (DateTime.UtcNow - start < duration)
         {
             collector.IncTick();
@@ -51,17 +77,39 @@ class Program
                 collector.IncOrderRequested();
                 double entry = 100.0 + i * 0.01;
                 double? stop = (i % 30 == 0) ? entry - 0.05 : (double?)null; // add stop every 30 ticks as example
-                // phase,orderId,intendedPrice,stopLoss,execPrice,theoreticalLots,theoreticalUnits,requestedVolume,filledSize,brokerMsg
-                TelemetryContext.OrderLogger?.Log("REQUEST", $"ORD-{i}", entry, stop, null, null, null, 1, null);
-                TelemetryContext.OrderLogger?.Log("ACK", $"ORD-{i}", entry, stop, null, null, null, 1, null);
-            }
-            if (i % 30 == 0)
-            {
-                collector.IncOrderFilled();
-                double entry = 100.0 + i * 0.01;
-                double exec = entry + 0.0005;
-                double? stop = entry - 0.05;
-                TelemetryContext.OrderLogger?.Log("FILL", $"ORD-{i}", entry, stop, exec, null, null, 1, 1, null);
+                var side = (i % 30 == 0) ? "Buy" : "Sell";
+                var oid = $"ORD-{i}";
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "REQUEST", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "ACK", null, "HARNESS");
+                // simulated fill
+                bool willFill = rng.NextDouble() <= fillProb;
+                if (willFill)
+                {
+                    collector.IncOrderFilled();
+                    double exec = entry + ((side == "Buy") ? 0.0005 : -0.0005);
+                    TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, exec, null, null, 1, 1, "FILL", "filled", "HARNESS");
+                    var ts = DateTime.UtcNow;
+                    if (side == "Buy") buyStack.Add((oid, ts, 1, exec)); else sellStack.Add((oid, ts, 1, exec));
+                    // if we have both sides, close one trade FIFO-style
+                    if (buyStack.Count > 0 && sellStack.Count > 0)
+                    {
+                        var b = buyStack[0]; var s = sellStack[0];
+                        buyStack.RemoveAt(0); sellStack.RemoveAt(0);
+                        // Optional spread adjustments: apply half-spread on entry and reverse on exit
+                        double pipValue = 0.0001; // simplistic default
+                        var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
+                        double adjEntry = b.price + entryAdj; // buy worse
+                        double adjExit  = s.price + exitAdj;  // sell worse
+                        double gross = (adjExit - adjEntry) * 1.0;
+                        // Fee based on exit notional (approx)
+                        // Use PointValuePerUnit if set in RiskSettings; default to 1.0
+                        double pvu = 1.0;
+                        try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                        double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
+                        double net = gross - fee;
+                        TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, s.orderId, b.ts, s.ts, "BUY-SELL", 1.0, b.price, s.price, net, fee, "harness", gross);
+                    }
+                }
             }
             if (i % 37 == 0) collector.IncError();
             Thread.Sleep(5);
@@ -84,7 +132,7 @@ class Program
         // Optional: compute simple size comparison for the last 3 fills
         try
         {
-            var logPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "orders.csv");
+            var logPath = System.IO.Path.Combine(runDir, "orders.csv");
             var riskPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "risk_snapshots.csv");
             if (File.Exists(logPath))
             {
@@ -139,7 +187,7 @@ class Program
                 }
                 var json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions{ WriteIndented = true });
                 Console.WriteLine(json);
-                var outPath = System.IO.Path.Combine(TelemetryContext.Config.LogPath, "size_comparison.json");
+                var outPath = System.IO.Path.Combine(runDir, "size_comparison.json");
                 File.WriteAllText(outPath, json);
             }
         }

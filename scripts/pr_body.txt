@@ -1,0 +1,35 @@
+﻿Summary
+Add robust automation for reconciling reconstructed closed trades and streaming computation of fill-breakdown across large orders.csv artifacts.
+
+This PR includes:
+- scripts/make_closes_from_reconstructed.py
+  - Streams the reconstructed closed trades CSV, dedupes on key (open_time, close_time, open_price, close_price, pnl, side, volume, symbol), writes:
+    - closed_trades_fifo_reconstructed_cleaned.csv
+    - trade_closes_like_from_reconstructed.csv (CSV: trade_id,close_time,pnl)
+    - trade_closes_like_from_reconstructed.jsonl (JSONL fallback)
+- scripts/compute_fill_breakdown_stream.py
+  - Streaming/chunked processing of orders.csv (default chunk size 100k), incremental aggregations, partial outputs and final merged CSVs:
+    - fill_rate_by_side.csv
+    - fill_breakdown_by_hour.csv
+    - analysis_summary_stats.json
+- scripts/run_reconcile_and_compute.ps1
+  - Parameterized wrapper (-ArtifactPath, -ChunkSize), backups, reconcile with CSV/JSONL fallback, streaming compute, logs and summary JSON; exit codes 0/10/20/30.
+
+Why
+Previously the compute step could OOM or take unbounded time on large orders.csv (~483MB). This adds a streaming solution and a safe wrapper that is idempotent, logs progress, and can be reused across artifacts.
+
+What I tested
+- Ran wrapper on artifacts/telemetry_run_20250819_154459
+  - closed_sum == closes_sum == 150016.07399960753 (diff 0)
+  - total_orders_rows: 3,010,362; chunks_processed: 31; elapsed ~254.4s
+  - produced artifacts and logs in artifact folder
+
+Notes
+- artifacts are NOT committed in this PR.
+- Wrapper logs to run_full_stream.log and writes auto_reconcile_compute_summary.json.
+
+Reviewer checklist
+- Validate streaming aggregation vs previous outputs.
+- Confirm reconcile CSV/JSONL compatibility.
+- Ensure no artifacts are staged for commit.
+- Optional: run wrapper on a small sample to verify.
