@@ -58,3 +58,57 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}
           path: ./test-results
+
+  quick-smoke:
+    name: Quick Smoke (60s)
+    runs-on: windows-latest
+    needs: build-test
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run 60s smoke with drain
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_smoke_test.ps1 -Seconds 60 -DrainSeconds 10
+
+      - name: Find artifact dir and validate orphans == 0
+        id: validate
+        shell: pwsh
+        run: |
+          $artRoot = Join-Path $env:TEMP 'botg_ci_smoke'
+          if (-not (Test-Path $artRoot)) { throw "Smoke artifact root not found: $artRoot" }
+          $dir = Get-ChildItem -Path $artRoot -Directory | Where-Object { $_.Name -like 'telemetry_run_*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dir) { throw 'No telemetry_run_* directory found' }
+          echo "path=$($dir.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $rr = Join-Path $dir.FullName 'reconcile_report.json'
+          if (-not (Test-Path $rr)) { throw "reconcile_report.json missing in $($dir.FullName)" }
+          $json = Get-Content -LiteralPath $rr -Raw | ConvertFrom-Json
+          $orph = [int]$json.orphan_fills_count
+          Write-Host ("orphan_fills_count=" + $orph)
+          if ($orph -gt 0) { throw "Orphan fills detected in smoke: $orph" }
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-smoke-artifacts
+          path: |
+            ${{ steps.validate.outputs.path }}
+            ${{ steps.validate.outputs.path }}/*.json
+            ${{ steps.validate.outputs.path }}/*.csv

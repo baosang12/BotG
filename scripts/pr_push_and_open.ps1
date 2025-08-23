@@ -161,13 +161,14 @@ try {
         '--base', $base,
         '--head', $branch
       )
-      $psi = New-Object System.Diagnostics.ProcessStartInfo
-      $psi.FileName = 'gh'
-      $psi.RedirectStandardOutput = $true
-      $psi.RedirectStandardError = $true
-      $psi.UseShellExecute = $false
-      $psi.CreateNoWindow = $true
-      $psi.ArgumentList.AddRange($cmd)
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = 'gh'
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  # PowerShell 5.1 doesn't expose ArgumentList reliably; set Arguments as a single string
+  $psi.Arguments = ($cmd -join ' ')
       $proc = New-Object System.Diagnostics.Process
       $proc.StartInfo = $psi
       $null = $proc.Start()
