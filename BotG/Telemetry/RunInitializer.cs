@@ -54,6 +54,24 @@ namespace Telemetry
                     };
                     File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }));
                 }
+                else if (extra != null)
+                {
+                    // Merge/append the provided extra fields into existing run_metadata.json under the "extra" property
+                    try
+                    {
+                        var json = File.ReadAllText(metaPath);
+                        using var doc = System.Text.Json.JsonDocument.Parse(json);
+                        var root = new System.Text.Json.Nodes.JsonObject();
+                        foreach (var p in doc.RootElement.EnumerateObject())
+                        {
+                            root[p.Name] = System.Text.Json.Nodes.JsonNode.Parse(p.Value.GetRawText());
+                        }
+                        // Overwrite or create the "extra" node
+                        root["extra"] = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(extra));
+                        File.WriteAllText(metaPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    }
+                    catch { }
+                }
                 return runDir!;
             }
             catch
