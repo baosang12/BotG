@@ -7,7 +7,7 @@ on:
       seconds:
         description: 'Duration in seconds'
         required: false
-  default: '60'
+        default: '60'
 
 jobs:
   smoke:
@@ -19,44 +19,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDKs (6.x)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
+          dotnet-version: 6.0.x
 
       - name: Build
-        run: |
-          dotnet build $Env:GITHUB_WORKSPACE
+        run: dotnet build $Env:GITHUB_WORKSPACE
 
-      - name: Run smoke
+      - name: Run smoke (hardened)
+        id: runsmoke
         shell: pwsh
         run: |
           $sec = '${{ github.event.inputs.seconds }}'
           if (-not $sec) { $sec = '60' }
           $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-          New-Item -ItemType Directory -Path $art -Force | Out-Null
-          $smokeLog = Join-Path $env:RUNNER_TEMP 'smoke_stdout.log'
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_smoke.ps1 -Seconds [int]$sec -ArtifactPath $art -FillProb 1.0 -FeePerTrade 0.02 -DrainSeconds 10 -GeneratePlots:$false 2>&1 | Tee-Object -FilePath $smokeLog
-          $artFromLog = $null
-          try {
-            $m = Select-String -Path $smokeLog -Pattern '^SMOKE_ARTIFACT_PATH=(.+)$' -SimpleMatch:$false | Select-Object -First 1
-            if ($m -and $m.Matches.Count -gt 0) { $artFromLog = $m.Matches[0].Groups[1].Value }
-          } catch {}
-          if ($artFromLog -and (Test-Path -LiteralPath $artFromLog)) {
-            ("SMOKE_ARTIFACT_PATH=" + $artFromLog) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if (Test-Path -LiteralPath $art) { Remove-Item -Recurse -Force $art }
+          New-Item -ItemType Directory -Path $art | Out-Null
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_smoke_test.ps1 -Seconds ([int]$sec) -DrainSeconds 10
+          $dir = Get-ChildItem -Path $art -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($dir) {
+            ("path=" + $dir.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
-            $latest = Get-ChildItem -Path $art -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($latest) {
-              Write-Host ("Discovered artifact folder: " + $latest.FullName)
-              ("SMOKE_ARTIFACT_PATH=" + $latest.FullName) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            }
+            ("path=") | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
       - name: Print quick preview of artifacts
         if: always()
         shell: pwsh
         run: |
-          $artifact = $env:SMOKE_ARTIFACT_PATH
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
           if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
             $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
             $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -90,7 +82,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $artifact = $env:SMOKE_ARTIFACT_PATH
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
           if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
             $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
             $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -103,9 +95,9 @@ jobs:
           function Append([string]$s) { $s | Out-File -FilePath $previewFile -Append -Encoding utf8; Write-Host $s }
           if (Test-Path -LiteralPath $orders) {
             $rows = Import-Csv -LiteralPath $orders
-            $req = ($rows | Where-Object { $_.status -eq 'REQUEST' }).Count
-            $fills = ($rows | Where-Object { $_.status -eq 'FILL' }).Count
-            $acks = ($rows | Where-Object { $_.status -eq 'ACK' }).Count
+            $req = ($rows | Where-Object { $_.status -eq 'REQUEST' -or $_.phase -eq 'REQUEST' }).Count
+            $fills = ($rows | Where-Object { $_.status -eq 'FILL' -or $_.phase -eq 'FILL' }).Count
+            $acks = ($rows | Where-Object { $_.status -eq 'ACK' -or $_.phase -eq 'ACK' }).Count
             $rate = if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 }
             Append ("fill_summary: REQUEST={0} ACK={1} FILL={2} fill_rate={3}" -f $req, $acks, $fills, $rate)
           } else {
@@ -124,8 +116,15 @@ jobs:
         id: findzip
         shell: pwsh
         run: |
-          $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-          $zip = Get-ChildItem -Path $root -Recurse -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
+          $zip = $null
+          if ($artifact -and (Test-Path -LiteralPath $artifact)) {
+            $zip = Get-ChildItem -Path $artifact -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $zip) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $zip = Get-ChildItem -Path $root -Recurse -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          }
           if ($null -eq $zip) { "zip=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; exit 0 }
           ("zip=" + $zip.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
@@ -142,23 +141,27 @@ jobs:
         with:
           name: smoke-derived
           path: |
-            ${{ env.SMOKE_ARTIFACT_PATH }}/fill_rate_by_side.csv
-            ${{ env.SMOKE_ARTIFACT_PATH }}/fill_breakdown_by_hour.csv
-            ${{ env.SMOKE_ARTIFACT_PATH }}/reconcile_report.json
-            ${{ env.SMOKE_ARTIFACT_PATH }}/reconcile_report.txt
-            ${{ env.SMOKE_ARTIFACT_PATH }}/monitoring_summary.json
-            ${{ env.SMOKE_ARTIFACT_PATH }}/equity_curve.png
-            ${{ env.SMOKE_ARTIFACT_PATH }}/pnl_histogram.png
-            ${{ env.SMOKE_ARTIFACT_PATH }}/pnl_by_hour.png
+            ${{ steps.runsmoke.outputs.path }}/fill_rate_by_side.csv
+            ${{ steps.runsmoke.outputs.path }}/fill_breakdown_by_hour.csv
+            ${{ steps.runsmoke.outputs.path }}/reconcile_report.json
+            ${{ steps.runsmoke.outputs.path }}/reconcile_report.txt
+            ${{ steps.runsmoke.outputs.path }}/monitoring_summary.json
+            ${{ steps.runsmoke.outputs.path }}/equity_curve.png
+            ${{ steps.runsmoke.outputs.path }}/pnl_histogram.png
+            ${{ steps.runsmoke.outputs.path }}/pnl_by_hour.png
 
       - name: Sanity check - orders.csv header
         if: always()
         shell: pwsh
         run: |
-          $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-          $artifact = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $artifact) { Write-Host 'WARNING: No artifact folder found for header check.'; exit 0 }
-          $orders = Join-Path $artifact.FullName 'orders.csv'
+          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifactDir = $candidate.FullName }
+          }
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for header check.'; exit 0 }
+          $orders = Join-Path $artifactDir 'orders.csv'
           if (-not (Test-Path -LiteralPath $orders)) { Write-Host 'WARNING: orders.csv not found—skipping header check.'; exit 0 }
           $header = (Get-Content -LiteralPath $orders -TotalCount 1)
           $hasTs = $header -imatch '(^|,)timestamp_iso(,|$)'
@@ -173,10 +176,14 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-          $artifact = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $artifact) { Write-Host 'WARNING: No artifact folder found for closed trades check.'; exit 0 }
-          $closed = Join-Path $artifact.FullName 'closed_trades_fifo.csv'
+          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifactDir = $candidate.FullName }
+          }
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for closed trades check.'; exit 0 }
+          $closed = Join-Path $artifactDir 'closed_trades_fifo.csv'
           if (-not (Test-Path -LiteralPath $closed)) { Write-Host 'WARNING: closed_trades_fifo.csv not found.'; exit 0 }
           $lines = 0; try { $lines = (Get-Content -LiteralPath $closed | Measure-Object -Line).Lines } catch {}
           if ($lines -lt 2) { Write-Host 'WARNING: closed_trades_fifo.csv is empty (only header).'; exit 0 }
