@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $art = Join-Path $env:TEMP ("botg_ci_smoke")
 if (Test-Path -LiteralPath $art) { Remove-Item -Recurse -Force $art }
 New-Item -ItemType Directory -Path $art | Out-Null
-powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\run_smoke.ps1" -Seconds $Seconds -ArtifactPath $art -FillProb 1.0 -FeePerTrade 0.00 -DrainSeconds $DrainSeconds -GeneratePlots:$GeneratePlots
+powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\run_smoke.ps1" -Seconds $Seconds -ArtifactPath $art -FillProb 1.0 -FeePerTrade 0.00 -DrainSeconds $DrainSeconds -UseSimulation -GeneratePlots:$GeneratePlots
 
 # Find latest run directory
 $dir = Get-ChildItem -Path $art -Directory | Where-Object { $_.Name -like 'telemetry_run_*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
