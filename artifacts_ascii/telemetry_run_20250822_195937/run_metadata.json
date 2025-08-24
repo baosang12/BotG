@@ -1,0 +1,13 @@
+{
+    "host":  "DESKTOP-584MV4B",
+    "artifact_path":  ".\\artifacts_ascii\\telemetry_run_20250822_195937",
+    "start_time_iso":  "2025-08-22T12:59:37.9970184Z",
+    "config_snapshot":  {
+                            "config_path":  "",
+                            "simulation":  {
+                                               "fill_probability":  1
+                                           }
+                        },
+    "git_commit":  "966df128b61980c199225199f3bade0dc2744e72",
+    "run_id":  "6d0f0944-2281-4b34-8c6e-e188da064c16"
+}
