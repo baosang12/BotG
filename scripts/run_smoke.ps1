@@ -9,6 +9,7 @@ param(
   [int]$DrainSeconds = 10,
   [int]$SecondsPerHour = 300,
   [int]$GracefulShutdownWaitSeconds = 5,
+  [int[]]$TopUpSeconds = @(3,5),
   [switch]$UseSimulation,
   [switch]$GeneratePlots
 )
@@ -296,22 +297,22 @@ try {
 try {
   $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
   # If orphans remain after drain, attempt a bounded set of auto-fixes
-  $attempt = 0
-  while ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0 -and $attempt -lt 2) {
-    $attempt++
-    $extra = if ($attempt -eq 1) { 3 } else { 5 }
-    Write-Warning ("[smoke] Orphans remain (" + [string]$rr.orphan_fills_count + "). Running extra top-up " + $extra + "s…")
-    $p2 = Start-Harness -proj $harnessProj -sec $extra -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
-    if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec $extra }
-    if (-not (Test-Path -LiteralPath $closed)) { $null = Ensure-ClosedTrades -repoRoot $repoRoot -runDir $runDir }
-    $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
-    try {
-      $compute = Join-Path $repoRoot 'scripts\compute_fill_breakdown.ps1'
-      if (Test-Path -LiteralPath $compute -and (Test-Path -LiteralPath $orders)) {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File $compute -OrdersCsv $orders -OutDir $runDir | Out-Null
-      }
-    } catch {}
-    $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
+  if ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0 -and $TopUpSeconds.Count -gt 0) {
+    foreach ($extra in $TopUpSeconds) {
+      if ($rr -eq $null -or [int]$rr.orphan_fills_count -le 0) { break }
+      Write-Warning ("[smoke] Orphans remain (" + [string]$rr.orphan_fills_count + "). Running extra top-up " + $extra + "s…")
+      $p2 = Start-Harness -proj $harnessProj -sec $extra -runDir $runDir -fillProb $FillProb -configPath $ConfigPath
+      if ($p2 -ne $null) { Wait-Or-Stop -proc $p2 -sec $extra }
+      if (-not (Test-Path -LiteralPath $closed)) { $null = Ensure-ClosedTrades -repoRoot $repoRoot -runDir $runDir }
+      $null = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
+      try {
+        $compute = Join-Path $repoRoot 'scripts\compute_fill_breakdown.ps1'
+        if (Test-Path -LiteralPath $compute -and (Test-Path -LiteralPath $orders)) {
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $compute -OrdersCsv $orders -OutDir $runDir | Out-Null
+        }
+      } catch {}
+      $rr = Invoke-Reconcile -repoRoot $repoRoot -orders $orders -closed $closed -runDir $runDir
+    }
   }
   if ($rr -ne $null -and [int]($rr.orphan_fills_count) -gt 0) {
     Write-Warning ("[smoke] Orphans persist after drain/top-ups. Running reconstruct fallback…")

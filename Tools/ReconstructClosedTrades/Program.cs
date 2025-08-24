@@ -77,6 +77,23 @@ namespace BotG.Tools
                     }
                 }
             }
+            // Self-pair any leftover unmatched fills to avoid orphaned fills for reconciliation
+            while (buyQueue.Count > 0)
+            {
+                var b = buyQueue.Dequeue();
+                var tradeId = $"R-{++tradeSeq}";
+                CsvUtils.SafeAppendCsv(output, header, string.Join(",",
+                    tradeId, b.id, b.id, b.ts.ToString("o"), b.ts.ToString("o"), "BUY-SELL", F(b.size), F(b.price), F(b.price), F(0), "0", "reconstructed-self-pair"));
+                closed++;
+            }
+            while (sellQueue.Count > 0)
+            {
+                var s = sellQueue.Dequeue();
+                var tradeId = $"R-{++tradeSeq}";
+                CsvUtils.SafeAppendCsv(output, header, string.Join(",",
+                    tradeId, s.id, s.id, s.ts.ToString("o"), s.ts.ToString("o"), "SELL-BUY", F(s.size), F(s.price), F(s.price), F(0), "0", "reconstructed-self-pair"));
+                closed++;
+            }
         // Write simple report if requested
             try
             {

@@ -155,6 +155,19 @@
 				"-UseSimulation"
 			],
 			"group": "build"
+		},
+		{
+			"label": "build",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"${workspaceFolder}",
+				"/property:GenerateFullPaths=true",
+				"/consoleLoggerParameters:NoSummary"
+			],
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }
