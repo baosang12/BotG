@@ -52,6 +52,109 @@
 				"$msCompile"
 			],
 			"group": "build"
+		},
+		{
+			"label": "test",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"${workspaceFolder}\\BotG.sln",
+				"-c",
+				"Debug",
+				"--no-build",
+				"--logger",
+				"trx;LogFileName=test_results.trx"
+			]
+		},
+		{
+			"label": "test-no-logger",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"${workspaceFolder}\\BotG.sln",
+				"-c",
+				"Debug",
+				"--no-build"
+			]
+		},
+		{
+			"label": "smoke-60s",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\run_smoke.ps1",
+				"-Seconds",
+				"60",
+				"-ArtifactPath",
+				"${workspaceFolder}\\artifacts_ascii",
+				"-FillProb",
+				"1.0",
+				"-DrainSeconds",
+				"20"
+			],
+			"group": "build"
+		},
+		{
+			"label": "smoke-60s-ascii",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\run_smoke.ps1",
+				"-Seconds",
+				"60",
+				"-ArtifactPath",
+				"c:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts",
+				"-FillProb",
+				"1.0",
+				"-DrainSeconds",
+				"20"
+			],
+			"group": "build"
+		},
+		{
+			"label": "build-and-test",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"dotnet build 'D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.sln' ; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ; dotnet test 'D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.sln' --no-build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "smoke-5min",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\run_smoke.ps1",
+				"-Seconds",
+				"300",
+				"-ArtifactPath",
+				"c:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts",
+				"-FillProb",
+				"1.0",
+				"-DrainSeconds",
+				"30",
+				"-UseSimulation"
+			],
+			"group": "build"
 		}
 	]
 }

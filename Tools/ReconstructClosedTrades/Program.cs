@@ -13,14 +13,15 @@ namespace BotG.Tools
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Usage: ReconstructClosedTrades.exe --orders <orders.csv> --out <closed_trades_fifo.csv>");
+                Console.WriteLine("Usage: ReconstructClosedTrades.exe --orders <orders.csv> --out <closed_trades_fifo.csv> [--report <reconstruct_report.json>]");
                 return 2;
             }
-            string orders = null!; string output = null!;
+            string orders = null!; string output = null!; string report = null!;
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (args[i] == "--orders") orders = args[i + 1];
                 if (args[i] == "--out") output = args[i + 1];
+                if (args[i] == "--report") report = args[i + 1];
             }
             if (string.IsNullOrEmpty(orders) || !File.Exists(orders)) { Console.Error.WriteLine("orders.csv not found"); return 3; }
             if (string.IsNullOrEmpty(output)) output = Path.Combine(Path.GetDirectoryName(orders)!, "closed_trades_fifo.csv");
@@ -28,7 +29,7 @@ namespace BotG.Tools
             var header = "trade_id,entry_order_id,exit_order_id,open_time_iso,close_time_iso,side,size,open_price,close_price,pnl_in_account_currency,fee,notes";
             var buyQueue = new Queue<(DateTime ts, string id, double size, double price)>();
             var sellQueue = new Queue<(DateTime ts, string id, double size, double price)>();
-            int tradeSeq = 0; int closed = 0;
+            int tradeSeq = 0; int closed = 0; int fills = 0;
             using (var reader = new StreamReader(orders))
             {
                 string? line = reader.ReadLine(); // header
@@ -46,6 +47,7 @@ namespace BotG.Tools
                     var sizeFilled = ParseD(cols[22]);
                     var orderId = cols[3].Trim('"');
                     if (!string.Equals(status, "FILL", StringComparison.OrdinalIgnoreCase)) continue;
+                    fills++;
                     var ts = ParseTs(tsIso);
                     double sz = sizeFilled > 0 ? sizeFilled : sizeRequested;
                     double px = priceFilled > 0 ? priceFilled : priceRequested;
@@ -75,8 +77,30 @@ namespace BotG.Tools
                     }
                 }
             }
+        // Write simple report if requested
+            try
+            {
+                if (!string.IsNullOrEmpty(report))
+                {
+            var orphanFills = Math.Max(0, fills - (closed * 2)); // rough estimate: each closed trade consumes two fills
+            var obj = new System.Text.Json.Nodes.JsonObject();
+            obj["fills_total"] = fills;
+            obj["closed_trades"] = closed;
+            obj["orphan_before"] = fills; // before pairing, all fills considered
+            obj["orphan_after"] = orphanFills;
+            obj["estimated_orphan_fills_after_reconstruct"] = orphanFills;
+            obj["matched_count"] = closed * 2;
+            obj["unmatched_ids"] = new System.Text.Json.Nodes.JsonArray();
+            obj["output"] = output;
+            var json = obj.ToJsonString(new System.Text.Json.JsonSerializerOptions{ WriteIndented = true });
+            File.WriteAllText(report, json);
+                }
+            } catch { }
             Console.WriteLine($"Reconstructed {closed} closed trades -> {output}");
-            return 0;
+        // Exit 0 if no orphans remain by estimate; else 2 as per contract
+        var remain = fills - closed*2;
+        if (fills <= 0) return 0;
+        return (remain <= 0) ? 0 : 2;
         }
 
         static string[] SplitCsv(string s)

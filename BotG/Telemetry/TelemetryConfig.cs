@@ -10,6 +10,12 @@ namespace Telemetry
         public string Mode { get; set; } = "paper"; // paper|live|sim
         public string LogPath { get; set; } = DefaultBasePath;
         public int FlushIntervalSeconds { get; set; } = 60;
+    // Dev quick-run knobs
+    public int Hours { get; set; } = 1; // used by wrappers
+    public int SecondsPerHour { get; set; } = 300; // 1h -> 5min default
+    public int DrainSeconds { get; set; } = 30; // drain window at shutdown
+    public int GracefulShutdownWaitSeconds { get; set; } = 5; // extra wait for OS buffers
+    public bool UseSimulation { get; set; } = true;
         public string OrderLogFile { get; set; } = "orders.csv";
         public string RiskSnapshotFile { get; set; } = "risk_snapshots.csv";
         public string TelemetryFile { get; set; } = "telemetry.csv";

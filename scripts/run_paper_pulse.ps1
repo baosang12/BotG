@@ -5,6 +5,7 @@ param(
   [double]$FillProb = 0.9,
   [double]$FeePerTrade = 0.02,
   [int]$DrainSeconds = 10,
+  [int]$SecondsPerHour = 55*60,
   [switch]$GeneratePlots
 )
 
@@ -22,6 +23,7 @@ $meta = @{
   hours = $Hours
   config = @{ fill_prob = $FillProb; fee_per_trade = $FeePerTrade }
   artifact = $art
+  seconds_per_hour = $SecondsPerHour
 }
 $utf8 = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText((Join-Path $art 'run_metadata.json'), ($meta | ConvertTo-Json -Depth 6), $utf8)
@@ -34,14 +36,21 @@ for ($h = 0; $h -lt $Hours; $h++) {
   $tmp = Join-Path $art ("h_" + ("{0:D2}" -f $h))
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   # 55 minutes per hour to reduce overlap
-  $sec = 55 * 60
+  $sec = $SecondsPerHour
   $shell = $null
   try { $shell = Get-Command pwsh -ErrorAction SilentlyContinue } catch {}
-  if ($shell) {
-    pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\run_smoke.ps1') -Seconds $sec -ArtifactPath $tmp -FillProb $FillProb -FeePerTrade $FeePerTrade -DrainSeconds $DrainSeconds -GeneratePlots:$GeneratePlots | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
-  } else {
-    powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\run_smoke.ps1') -Seconds $sec -ArtifactPath $tmp -FillProb $FillProb -FeePerTrade $FeePerTrade -DrainSeconds $DrainSeconds -GeneratePlots:$GeneratePlots | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
-  }
+  $cmd = if ($shell) { 'pwsh' } else { 'powershell' }
+  $args = @(
+    '-NoProfile','-ExecutionPolicy','Bypass','-File', (Join-Path $repoRoot 'scripts\run_smoke.ps1'),
+    '-Seconds', $sec,
+    '-ArtifactPath', $tmp,
+    '-FillProb', $FillProb,
+    '-FeePerTrade', $FeePerTrade,
+  '-DrainSeconds', $DrainSeconds,
+  '-SecondsPerHour', $SecondsPerHour
+  )
+  if ($GeneratePlots) { $args += '-GeneratePlots' }
+  & $cmd @args | Tee-Object -FilePath (Join-Path $tmp 'pulse_hour.log')
   # Copy summaries into hourly
   $sum = Join-Path $tmp (Get-ChildItem -Path $tmp -Directory -Filter 'telemetry_run_*' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name
   if ($sum) {

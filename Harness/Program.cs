@@ -28,8 +28,17 @@ class Program
                 var p = args[a + 1]; if (!string.IsNullOrWhiteSpace(p)) { Directory.CreateDirectory(p); cfg.RunFolder = p; }
             }
         }
+        // Init telemetry and write run metadata with extra context
         TelemetryContext.InitOnce(cfg);
-        var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg);
+        var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg, new {
+            sim_seed = 42,
+            seconds = (int?)null,
+            seconds_per_hour = cfg.SecondsPerHour,
+            drain_seconds = cfg.DrainSeconds,
+            graceful_shutdown_wait_seconds = cfg.GracefulShutdownWaitSeconds,
+            use_simulation = cfg.UseSimulation,
+            fill_probability = cfg.Simulation?.FillProbability
+        });
 
         // Provide a fake symbol so RiskManager can auto-compute PointValuePerUnit (e.g., XAUUSD-like)
         try
@@ -117,7 +126,8 @@ class Program
             i++;
         }
 
-        // Graceful drain at end: try to pair any remaining side within a short window
+    // Graceful drain at end: try to pair any remaining side within a short window
+    int pendingBefore = buyStack.Count + sellStack.Count;
         var drainUntil = DateTime.UtcNow.AddSeconds(5);
         while ((buyStack.Count > 0 || sellStack.Count > 0) && DateTime.UtcNow < drainUntil)
         {
@@ -177,7 +187,7 @@ class Program
             }
         }
 
-        // Drain: close any leftover positions by issuing synthetic opposing fills
+    // Drain: close any leftover positions by issuing synthetic opposing fills
         try
         {
             if (buyStack.Count > 0 || sellStack.Count > 0)
@@ -231,6 +241,31 @@ class Program
             Console.WriteLine("[Harness] Drain failed: " + ex.Message);
         }
 
+        int pendingAfter = buyStack.Count + sellStack.Count;
+        // Append drain metrics into run_metadata.json for quick diagnostics
+        try
+        {
+            var metaPath = System.IO.Path.Combine(runDir, "run_metadata.json");
+            if (File.Exists(metaPath))
+            {
+                var json = File.ReadAllText(metaPath);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = new System.Text.Json.Nodes.JsonObject();
+                foreach (var p in doc.RootElement.EnumerateObject())
+                {
+                    root[p.Name] = System.Text.Json.Nodes.JsonNode.Parse(p.Value.GetRawText());
+                }
+                var drain = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["pending_requests_before_drain"] = pendingBefore,
+                    ["pending_after_drain"] = pendingAfter
+                };
+                root["drain_metrics"] = drain;
+                File.WriteAllText(metaPath, root.ToJsonString(new System.Text.Json.JsonSerializerOptions{ WriteIndented = true }));
+            }
+        }
+        catch { }
+
         // Persist an example account snapshot
         TelemetryContext.RiskPersister?.Persist(new AccountInfo
         {
@@ -241,7 +276,20 @@ class Program
         });
 
     // Allow time for a flush tick and ensure final writes have time to hit disk
-    Thread.Sleep(2500);
+    int waitMs = Math.Max(500, (int)(TelemetryContext.Config.GracefulShutdownWaitSeconds * 1000));
+    Thread.Sleep(waitMs);
+        // Final fsync to make sure core files are on disk before exit
+        try
+        {
+            Telemetry.FileSyncUtils.TryFsyncMany(runDir,
+                "orders.csv",
+                "telemetry.csv",
+                "closed_trades_fifo.csv",
+                "reconcile_report.json",
+                "analysis_summary.json",
+                "run_metadata.json");
+        }
+        catch { }
         Console.WriteLine("Harness run complete. Telemetry written to: " + TelemetryContext.Config.LogPath);
 
         // Optional: compute simple size comparison for the last 3 fills

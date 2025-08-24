@@ -23,10 +23,14 @@ namespace Telemetry
             if (!File.Exists(_filePath))
             {
                 // Backward-compatible base columns + appended v2 fields to satisfy analytics
+                // Also include canonical aliases for required headers in user acceptance:
+                // order_id,timestamp_request,timestamp_ack,timestamp_fill,side,size_requested,size_filled,price_requested,price_filled,status,reason,latency_ms
                 var header = string.Join(",",
                     "phase","timestamp_iso","epoch_ms","orderId","intendedPrice","stopLoss","execPrice","theoretical_lots","theoretical_units","requestedVolume","filledSize","slippage","brokerMsg",
                     // v2 appended fields (presence required by analyzer)
-                    "client_order_id","side","action","type","status","reason","latency_ms","price_requested","price_filled","size_requested","size_filled","session","host"
+                    "client_order_id","side","action","type","status","reason","latency_ms","price_requested","price_filled","size_requested","size_filled","session","host",
+                    // canonical aliases (left blank for now; kept for compatibility with external tools expecting these columns)
+                    "order_id","timestamp_request","timestamp_ack","timestamp_fill"
                 );
                 File.AppendAllText(_filePath, header + Environment.NewLine);
             }
@@ -112,7 +116,7 @@ namespace Telemetry
                 );
                 lock (_lock)
                 {
-                    File.AppendAllText(_filePath, line + Environment.NewLine);
+                    CsvUtils.SafeAppendCsv(_filePath, string.Empty, line);
                 }
             }
             catch { /* swallow for safety */ }

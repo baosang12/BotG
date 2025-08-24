@@ -21,21 +21,33 @@ namespace Telemetry
                 var metaPath = Path.Combine(runDir!, "run_metadata.json");
                 if (!File.Exists(metaPath))
                 {
+                    string commit = Environment.GetEnvironmentVariable("GIT_COMMIT") ?? string.Empty;
+                    try
+                    {
+                        var gitHead = System.Environment.GetEnvironmentVariable("GIT_COMMIT");
+                        if (string.IsNullOrWhiteSpace(commit) && !string.IsNullOrWhiteSpace(gitHead)) commit = gitHead;
+                    }
+                    catch { }
                     var meta = new
                     {
                         run_id = Path.GetFileName(runDir),
                         start_time_iso = DateTime.UtcNow.ToString("o"),
                         host = Environment.MachineName,
-                        git_commit = Environment.GetEnvironmentVariable("GIT_COMMIT") ?? string.Empty,
+                        git_commit = commit,
                         config_snapshot = new
                         {
                             simulation = new
                             {
-                                enabled = cfg.Simulation?.Enabled,
+                                enabled = cfg.UseSimulation,
                                 fill_probability = cfg.Simulation?.FillProbability,
                                 simulate_partial_fills = cfg.Simulation?.SimulatePartialFills
                             },
-                            log_path = cfg.LogPath
+                            execution = new { fee_per_trade = cfg.Execution?.FeePerTrade, fee_percent = cfg.Execution?.FeePercent, spread_pips = cfg.Execution?.SpreadPips },
+                            log_path = cfg.LogPath,
+                            hours = cfg.Hours,
+                            seconds_per_hour = cfg.SecondsPerHour,
+                            drain_seconds = cfg.DrainSeconds,
+                            graceful_shutdown_wait_seconds = cfg.GracefulShutdownWaitSeconds
                         },
                         log_paths = new { run = runDir, base_log = cfg.LogPath },
                         extra

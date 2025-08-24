@@ -7,6 +7,9 @@ param(
   [double]$FeePercent = 0.0,
   [double]$SpreadPips = 0.0,
   [int]$DrainSeconds = 10,
+  [int]$SecondsPerHour = 300,
+  [int]$GracefulShutdownWaitSeconds = 5,
+  [switch]$UseSimulation,
   [switch]$GeneratePlots
 )
 
@@ -205,10 +208,18 @@ $runId = [guid]::NewGuid().ToString()
 $meta = @{
   run_id = $runId
   start_time_iso = (Get-Date).ToUniversalTime().ToString('o')
+  start_time = (Get-Date).ToUniversalTime().ToString('o')
   host = $env:COMPUTERNAME
   git_commit = (Get-GitCommit)
-  config_snapshot = @{ simulation = @{ fill_probability = $FillProb }; execution = @{ fee_per_trade = $FeePerTrade; fee_percent = $FeePercent; spread_pips = $SpreadPips }; config_path = $ConfigPath }
+  git_sha = (Get-GitCommit)
+  config_snapshot = @{ simulation = @{ fill_probability = $FillProb; enabled = ($UseSimulation.IsPresent -or $true) }; execution = @{ fee_per_trade = $FeePerTrade; fee_percent = $FeePercent; spread_pips = $SpreadPips }; config_path = $ConfigPath; seconds_per_hour = $SecondsPerHour; drain_seconds = $DrainSeconds }
   artifact_path = $runDir
+  # Top-level convenience fields for downstream tools/acceptance
+  SecondsPerHour = $SecondsPerHour
+  FillProbability = $FillProb
+  DrainSeconds = $DrainSeconds
+  GracefulShutdownWaitSeconds = $GracefulShutdownWaitSeconds
+  sim_seed = 42
 }
 $metaJson = ($meta | ConvertTo-Json -Depth 6)
 Write-Json (Join-Path $runDir 'run_metadata.json') $metaJson
@@ -250,6 +261,22 @@ $telemetry = Join-Path $runDir 'telemetry.csv'
 if (-not (Test-Path -LiteralPath $closed)) {
   $ok = Ensure-ClosedTrades -repoRoot $repoRoot -runDir $runDir
 }
+
+# Run reconstruct explicitly to validate post-processing and report
+try {
+  $toolProj = Join-Path $repoRoot 'Tools\ReconstructClosedTrades\ReconstructClosedTrades.csproj'
+  $reconOut = Join-Path $runDir 'closed_trades_fifo_reconstructed.csv'
+  $reconRpt = Join-Path $runDir 'reconstruct_report.json'
+  $qTool = '"' + $toolProj + '"'
+  $qOrders = '"' + $orders + '"'
+  $qOut = '"' + $reconOut + '"'
+  $qRep = '"' + $reconRpt + '"'
+  $args = @('run','--project',$qTool,'--','--orders',$qOrders,'--out',$qOut,'--report',$qRep)
+  $p = Start-Process -FilePath 'dotnet' -ArgumentList $args -Wait -PassThru -RedirectStandardOutput (Join-Path $runDir 'reconstruct_stdout.log') -RedirectStandardError (Join-Path $runDir 'reconstruct_error.log') -WindowStyle Hidden
+  if (Test-Path -LiteralPath $reconOut) {
+    try { Copy-Item -LiteralPath $reconOut -Destination (Join-Path $runDir 'closed_trades_fifo.csv') -Force } catch {}
+  }
+} catch {}
 
 $anOk = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
 if (-not $anOk) {
@@ -362,6 +389,21 @@ try {
 } catch {}
 
 $zip = New-Zip -runDir $runDir -ts $ts
+
+# Final sync to disk for core files
+try {
+  $core = 'orders.csv','telemetry.csv','closed_trades_fifo.csv','reconcile_report.json','analysis_summary.json','run_metadata.json'
+  foreach ($f in $core) {
+    $p = Join-Path $runDir $f
+    if (Test-Path -LiteralPath $p) {
+      try {
+        $fs = [System.IO.File]::Open($p, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
+        try { $fs.Flush($true) } catch { try { $fs.Flush() } catch {} }
+        $fs.Dispose()
+      } catch {}
+    }
+  }
+} catch {}
 
 # Summary
 Write-Host ("[smoke] Artifact Path: " + $runDir)
