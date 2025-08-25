@@ -1,0 +1,5 @@
+SMOKE_ARTIFACT_PATH=C:\Users\TechCare\AppData\Local\Temp\botg_artifacts_orchestrator_compressed_20250824_130043\telemetry_run_20250824_130044
+git branch: dev/smoke-auto-BotG-Dev-20250824 @ 21937fc
+requests=1224, fills=1103, fill_rate=0.9011
+closed_trades_count=549, total_pnl=416.250000000024
+orphans_fills=5

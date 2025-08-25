@@ -1,0 +1,190 @@
+name: Smoke Run
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: 'Duration in seconds'
+        required: false
+        default: '60'
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      SMOKE_PREVIEW_LINES: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDKs (6.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 6.0.x
+
+      - name: Build
+        run: dotnet build $Env:GITHUB_WORKSPACE
+
+      - name: Run smoke (hardened)
+        id: runsmoke
+        shell: pwsh
+        run: |
+          $sec = '${{ github.event.inputs.seconds }}'
+          if (-not $sec) { $sec = '60' }
+          $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+          if (Test-Path -LiteralPath $art) { Remove-Item -Recurse -Force $art }
+          New-Item -ItemType Directory -Path $art | Out-Null
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_smoke_test.ps1 -Seconds ([int]$sec) -DrainSeconds 10
+          $dir = Get-ChildItem -Path $art -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($dir) {
+            ("path=" + $dir.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            ("path=") | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+      - name: Print quick preview of artifacts
+        if: always()
+        shell: pwsh
+        run: |
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifact = $candidate.FullName }
+          }
+          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
+            Write-Host "WARNING: No artifact folder found under $env:RUNNER_TEMP"; exit 0
+          }
+          Write-Host "Using artifact folder: $artifact"
+          $previewFile = Join-Path $artifact 'quick_preview.log'
+          '' | Out-File -FilePath $previewFile -Encoding utf8
+          function Print-Head([string]$f) {
+            if (Test-Path -LiteralPath $f) {
+              $n = [int]$env:SMOKE_PREVIEW_LINES
+              $take = $n + 1
+              $lines = Get-Content -LiteralPath $f -TotalCount $take
+              $text = ($lines -join [Environment]::NewLine)
+              if ($text.Length -gt 4000) { $text = $text.Substring(0,4000) + "`n...[truncated]..." }
+              Write-Host ("---- Preview: " + $f + " ----")
+              Write-Host $text
+              $text | Out-File -FilePath $previewFile -Append -Encoding utf8
+            } else {
+              Write-Host ("WARNING: " + $f + " not found")
+            }
+          }
+          Print-Head (Join-Path $artifact 'orders.csv')
+          Print-Head (Join-Path $artifact 'closed_trades_fifo.csv')
+          Write-Host ("Quick preview saved to " + $previewFile)
+
+      - name: Fill-rate and analysis summary
+        if: always()
+        shell: pwsh
+        run: |
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifact = $candidate.FullName }
+          }
+          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) { Write-Host "WARNING: No artifact folder found for summary."; exit 0 }
+          $orders = Join-Path $artifact 'orders.csv'
+          $analysis = Join-Path $artifact 'analysis_summary.json'
+          $previewFile = Join-Path $artifact 'quick_preview.log'
+          function Append([string]$s) { $s | Out-File -FilePath $previewFile -Append -Encoding utf8; Write-Host $s }
+          if (Test-Path -LiteralPath $orders) {
+            $rows = Import-Csv -LiteralPath $orders
+            $req = ($rows | Where-Object { $_.status -eq 'REQUEST' -or $_.phase -eq 'REQUEST' }).Count
+            $fills = ($rows | Where-Object { $_.status -eq 'FILL' -or $_.phase -eq 'FILL' }).Count
+            $acks = ($rows | Where-Object { $_.status -eq 'ACK' -or $_.phase -eq 'ACK' }).Count
+            $rate = if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 }
+            Append ("fill_summary: REQUEST={0} ACK={1} FILL={2} fill_rate={3}" -f $req, $acks, $fills, $rate)
+          } else {
+            Write-Host "WARNING: orders.csv not found for fill-rate."
+          }
+          if (Test-Path -LiteralPath $analysis) {
+            try {
+              $obj = Get-Content -LiteralPath $analysis -Raw | ConvertFrom-Json
+              Append ("analysis: trades={0} total_pnl={1} max_drawdown={2}" -f $obj.trades, $obj.total_pnl, $obj.max_drawdown)
+            } catch { Write-Host "WARNING: Failed to parse analysis_summary.json" }
+          } else {
+            Write-Host "WARNING: analysis_summary.json not found"
+          }
+
+      - name: Find zip
+        id: findzip
+        shell: pwsh
+        run: |
+          $artifact = "${{ steps.runsmoke.outputs.path }}"
+          $zip = $null
+          if ($artifact -and (Test-Path -LiteralPath $artifact)) {
+            $zip = Get-ChildItem -Path $artifact -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $zip) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $zip = Get-ChildItem -Path $root -Recurse -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          }
+          if ($null -eq $zip) { "zip=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; exit 0 }
+          ("zip=" + $zip.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload artifact
+        if: ${{ always() && steps.findzip.outputs.zip != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-telemetry
+          path: ${{ steps.findzip.outputs.zip }}
+
+      - name: Upload derived artifacts (breakdown, reconcile, monitoring, plots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-derived
+          path: |
+            ${{ steps.runsmoke.outputs.path }}/fill_rate_by_side.csv
+            ${{ steps.runsmoke.outputs.path }}/fill_breakdown_by_hour.csv
+            ${{ steps.runsmoke.outputs.path }}/reconcile_report.json
+            ${{ steps.runsmoke.outputs.path }}/reconcile_report.txt
+            ${{ steps.runsmoke.outputs.path }}/monitoring_summary.json
+            ${{ steps.runsmoke.outputs.path }}/equity_curve.png
+            ${{ steps.runsmoke.outputs.path }}/pnl_histogram.png
+            ${{ steps.runsmoke.outputs.path }}/pnl_by_hour.png
+
+      - name: Sanity check - orders.csv header
+        if: always()
+        shell: pwsh
+        run: |
+          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifactDir = $candidate.FullName }
+          }
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for header check.'; exit 0 }
+          $orders = Join-Path $artifactDir 'orders.csv'
+          if (-not (Test-Path -LiteralPath $orders)) { Write-Host 'WARNING: orders.csv not found—skipping header check.'; exit 0 }
+          $header = (Get-Content -LiteralPath $orders -TotalCount 1)
+          $hasTs = $header -imatch '(^|,)timestamp_iso(,|$)'
+          $hasId = $header -imatch '(^|,)orderId(,|$)'
+          if (-not ($hasTs -and $hasId)) {
+            Write-Error 'orders.csv header missing required fields: timestamp_iso and/or orderId'
+            exit 1
+          }
+          Write-Host 'orders.csv header sanity check passed.'
+
+      - name: Sanity check - closed_trades_fifo.csv non-empty
+        if: always()
+        shell: pwsh
+        run: |
+          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
+            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
+            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $artifactDir = $candidate.FullName }
+          }
+          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for closed trades check.'; exit 0 }
+          $closed = Join-Path $artifactDir 'closed_trades_fifo.csv'
+          if (-not (Test-Path -LiteralPath $closed)) { Write-Host 'WARNING: closed_trades_fifo.csv not found.'; exit 0 }
+          $lines = 0; try { $lines = (Get-Content -LiteralPath $closed | Measure-Object -Line).Lines } catch {}
+          if ($lines -lt 2) { Write-Host 'WARNING: closed_trades_fifo.csv is empty (only header).'; exit 0 }
+          Write-Host ("closed_trades_fifo.csv OK, rows=" + ($lines - 1))

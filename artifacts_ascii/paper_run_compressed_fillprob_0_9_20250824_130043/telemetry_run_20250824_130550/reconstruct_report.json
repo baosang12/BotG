@@ -1,0 +1,10 @@
+{
+  "fills_total": 1107,
+  "closed_trades": 551,
+  "orphan_before": 1107,
+  "orphan_after": 5,
+  "estimated_orphan_fills_after_reconstruct": 5,
+  "matched_count": 1102,
+  "unmatched_ids": [],
+  "output": "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts_orchestrator_retry_compressed_20250824_130549\\telemetry_run_20250824_130550\\closed_trades_fifo_reconstructed.csv"
+}
