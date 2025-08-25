@@ -1,6 +1,6 @@
 param(
-    [int]$ProcId = 5340,
-    [string]$OutDir = "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\artifacts_ascii\paper_run_realtime_1h_20250824_183511",
+    [int]$ProcId = 0,
+    [string]$OutDir = "",
     [int]$LogTail = 100
 )
 
@@ -59,28 +59,32 @@ $report = [ordered]@{
 }
 
 try {
-    # 1) Process status
-    $p = $null
-    try { $p = Get-Process -Id $ProcId -ErrorAction Stop } catch { $p = $null }
-    if ($p) {
-        $report.process.found = $true
-        $report.process.name = $p.ProcessName
-        $report.process.start_time = $p.StartTime.ToString("o")
-        $memMB = [math]::Round($p.WorkingSet64 / 1MB,1)
-        $report.process.memory_mb = $memMB
-        # CPU sample over 500ms
-        $t1 = $p.TotalProcessorTime
-        Start-Sleep -Milliseconds 500
-    try { $p2 = Get-Process -Id $ProcId -ErrorAction Stop } catch { $p2 = $null }
-        if ($p2) {
-            $t2 = $p2.TotalProcessorTime
-            $cpuPct = [math]::Round((($t2 - $t1).TotalMilliseconds / 500) * 100 / $env:NUMBER_OF_PROCESSORS,1)
-            $report.process.cpu_percent = $cpuPct
+    # 1) Process status (optional)
+    if ($ProcId -gt 0) {
+        $p = $null
+        try { $p = Get-Process -Id $ProcId -ErrorAction Stop } catch { $p = $null }
+        if ($p) {
+            $report.process.found = $true
+            $report.process.name = $p.ProcessName
+            $report.process.start_time = $p.StartTime.ToString("o")
+            $memMB = [math]::Round($p.WorkingSet64 / 1MB,1)
+            $report.process.memory_mb = $memMB
+            # CPU sample over 500ms
+            $t1 = $p.TotalProcessorTime
+            Start-Sleep -Milliseconds 500
+            try { $p2 = Get-Process -Id $ProcId -ErrorAction Stop } catch { $p2 = $null }
+            if ($p2) {
+                $t2 = $p2.TotalProcessorTime
+                $cpuPct = [math]::Round((($t2 - $t1).TotalMilliseconds / 500) * 100 / $env:NUMBER_OF_PROCESSORS,1)
+                $report.process.cpu_percent = $cpuPct
+            }
+        } else {
+            $report.process.found = $false
+            $report.issues += "Process with PID $ProcId not found or already exited."
+            $report.can_continue_running = $false
         }
     } else {
         $report.process.found = $false
-    $report.issues += "Process with PID $ProcId not found or already exited."
-        $report.can_continue_running = $false
     }
 
     # 2) Logs tail: try OUTDIR then TEMP

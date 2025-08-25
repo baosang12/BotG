@@ -91,7 +91,10 @@ function Invoke-OneRun([string]$pretty,[int]$sec,[int]$sph,[double]$fp,[int]$dr,
   # load metrics
   $paths = @{ meta = Join-Path $dest 'run_metadata.json'; rr = Join-Path $dest 'reconstruct_report.json'; rec = Join-Path $dest 'reconcile_report.json'; as = Join-Path $dest 'analysis_summary.json' }
   $missing = @(); foreach ($p2 in @($paths.meta, (Join-Path $dest 'orders.csv'))) { if (-not (Test-Path -LiteralPath $p2)) { $missing += $p2 } }
-  if ($missing.Count -gt 0) { return @{ status='MISSING_ARTIFACTS'; outdir=$dest; zip=($zip?.FullName); missing=$missing } }
+  if ($missing.Count -gt 0) {
+    $zipPath = $null; if ($zip) { $zipPath = $zip.FullName }
+    return @{ status='MISSING_ARTIFACTS'; outdir=$dest; zip=$zipPath; missing=$missing }
+  }
   $meta=$null;$rr=$null;$rec=$null;$as=$null
   try { $meta = Get-Content -LiteralPath $paths.meta -Raw | ConvertFrom-Json } catch {}
   if (Test-Path -LiteralPath $paths.rr) { try { $rr = Get-Content -LiteralPath $paths.rr -Raw | ConvertFrom-Json } catch {} }
@@ -103,7 +106,8 @@ function Invoke-OneRun([string]$pretty,[int]$sec,[int]$sph,[double]$fp,[int]$dr,
   if ($null -ne $requests -and $null -ne $fills -and $requests -gt 0) { $fillRate=[math]::Round($fills/$requests,4) }
   if ($as) { if ($null -ne $as.trades) { $closed=[int]$as.trades }; if ($null -ne $as.total_pnl) { $totalPnl=[double]$as.total_pnl }; if ($null -ne $as.max_drawdown) { $maxDD=[double]$as.max_drawdown } }
   if ($rr -and $null -ne $rr.estimated_orphan_fills_after_reconstruct) { $orphAfter=[int]$rr.estimated_orphan_fills_after_reconstruct } elseif ($rec -and $null -ne $rec.orphan_fills_count) { $orphAfter=[int]$rec.orphan_fills_count }
-  return @{ status='OK'; outdir=$dest; zip=($zip?.FullName); run_metadata=$meta; reconstruct_report=$rr; reconcile_report=$rec; analysis_summary=$as; requests=$requests; fills=$fills; fill_rate=$fillRate; closed_trades_count=$closed; orphan_before=$orphBefore; orphan_after=$orphAfter; total_pnl=$totalPnl; max_drawdown=$maxDD }
+  $zipPath2 = $null; if ($zip) { $zipPath2 = $zip.FullName }
+  return @{ status='OK'; outdir=$dest; zip=$zipPath2; run_metadata=$meta; reconstruct_report=$rr; reconcile_report=$rec; analysis_summary=$as; requests=$requests; fills=$fills; fill_rate=$fillRate; closed_trades_count=$closed; orphan_before=$orphBefore; orphan_after=$orphAfter; total_pnl=$totalPnl; max_drawdown=$maxDD }
 }
 
 # First attempt
