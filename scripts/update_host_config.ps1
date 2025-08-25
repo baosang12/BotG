@@ -1,5 +1,6 @@
 param(
-    [string]$SrcCfg = "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\config.runtime.json"
+    # Default to repo-root config.runtime.json relative to this script's directory
+    [string]$SrcCfg = (Join-Path (Split-Path -Parent $PSScriptRoot) 'config.runtime.json')
 )
 
 $ErrorActionPreference = 'Stop'

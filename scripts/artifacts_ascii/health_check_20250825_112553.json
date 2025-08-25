@@ -1,0 +1,63 @@
+﻿{
+    "STATUS":  "CANNOT_CHECK",
+    "can_continue_running":  "unknown",
+    "summary":  "",
+    "process":  {
+                    "found":  false,
+                    "pid":  0,
+                    "name":  null,
+                    "memory_mb":  null,
+                    "cpu_percent":  null,
+                    "start_time":  null
+                },
+    "logs":  {
+                 "path":  null,
+                 "tail":  [
+
+                          ]
+             },
+    "disk":  {
+                 "free_gb":  null,
+                 "drive":  "C:"
+             },
+    "temp_artifacts":  [
+
+                       ],
+    "outdir":  {
+                   "path":  "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts",
+                   "files":  [
+                                 "realtime_1h_20250824_212300",
+                                 "realtime_1h_20250825_100717",
+                                 "telemetry_run_20250823_082920",
+                                 "telemetry_run_20250823_203927",
+                                 "telemetry_run_20250823_211833",
+                                 "telemetry_run_20250825_112001",
+                                 "final_report.json",
+                                 "pr_comment.md"
+                             ],
+                   "exists":  true
+               },
+    "run_metadata":  null,
+    "orders_header":  null,
+    "reconstruct_tool":  {
+                             "present":  false,
+                             "path":  null
+                         },
+    "host_resources":  {
+                           "cpu_percent":  null,
+                           "free_memory_mb":  null
+                       },
+    "permissions":  {
+                        "files_locked":  [
+
+                                         ],
+                        "outdir_access":  "unknown"
+                    },
+    "issues":  [
+                   "Health-check script encountered an error."
+               ],
+    "recommendations":  [
+
+                        ],
+    "notes":  "Exception during health check: Cannot convert \u0027System.Object[]\u0027 to the type \u0027System.String\u0027 required by parameter \u0027ChildPath\u0027. Specified method is not supported."
+}

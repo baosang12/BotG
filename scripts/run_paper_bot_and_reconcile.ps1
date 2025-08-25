@@ -21,10 +21,8 @@ $env:BOTG_MODE = 'paper'
 $env:BOTG_TELEMETRY_FLUSH_SEC = '5'
 Write-Info "Using BOTG_LOG_PATH=$logDir"
 
-# Resolve workspace root (handles diacritics)
-$repo = "D:\OneDrive"
-$root = Get-ChildItem -LiteralPath $repo -Directory | Where-Object { $_.Name -like 'Ta*' } | Select-Object -First 1
-$ws = Join-Path $root.FullName 'cAlgo\Sources\Robots\BotG'
+# Resolve workspace root robustly using this script's path
+$ws = Split-Path -Parent $PSScriptRoot
 
 # Prefer real bot exe if present; else fallback to harness
 $botExe = Join-Path $ws 'BotG\bin\Release\net6.0\BotG.exe'
