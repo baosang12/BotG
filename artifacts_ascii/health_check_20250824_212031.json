@@ -1,0 +1,60 @@
+﻿{
+    "STATUS":  "CRITICAL",
+    "can_continue_running":  false,
+    "summary":  "Critical issues found; consider stopping run and performing recovery.",
+    "process":  {
+                    "found":  false,
+                    "pid":  9768,
+                    "name":  null,
+                    "memory_mb":  null,
+                    "cpu_percent":  null,
+                    "start_time":  null
+                },
+    "logs":  {
+                 "path":  null,
+                 "tail":  [
+
+                          ]
+             },
+    "disk":  {
+                 "drive":  "D:",
+                 "free_gb":  202.62
+             },
+    "temp_artifacts":  [
+
+                       ],
+    "outdir":  {
+                   "path":  "D:\\OneDrive\\Tai liêu\\cAlgo\\Sources\\Robots\\BotG\\artifacts_ascii\\paper_run_realtime_1h_20250824_211958",
+                   "files":  [
+
+                             ],
+                   "exists":  false
+               },
+    "run_metadata":  null,
+    "orders_header":  null,
+    "reconstruct_tool":  {
+                             "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\reconstruct_closed_trades_sqlite.py",
+                             "present":  true
+                         },
+    "host_resources":  {
+                           "cpu_percent":  0,
+                           "free_memory_mb":  17604
+                       },
+    "permissions":  {
+                        "outdir_access":  "unknown",
+                        "files_locked":  [
+
+                                         ]
+                    },
+    "issues":  [
+                   "Process with PID 9768 not found or already exited.",
+                   "No harness log found in OUTDIR or recent TEMP telemetry run dir.",
+                   "No recent telemetry_run_* or botg_artifacts* found in TEMP within last 3 hours.",
+                   "run_metadata.json not found in OUTDIR or recent TEMP telemetry dir.",
+                   "orders.csv not found or header missing in run dirs."
+               ],
+    "recommendations":  [
+
+                        ],
+    "notes":  ""
+}

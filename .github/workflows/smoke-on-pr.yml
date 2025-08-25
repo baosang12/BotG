@@ -1,0 +1,51 @@
+name: smoke-fast-on-pr
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Setup Python (optional, for analyzer)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build
+        shell: pwsh
+        run: |
+          dotnet build .\BotG.sln -v:m
+
+      - name: Run compressed smoke (5min) and reconstruct
+        shell: pwsh
+        run: |
+          $out = ".\artifacts_ascii\smoke_ci_$(Get-Date -Format yyyyMMdd_HHmmss)"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          pwsh .\scripts\run_smoke.ps1 -Seconds 300 -SecondsPerHour 300 -DrainSeconds 30 -FillProbability 0.9 -UseSimulation -ArtifactPath $out
+          # Ensure a zip exists for upload
+          $zip = Get-ChildItem -Path $out -Recurse -Filter '*.zip' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $zip) {
+            $inner = Get-ChildItem -Path $out -Directory -Filter 'telemetry_run_*' | Select-Object -First 1
+            if ($inner) { Compress-Archive -Path $inner.FullName\* -DestinationPath "$($inner.FullName).zip" -Force }
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: |
+            artifacts_ascii/**/*.zip
+            artifacts_ascii/**/run_metadata.json
+            artifacts_ascii/**/reconstruct_report.json
+            artifacts_ascii/**/reconcile_report.json

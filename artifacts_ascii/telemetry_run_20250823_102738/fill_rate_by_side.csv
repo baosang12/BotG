@@ -1,0 +1,3 @@
+side,requests,acks,fills,fill_rate_percent,avg_slip,p50_slip,p90_slip,avg_abs_slip,p50_abs_slip,p90_abs_slip
+BUY,121,121,121,100.0,0.0005,0.0005,0.0005,0.0005,0.0005,0.0005
+SELL,121,121,121,100.0,-0.0005,-0.0005,-0.0005,0.0005,0.0005,0.0005

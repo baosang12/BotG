@@ -49,6 +49,8 @@ function Fail {
   exit $Code
 }
 
+# Preserve the original (possibly relative, ASCII-safe) path for child processes.
+$ArtifactArg = $ArtifactPath
 try {
   $ArtifactPath = (Resolve-Path -LiteralPath $ArtifactPath).Path
 } catch {}
@@ -83,7 +85,7 @@ $py = 'python'
 # Step 1: make closes from reconstructed
 try {
   Write-Log 'Run make_closes_from_reconstructed.py'
-  & $py .\scripts\make_closes_from_reconstructed.py 2>&1 | Tee-Object -FilePath (Join-Path $ArtifactPath 'make_closes_run.log')
+  & $py .\scripts\make_closes_from_reconstructed.py --artifact $ArtifactArg 2>&1 | Tee-Object -FilePath (Join-Path $ArtifactPath 'make_closes_run.log')
 } catch {
   Fail -Code 30 -Message ("make_closes_from_reconstructed failed: " + $_.Exception.Message) -Step 'make_closes'
 }
@@ -133,7 +135,7 @@ if ($diff -ne 0) {
 $computeLog = Join-Path $ArtifactPath 'run_compute_stream.log'
 $summaryCompute = Join-Path $ArtifactPath 'analysis_summary_stats.json'
 Write-Log "Run compute_fill_breakdown_stream.py chunksize=$ChunkSize"
-& $py .\scripts\compute_fill_breakdown_stream.py --orders $orders --outdir $ArtifactPath --chunksize $ChunkSize 2>&1 | Tee-Object -FilePath $computeLog
+& $py .\scripts\compute_fill_breakdown_stream.py --orders $orders --outdir $ArtifactArg --chunksize $ChunkSize 2>&1 | Tee-Object -FilePath $computeLog
 $computeExit = $LASTEXITCODE
 if ($computeExit -ne 0) { Fail -Code 20 -Message 'Compute failed.' -Step 'compute' }
 

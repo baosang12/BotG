@@ -1,0 +1,10 @@
+Reconcile Report
+----------------
+request_count       : 249
+fill_count          : 249
+closed_trades_count : 124
+orphan_fills_count  : 1
+orphan_closes_count : 0
+
+Sample orphan fills:
+ORD-3720

@@ -1,0 +1,88 @@
+{
+    "timestamp":  "2025-08-24T12:59:16",
+    "results":  [
+                    {
+                        "max_drawdown":  68.5499999999829,
+                        "retries":  1,
+                        "reconcile_report":  {
+                                                 "request_count":  1227,
+                                                 "fill_count":  1106,
+                                                 "closed_trades_count":  550,
+                                                 "orphan_fills_count":  6,
+                                                 "orphan_closes_count":  0,
+                                                 "sample_orphan_fills":  [
+                                                                             "ORD-18300",
+                                                                             "ORD-18330",
+                                                                             "ORD-18240",
+                                                                             "ORD-18270",
+                                                                             "ORD-18390",
+                                                                             "ORD-18360"
+                                                                         ],
+                                                 "sample_orphan_closes":  {
+
+                                                                          }
+                                             },
+                        "closed_trades_count":  550,
+                        "fill_rate":  0.9014,
+                        "orphan_before":  6,
+                        "status":  "COMPLETED",
+                        "total_pnl":  417.90000000002328,
+                        "fills":  1106,
+                        "orphan_after":  6,
+                        "reconstruct_report":  {
+                                                   "fills_total":  1106,
+                                                   "closed_trades":  550,
+                                                   "orphan_before":  1106,
+                                                   "orphan_after":  6,
+                                                   "estimated_orphan_fills_after_reconstruct":  6,
+                                                   "matched_count":  1100,
+                                                   "unmatched_ids":  [
+
+                                                                     ],
+                                                   "output":  "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts_orchestrator_retry_compressed_20250824_125409\\telemetry_run_20250824_125410\\closed_trades_fifo_reconstructed.csv"
+                                               },
+                        "zip":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts_ascii\\paper_run_compressed_fillprob_0_9_20250824_124902\\telemetry_run_20250824_125410\\telemetry_run_20250824_125410.zip",
+                        "run_dir":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts_ascii\\paper_run_compressed_fillprob_0_9_20250824_124902\\telemetry_run_20250824_125410",
+                        "requests":  1227,
+                        "run_metadata":  {
+                                             "start_time_iso":  "2025-08-24T05:54:10.6052608Z",
+                                             "run_id":  "001bd3c5-1248-42c1-b8cc-822dc81aef6d",
+                                             "start_time":  "2025-08-24T05:54:10.6123151Z",
+                                             "git_sha":  "21937fc1ea4dd5088d7a54a802ee05a637e6485d",
+                                             "DrainSeconds":  90,
+                                             "SecondsPerHour":  300,
+                                             "host":  "DESKTOP-584MV4B",
+                                             "FillProbability":  0.9,
+                                             "git_commit":  "21937fc1ea4dd5088d7a54a802ee05a637e6485d",
+                                             "sim_seed":  42,
+                                             "GracefulShutdownWaitSeconds":  10,
+                                             "artifact_path":  "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts_orchestrator_retry_compressed_20250824_125409\\telemetry_run_20250824_125410",
+                                             "config_snapshot":  {
+                                                                     "simulation":  {
+                                                                                        "fill_probability":  0.9,
+                                                                                        "enabled":  true
+                                                                                    },
+                                                                     "config_path":  "5",
+                                                                     "drain_seconds":  90,
+                                                                     "execution":  {
+                                                                                       "fee_per_trade":  7,
+                                                                                       "fee_percent":  9,
+                                                                                       "spread_pips":  0
+                                                                                   },
+                                                                     "seconds_per_hour":  300
+                                                                 },
+                                             "extra":  {
+                                                           "sim_seed":  42,
+                                                           "seconds":  null,
+                                                           "seconds_per_hour":  300,
+                                                           "drain_seconds":  30,
+                                                           "graceful_shutdown_wait_seconds":  5,
+                                                           "use_simulation":  true,
+                                                           "fill_probability":  0.9
+                                                       }
+                                         },
+                        "name":  "compressed",
+                        "base_out":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts_ascii\\paper_run_compressed_fillprob_0_9_20250824_124902"
+                    }
+                ]
+}
