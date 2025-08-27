@@ -1,3 +1,8 @@
+# Params (must be first executable statement in PowerShell)
+param(
+  [string]$BaseBranch = ''
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -46,6 +51,13 @@ function Run-Git {
   if ($stdout) { Log ("git $gitArgs | stdout: " + ($stdout.Trim())) }
   if ($stderr) { Log ("git $gitArgs | stderr: " + ($stderr.Trim())) }
   return @{ Code = $p.ExitCode; Out = $stdout; Err = $stderr }
+}
+
+function Test-RemoteBranchExists {
+  param([string]$name)
+  if ([string]::IsNullOrWhiteSpace($name)) { return $false }
+  $res = Run-Git ("ls-remote --exit-code --heads origin {0}" -f $name)
+  return ($res.Code -eq 0)
 }
 
 function Write-Report {
@@ -100,11 +112,21 @@ try {
     Log 'Remote branch exists.'
   }
 
-  # 3) Detect preferred base branch
+  # 3) Detect preferred base branch (allow override) with safe fallbacks
   $base = ''
-  foreach ($cand in @('main','master','develop')) {
-    $chk = Run-Git ("ls-remote --exit-code --heads origin {0}" -f $cand)
-    if ($chk.Code -eq 0) { $base = $cand; break }
+  if (-not [string]::IsNullOrWhiteSpace($BaseBranch)) {
+    Log ("Base branch override requested: '$BaseBranch'")
+    if (Test-RemoteBranchExists -name $BaseBranch) {
+      $base = $BaseBranch
+    } else {
+      Log ("Chosen base '$BaseBranch' not found on origin; falling back to dev/main/master/develop or remote HEAD.")
+    }
+  }
+  if (-not $base) {
+    foreach ($cand in @('dev','main','master','develop')) {
+      if ($cand -eq $branch) { continue }
+      if (Test-RemoteBranchExists -name $cand) { $base = $cand; break }
+    }
   }
   if (-not $base) {
     $remoteDefault = ''
@@ -114,33 +136,17 @@ try {
     if ([string]::IsNullOrWhiteSpace($remoteDefault)) { $remoteDefault = 'main' }
     $base = $remoteDefault
   }
-  # If base resolved to current feature branch (origin/HEAD points to feature), prefer main/master/develop
+  # If base resolved to current feature branch (origin/HEAD points to feature), prefer stable branches
   if ($base -eq $branch) {
-    Log 'Remote HEAD points to current branch; preferring a stable base (main/master/develop).'
-    foreach ($cand in @('main','master','develop')) {
+    Log 'Remote HEAD points to current branch; preferring a stable base (dev/main/master/develop).'
+    foreach ($cand in @('dev','main','master','develop')) {
       if ($cand -eq $branch) { continue }
-      $chk2 = Run-Git ("ls-remote --exit-code --heads origin {0}" -f $cand)
-      if ($chk2.Code -eq 0) { $base = $cand; break }
+      if (Test-RemoteBranchExists -name $cand) { $base = $cand; break }
     }
     if ($base -eq $branch) { $base = 'main' }
   }
-  # Ensure chosen base actually exists; if not, pick the first other remote branch
-  $existsBase = (Run-Git ("ls-remote --exit-code --heads origin {0}" -f $base)).Code -eq 0
-  if (-not $existsBase) {
-    Log ("Chosen base '$base' not found on origin; enumerating remote heads.")
-    $heads = Run-Git 'ls-remote --heads origin'
-    $base = ''
-    if ($heads.Out) {
-      $lines = $heads.Out -split "`r`n|`n" | Where-Object { $_ -ne '' }
-      foreach ($ln in $lines) {
-        if ($ln -match 'refs/heads/(.+)$') {
-          $name = $Matches[1]
-          if ($name -ne $branch) { $base = $name; break }
-        }
-      }
-    }
-    if (-not $base) { Log 'No alternative base found; using current branch (will show no diff).'; $base = $branch }
-  }
+  # Ensure chosen base actually exists; otherwise default to main
+  if (-not (Test-RemoteBranchExists -name $base)) { $base = 'main' }
   Log ("Base branch selected: $base")
 
   # 4) Try automatic PR creation via gh
@@ -154,20 +160,21 @@ try {
     if ($authOk) {
       Log 'gh detected and authenticated; creating Draft PR.'
       $title = 'feat(telemetry): add streaming compute + artifact reconcile wrapper (safe chunking + backup)'
-      $cmd = @(
-        'pr','create','--draft',
-        '--title', $title,
-        '--body-file', $PrBodyPath,
-        '--base', $base,
-        '--head', $branch
-      )
+      function Quote([string]$s) { '"' + (($s) -replace '"','\"') + '"' }
+      $argsStr = @(
+        'pr create --draft',
+        '--title', (Quote $title),
+        '--body-file', (Quote $PrBodyPath),
+        '--base', (Quote $base),
+        '--head', (Quote $branch)
+      ) -join ' '
       $psi = New-Object System.Diagnostics.ProcessStartInfo
       $psi.FileName = 'gh'
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
       $psi.UseShellExecute = $false
       $psi.CreateNoWindow = $true
-      $psi.ArgumentList.AddRange($cmd)
+      $psi.Arguments = $argsStr
       $proc = New-Object System.Diagnostics.Process
       $proc.StartInfo = $psi
       $null = $proc.Start()

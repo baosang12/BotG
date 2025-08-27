@@ -18,3 +18,27 @@
 Notes:
 - If the config is missing, defaults are used and the app continues to run.
 - ATR-based SL is still TODO to be wired with a real provider.
+
+## Realtime run: safe sequence
+
+Windows (PowerShell 5.1) recommended steps:
+
+1) Quick smoke (60s) to validate pipeline
+  - VS Code task: `realtime-quick-60s`
+  - Or run: `scripts/start_realtime_1h_ascii.ps1 -Seconds 60 -SecondsPerHour 60`
+
+2) Preflight health check
+  - VS Code task: `preflight-last-ascii`
+  - Or run: `scripts/health_check_preflight.ps1 -ProcId <pid> -OutDir <outdir>`
+
+3) Start 1-hour realtime
+  - VS Code task: `realtime-1h-ascii`
+  - Or run: `scripts/start_realtime_1h_ascii.ps1 -Seconds 3600 -SecondsPerHour 3600`
+
+4) Monitor logs and finalize (if daemon didn’t finalize)
+  - VS Code task: `finalize-last-ascii`
+  - Or run: `scripts/finalize_realtime_1h_report.ps1 -OutBase <outdir>`
+
+5) Acceptance gate
+  - In `reconstruct_report.json`, require `estimated_orphan_fills_after_reconstruct == 0`.
+  - `final_report.json` contains a summarized verdict. The daemon retries once automatically if orphans persist.
