@@ -10,6 +10,11 @@ on:
     branches:
       - main
 
+# Allow this workflow to post a commit status with the exact context required by branch protection
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build-test:
     name: Build and Test (${{ matrix.os }})
@@ -112,3 +117,46 @@ jobs:
             ${{ steps.validate.outputs.path }}
             ${{ steps.validate.outputs.path }}/*.json
             ${{ steps.validate.outputs.path }}/*.csv
+
+  report-required-status:
+    # This job publishes a single commit status named exactly 'CI - build & test'
+    # to satisfy the required check shown as "Expected — Waiting for status to be reported".
+    name: CI - build & test (aggregated)
+    runs-on: ubuntu-latest
+    needs: [build-test, quick-smoke]
+    if: ${{ always() }}
+    steps:
+      - name: Compute overall result
+        id: verdict
+        run: |
+          BT='${{ needs.build-test.result }}'
+          QS='${{ needs.quick-smoke.result }}'
+          echo "build_test=$BT" >> $GITHUB_OUTPUT
+          echo "quick_smoke=$QS" >> $GITHUB_OUTPUT
+          if [ "$BT" = "success" ] && [ "$QS" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "desc=All required CI jobs passed" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "desc=One or more CI jobs failed or were skipped" >> $GITHUB_OUTPUT
+          fi
+      - name: Publish commit status 'CI - build & test'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = (context.eventName === 'pull_request' || context.eventName === 'pull_request_target')
+              ? context.payload.pull_request.head.sha
+              : context.sha;
+            const state = `${{ steps.verdict.outputs.state }}`; // success | failure | error | pending
+            const description = `${{ steps.verdict.outputs.desc }}`;
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha,
+              state,
+              context: 'CI - build & test',
+              description,
+              target_url
+            });
