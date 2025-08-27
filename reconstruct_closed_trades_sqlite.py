@@ -16,6 +16,7 @@ import os
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from typing import Dict, Deque, List, Tuple, Optional
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 
 def parse_args():
@@ -30,15 +31,20 @@ def to_epoch_ms(val: Optional[str]) -> Optional[int]:
     if val is None or str(val).strip() == "":
         return None
     s = str(val).strip()
-    # numeric path
+    # numeric path (avoid float rounding by using Decimal)
     try:
-        v = float(s)
-        if v > 1e12:  # already ms
-            return int(v)
-        if v > 1e9:   # seconds with decimals
-            return int(v * 1000)
-        # treat small numbers as seconds
-        return int(v * 1000)
+        # Heuristics: if integer-like
+        if s.isdigit():
+            v = int(s)
+            if v > 10_000_000_000:  # very likely ms
+                return v
+            # seconds -> ms
+            return v * 1000
+        d = Decimal(s)
+        # If looks like seconds (<= 1e11), convert precisely
+        if d > Decimal(10_000_000_000):  # already ms
+            return int(d.to_integral_value(rounding=ROUND_HALF_UP))
+        return int((d * Decimal(1000)).to_integral_value(rounding=ROUND_HALF_UP))
     except Exception:
         pass
     # ISO path
@@ -80,11 +86,11 @@ def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
 class Fill:
     __slots__ = ("symbol", "side", "volume", "price", "epoch_ms", "iso")
 
-    def __init__(self, symbol: str, side: str, volume: float, price: float, epoch_ms: int, iso: str):
+    def __init__(self, symbol: str, side: str, volume: Decimal, price: Decimal, epoch_ms: int, iso: str):
         self.symbol = symbol
         self.side = side  # BUY or SELL
-        self.volume = float(volume)
-        self.price = float(price)
+        self.volume = Decimal(volume)
+        self.price = Decimal(price)
         self.epoch_ms = int(epoch_ms)
         self.iso = iso
 
@@ -119,14 +125,24 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 "theoretical_units",
                 "theoretical_lots",
             ])
-            epoch_col = pick_col(cols, ["epoch_ms", "epoch"])  # prefer direct epoch if present
+            # Prefer explicit ms epoch columns; avoid generic names that may refer to entry/exit rather than FILL time
+            epoch_col = pick_col(cols, [
+                "timestamp_ms",
+                "epoch_ms",
+                "event_time_ms",
+                "event_epoch_ms",
+                "time_ms",
+                "t_ms",
+                "epoch",
+            ])
+            # ISO-like fallbacks strictly for event/fill time (exclude entry_time/exit_time)
             ts_col = pick_col(cols, [
                 "timestamp_iso",
                 "fill_time",
+                "fill_timestamp",
+                "event_time",
                 "time",
                 "timestamp",
-                "exit_time",
-                "entry_time",
             ])
 
             for row in reader:
@@ -151,18 +167,18 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                         # cannot interpret side
                         continue
 
-                # parse volume
+                # parse volume (Decimal)
                 vol_str = row.get(size_col) if size_col else None
                 try:
-                    volume = abs(float(vol_str)) if vol_str not in (None, "") else None
-                except Exception:
+                    volume = Decimal(str(vol_str)).copy_abs() if vol_str not in (None, "") else None
+                except (InvalidOperation, Exception):
                     volume = None
                 if not volume or volume <= 0:
                     continue
 
-                # parse price (fallback to intendedPrice if needed)
-                price_val = None
-                cand_vals = []
+                # parse price (Decimal), fallback to intendedPrice if needed
+                price_val: Optional[Decimal] = None
+                cand_vals: List[Optional[str]] = []
                 if price_col:
                     cand_vals.append(row.get(price_col))
                 # explicit fallback
@@ -170,12 +186,12 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                     if alt != price_col and alt in row:
                         cand_vals.append(row.get(alt))
                 for v in cand_vals:
-                    try:
-                        if v not in (None, ""):
-                            price_val = float(v)
+                    if v not in (None, ""):
+                        try:
+                            price_val = Decimal(str(v))
                             break
-                    except Exception:
-                        continue
+                        except (InvalidOperation, Exception):
+                            continue
                 if price_val is None:
                     continue
 
@@ -183,14 +199,14 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 epoch_ms = None
                 if epoch_col and row.get(epoch_col) not in (None, ""):
                     try:
-                        epoch_ms = int(float(row.get(epoch_col)))
+                        epoch_ms = to_epoch_ms(row.get(epoch_col))
                     except Exception:
                         epoch_ms = None
                 if epoch_ms is None and ts_col and row.get(ts_col):
                     epoch_ms = to_epoch_ms(row.get(ts_col))
                 if epoch_ms is None:
                     # try common fallbacks
-                    for alt in ("timestamp_iso", "fill_time", "timestamp"):
+                    for alt in ("timestamp_iso", "fill_time", "fill_timestamp", "event_time", "timestamp"):
                         if alt in row and row.get(alt):
                             epoch_ms = to_epoch_ms(row.get(alt))
                             if epoch_ms is not None:
@@ -209,7 +225,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     return fills
 
 
-def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float, float, float, float, str]]:
+def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, Decimal, Decimal, Decimal, Decimal, str]]:
     """
     Returns list of rows matching header:
     trade_id,open_time,close_time,symbol,side,volume,open_price,close_price,pnl,status
@@ -218,24 +234,27 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
     longs: Dict[str, Deque[Fill]] = defaultdict(deque)
     shorts: Dict[str, Deque[Fill]] = defaultdict(deque)
 
-    closed: List[Tuple[str, str, str, str, float, float, float, float, str]] = []
+    closed: List[Tuple[str, str, str, str, Decimal, Decimal, Decimal, Decimal, str]] = []
     seq = 1
 
     for f in fills:
         sym = f.symbol
         if f.side == "BUY":
             # Close existing shorts first
-            vol_left = f.volume
-            while vol_left > 0 and shorts[sym]:
+            vol_left: Decimal = Decimal(f.volume)
+            while vol_left > Decimal("0") and shorts[sym]:
                 s = shorts[sym][0]
-                take = min(s.volume, vol_left)
+                take = s.volume if s.volume <= vol_left else vol_left
+                # Enforce chronological close >= open
+                open_ms = s.epoch_ms
+                close_ms = f.epoch_ms if f.epoch_ms >= open_ms else open_ms
                 pnl = (s.price - f.price) * take  # short pnl = open - close
                 trade_id = f"fifo_{seq}"
                 seq += 1
                 closed.append((
                     trade_id,
-                    to_iso_utc(s.epoch_ms),
-                    f.iso,
+                    to_iso_utc(open_ms),
+                    to_iso_utc(close_ms),
                     sym,
                     "SHORT",
                     take,
@@ -246,25 +265,28 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
                 ))
                 s.volume -= take
                 vol_left -= take
-                if s.volume <= 1e-12:
+                if s.volume <= Decimal("1e-12"):
                     shorts[sym].popleft()
             # Remainder opens long
-            if vol_left > 1e-12:
+            if vol_left > Decimal("1e-12"):
                 longs[sym].append(Fill(sym, "BUY", vol_left, f.price, f.epoch_ms, f.iso))
 
         elif f.side == "SELL":
             # Close existing longs first
-            vol_left = f.volume
-            while vol_left > 0 and longs[sym]:
+            vol_left = Decimal(f.volume)
+            while vol_left > Decimal("0") and longs[sym]:
                 l = longs[sym][0]
-                take = min(l.volume, vol_left)
+                take = l.volume if l.volume <= vol_left else vol_left
+                # Enforce chronological close >= open
+                open_ms = l.epoch_ms
+                close_ms = f.epoch_ms if f.epoch_ms >= open_ms else open_ms
                 pnl = (f.price - l.price) * take  # long pnl = close - open
                 trade_id = f"fifo_{seq}"
                 seq += 1
                 closed.append((
                     trade_id,
-                    to_iso_utc(l.epoch_ms),
-                    f.iso,
+                    to_iso_utc(open_ms),
+                    to_iso_utc(close_ms),
                     sym,
                     "LONG",
                     take,
@@ -275,10 +297,10 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
                 ))
                 l.volume -= take
                 vol_left -= take
-                if l.volume <= 1e-12:
+                if l.volume <= Decimal("1e-12"):
                     longs[sym].popleft()
             # Remainder opens short
-            if vol_left > 1e-12:
+            if vol_left > Decimal("1e-12"):
                 shorts[sym].append(Fill(sym, "SELL", vol_left, f.price, f.epoch_ms, f.iso))
         else:
             # ignore unknown side
@@ -287,7 +309,18 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
     return closed
 
 
-def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, float, float, float, str]]):
+def _q(num: Decimal, places: int = 8) -> str:
+    """Quantize Decimal to fixed places with HALF_UP, return string."""
+    if not isinstance(num, Decimal):
+        try:
+            num = Decimal(str(num))
+        except Exception:
+            num = Decimal(0)
+    q = Decimal("1." + ("0" * places))
+    return str(num.quantize(q, rounding=ROUND_HALF_UP))
+
+
+def write_output(out_path: str, rows: List[Tuple[str, str, str, str, Decimal, Decimal, Decimal, Decimal, str]]):
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     header = [
         "trade_id",
@@ -305,7 +338,7 @@ def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, floa
         w = csv.writer(fh)
         w.writerow(header)
         for r in rows:
-            # format floats cleanly
+            # format numerics deterministically using Decimal
             trade_id, open_time, close_time, symbol, side, volume, open_p, close_p, pnl, status = r
             w.writerow([
                 trade_id,
@@ -313,10 +346,10 @@ def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, floa
                 close_time,
                 symbol,
                 side,
-                f"{float(volume):.10f}",
-                f"{float(open_p):.10f}",
-                f"{float(close_p):.10f}",
-                f"{float(pnl):.10f}",
+                _q(volume, 8),
+                _q(open_p, 8),
+                _q(close_p, 8),
+                _q(pnl, 8),
                 status,
             ])
 
