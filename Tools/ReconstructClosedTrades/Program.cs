@@ -9,7 +9,7 @@ namespace BotG.Tools
 {
     class Program
     {
-        static int Main(string[] args)
+    static int Main(string[] args)
         {
             if (args.Length < 2)
             {
@@ -32,25 +32,68 @@ namespace BotG.Tools
             int tradeSeq = 0; int closed = 0; int fills = 0;
             using (var reader = new StreamReader(orders))
             {
-                string? line = reader.ReadLine(); // header
+                // Parse header and map columns by name (robust to order and presence)
+                string? hdr = reader.ReadLine();
+                if (hdr == null)
+                {
+                    Console.Error.WriteLine("orders.csv is empty");
+                    return 0;
+                }
+                var hdrCols = SplitCsv(hdr);
+                var idx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < hdrCols.Length; i++)
+                {
+                    var key = (hdrCols[i] ?? string.Empty).Trim().Trim('"');
+                    if (!idx.ContainsKey(key)) idx[key] = i;
+                }
+                int Idx(params string[] names)
+                {
+                    foreach (var n in names)
+                    {
+                        if (idx.TryGetValue(n, out var k)) return k;
+                    }
+                    return -1;
+                }
+
+                int iPhase = Idx("phase", "event");
+                int iStatus = Idx("status");
+                int iTs = Idx("timestamp_iso", "timestamp", "time", "event_time");
+                int iSide = Idx("side", "direction");
+                int iOrderId = Idx("orderId", "order_id", "id");
+                int iPxReq = Idx("price_requested", "requested_price", "request_price", "intendedPrice");
+                int iPxFill = Idx("price_filled", "filled_price", "execPrice", "execution_price");
+                int iSzReq = Idx("size_requested", "requestedVolume", "quantity", "qty");
+                int iSzFill = Idx("size_filled", "filledSize", "size", "filled_size");
+
+                string? line;
                 while ((line = reader.ReadLine()) != null)
                 {
                     var cols = SplitCsv(line);
-                    if (cols.Length < 24) continue; // need v2 fields
-                    var phase = cols[0];
-                    var tsIso = cols[1];
-                    var side = cols[14]; // appended side position based on our header construction
-                    var status = cols[17];
-                    var priceRequested = ParseD(cols[19]);
-                    var priceFilled = ParseD(cols[20]);
-                    var sizeRequested = ParseD(cols[21]);
-                    var sizeFilled = ParseD(cols[22]);
-                    var orderId = cols[3].Trim('"');
-                    if (!string.Equals(status, "FILL", StringComparison.OrdinalIgnoreCase)) continue;
+                    string Get(int i) => (i >= 0 && i < cols.Length) ? cols[i] : string.Empty;
+
+                    var statusVal = Get(iStatus);
+                    var phaseVal = Get(iPhase);
+                    // Consider a row a fill if either status or phase/event is FILL
+                    bool isFill = !string.IsNullOrEmpty(statusVal) ? statusVal.Equals("FILL", StringComparison.OrdinalIgnoreCase)
+                                 : (!string.IsNullOrEmpty(phaseVal) && phaseVal.Equals("FILL", StringComparison.OrdinalIgnoreCase));
+                    if (!isFill) continue;
+
                     fills++;
+                    var orderId = Get(iOrderId).Trim('"');
+                    var tsIso = Get(iTs);
                     var ts = ParseTs(tsIso);
-                    double sz = sizeFilled > 0 ? sizeFilled : sizeRequested;
-                    double px = priceFilled > 0 ? priceFilled : priceRequested;
+                    var side = Get(iSide);
+
+                    var prq = ParseD(Get(iPxReq));
+                    var pfl = ParseD(Get(iPxFill));
+                    var szr = ParseD(Get(iSzReq));
+                    var szf = ParseD(Get(iSzFill));
+
+                    double sz = szf > 0 ? szf : (szr > 0 ? szr : 0);
+                    double px = pfl > 0 ? pfl : (prq > 0 ? prq : 0);
+
+                    if (sz <= 0 || px <= 0 || string.IsNullOrEmpty(side)) continue; // skip incomplete rows
+
                     if (string.Equals(side, "Buy", StringComparison.OrdinalIgnoreCase) || string.Equals(side, "BUY", StringComparison.OrdinalIgnoreCase))
                     {
                         buyQueue.Enqueue((ts, orderId, sz, px));
@@ -59,7 +102,7 @@ namespace BotG.Tools
                     {
                         sellQueue.Enqueue((ts, orderId, sz, px));
                     }
-                    // Try to match when both sides available
+                    // Try to match when both sides available (FIFO)
                     while (buyQueue.Count > 0 && sellQueue.Count > 0)
                     {
                         var b = buyQueue.Peek(); var s = sellQueue.Peek();
@@ -70,8 +113,8 @@ namespace BotG.Tools
                             tradeId, b.id, s.id, b.ts.ToString("o"), s.ts.ToString("o"), "BUY-SELL", F(size), F(b.price), F(s.price), F(pnl), "0", "reconstructed"));
                         closed++;
                         // update remainders
-                        b.size -= size; s.size -= size;
                         buyQueue.Dequeue(); sellQueue.Dequeue();
+                        b.size -= size; s.size -= size;
                         if (b.size > 1e-9) buyQueue.Enqueue((b.ts, b.id, b.size, b.price));
                         if (s.size > 1e-9) sellQueue.Enqueue((s.ts, s.id, s.size, s.price));
                     }
@@ -99,20 +142,21 @@ namespace BotG.Tools
             {
                 if (!string.IsNullOrEmpty(report))
                 {
-            var orphanFills = Math.Max(0, fills - (closed * 2)); // rough estimate: each closed trade consumes two fills
-            var obj = new System.Text.Json.Nodes.JsonObject();
-            obj["fills_total"] = fills;
-            obj["closed_trades"] = closed;
-            obj["orphan_before"] = fills; // before pairing, all fills considered
-            obj["orphan_after"] = orphanFills;
-            obj["estimated_orphan_fills_after_reconstruct"] = orphanFills;
-            obj["matched_count"] = closed * 2;
-            obj["unmatched_ids"] = new System.Text.Json.Nodes.JsonArray();
-            obj["output"] = output;
-            var json = obj.ToJsonString(new System.Text.Json.JsonSerializerOptions{ WriteIndented = true });
-            File.WriteAllText(report, json);
+                    var orphanFills = Math.Max(0, fills - (closed * 2)); // rough estimate: each closed trade consumes two fills
+                    var obj = new System.Text.Json.Nodes.JsonObject();
+                    obj["fills_total"] = fills;
+                    obj["closed_trades"] = closed;
+                    obj["orphan_before"] = fills; // before pairing, consider all fills as orphan candidates
+                    obj["orphan_after"] = orphanFills;
+                    obj["estimated_orphan_fills_after_reconstruct"] = orphanFills;
+                    obj["matched_count"] = closed * 2;
+                    obj["unmatched_ids"] = new System.Text.Json.Nodes.JsonArray();
+                    obj["output"] = output;
+                    var json = obj.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(report, json);
                 }
-            } catch { }
+            }
+            catch { }
             Console.WriteLine($"Reconstructed {closed} closed trades -> {output}");
         // Exit 0 if no orphans remain by estimate; else 2 as per contract
         var remain = fills - closed*2;
