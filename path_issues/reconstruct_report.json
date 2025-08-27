@@ -1,10 +1,11 @@
-{
-  "fills_total": 0,
-  "closed_trades": 0,
-  "orphan_before": 0,
-  "orphan_after": 0,
-  "estimated_orphan_fills_after_reconstruct": 0,
-  "matched_count": 0,
-  "unmatched_ids": [],
-  "output": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\closed_trades_fifo_reconstructed.csv"
+﻿{
+    "orphan_before":  0,
+    "closed_trades":  1,
+    "output":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\closed_trades_fifo_reconstructed.csv",
+    "fills_total":  1,
+    "orphan_after":  0,
+    "unmatched_ids":  [
+
+                      ],
+    "matched_count":  2
 }
