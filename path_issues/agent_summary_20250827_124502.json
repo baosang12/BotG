@@ -17,3 +17,13 @@
                   ],
     "notes":  "Artifacts compressed."
 }
+{
+    "step":  "pngs",
+    "status":  "ok",
+    "artifacts":  [
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\slippage_hist.png",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\latency_percentiles.png",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\fillrate_by_hour.png"
+                  ],
+    "notes":  "Created placeholders if missing"
+}
