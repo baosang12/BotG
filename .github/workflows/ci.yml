@@ -156,7 +156,12 @@ jobs:
       - name: Run reconstruction validation
         shell: pwsh
         run: |
+          Write-Host 'RV_MARKER=call-operator-v2'
           $art = (Resolve-Path './smoke-artifacts').Path
+          Write-Host ("RV_ARTIFACTS=" + $art)
+          Write-Host 'RV_SCRIPT_HEAD:'
+          try { Get-Content -LiteralPath '.\scripts\ci_reconstruct_validate.ps1' -TotalCount 8 | ForEach-Object { Write-Host $_ } } catch { Write-Warning $_ }
+          # Invoke script using call-operator to avoid -File quirks
           & .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot $art -OutDir './recon-out'
 
       - name: Print validation summary (for logs)
