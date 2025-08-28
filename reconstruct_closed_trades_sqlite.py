@@ -82,13 +82,14 @@ def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
                 return name
     return None
 
-
 class Fill:
     __slots__ = ("symbol", "side", "volume", "price", "epoch_ms", "iso")
 
     def __init__(self, symbol: str, side: str, volume: Decimal, price: Decimal, epoch_ms: int, iso: str):
         self.symbol = symbol
         self.side = side  # BUY or SELL
+        self.volume = Decimal(volume)
+        self.price = Decimal(price)
         self.epoch_ms = int(epoch_ms)
         self.iso = iso
 
@@ -151,24 +152,21 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
 
                 symbol = str(row.get(symbol_col, "")).strip() if symbol_col else ""
                 if not symbol:
-                    # keep going; allow reconstruction per side without symbol if missing (bucket under "?")
                     symbol = "?"
 
                 side_raw = str(row.get(side_col, "")).strip().upper() if side_col else ""
                 if side_raw not in ("BUY", "SELL"):
-                    # normalize common aliases
-                    if side_raw in ("LONG", "OPEN_LONG"):  # treat as BUY
+                    if side_raw in ("LONG", "OPEN_LONG"):
                         side_raw = "BUY"
-                    elif side_raw in ("SHORT", "OPEN_SHORT"):  # treat as SELL
+                    elif side_raw in ("SHORT", "OPEN_SHORT"):
                         side_raw = "SELL"
                     else:
-                        # cannot interpret side
                         continue
 
                 # parse volume (Decimal)
                 vol_str = row.get(size_col) if size_col else None
                 try:
-                    volume = abs(Decimal(str(vol_str))) if vol_str not in (None, "") else None
+                    volume = Decimal(str(vol_str)).copy_abs() if vol_str not in (None, "") else None
                 except (InvalidOperation, Exception):
                     volume = None
                 if not volume or volume <= 0:
@@ -179,7 +177,6 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 cand_vals: List[Optional[str]] = []
                 if price_col:
                     cand_vals.append(row.get(price_col))
-                # explicit fallback
                 for alt in ("execPrice", "price", "fill_price", "intendedPrice"):
                     if alt != price_col and alt in row:
                         cand_vals.append(row.get(alt))
@@ -203,7 +200,6 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 if epoch_ms is None and ts_col and row.get(ts_col):
                     epoch_ms = to_epoch_ms(row.get(ts_col))
                 if epoch_ms is None:
-                    # try common fallbacks
                     for alt in ("timestamp_iso", "fill_time", "fill_timestamp", "event_time", "timestamp"):
                         if alt in row and row.get(alt):
                             epoch_ms = to_epoch_ms(row.get(alt))
@@ -216,7 +212,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     except FileNotFoundError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Failed reading orders CSV: {e}")
+        raise RuntimeError(f\"Failed reading orders CSV: {e}\")
 
     # sort by time to ensure FIFO is chronological
     fills.sort(key=lambda f: f.epoch_ms)
