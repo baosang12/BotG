@@ -273,7 +273,7 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, Decima
 
         elif f.side == "SELL":
             # Close existing longs first
-            vol_left = Decimal(f.volume)
+            vol_left = f.volume
             while vol_left > Decimal("0") and longs[sym]:
                 l = longs[sym][0]
                 take = l.volume if l.volume <= vol_left else vol_left
