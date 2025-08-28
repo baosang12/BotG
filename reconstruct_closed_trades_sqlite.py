@@ -3,11 +3,11 @@
 Reconstruct closed trades (FIFO) from orders.csv fills.
 
 Usage:
-  python reconstruct_closed_trades_sqlite.py --orders path\\to\\orders.csv --out path\\to\\closed_trades_fifo_reconstructed.csv
+  python reconstruct_closed_trades_sqlite.py --orders path\to\orders.csv --out path\to\closed_trades_fifo_reconstructed.csv
 
 Notes:
-- Fixes csv shadowing: do not use a local variable named `csv`; `import csv` stays at top.
-- Outputs columns: trade_id,open_time,close_time,symbol,side,volume,open_price,close_price,pnl,status
+- Avoids csv shadowing; uses csv module safely.
+- Output columns: trade_id,open_time,close_time,symbol,side,volume,open_price,close_price,pnl,status
 """
 
 import argparse
@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from collections import defaultdict, deque
 from typing import Dict, Deque, List, Tuple, Optional
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from dataclasses import dataclass
 
 
 def parse_args():
@@ -82,16 +83,15 @@ def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
                 return name
     return None
 
-class Fill:
-    __slots__ = ("symbol", "side", "volume", "price", "epoch_ms", "iso")
 
-    def __init__(self, symbol: str, side: str, volume: Decimal, price: Decimal, epoch_ms: int, iso: str):
-        self.symbol = symbol
-        self.side = side  # BUY or SELL
-        self.volume = Decimal(volume)
-        self.price = Decimal(price)
-        self.epoch_ms = int(epoch_ms)
-        self.iso = iso
+@dataclass
+class Fill:
+    symbol: str
+    side: str          # 'BUY' | 'SELL'
+    volume: Decimal
+    price: Decimal
+    epoch_ms: int
+    iso: str
 
 
 def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
@@ -104,44 +104,20 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
             symbol_col = pick_col(cols, ["symbol", "instrument", "ticker"]) or "symbol"
             side_col = pick_col(cols, ["side", "direction"]) or "side"
             price_col = pick_col(cols, [
-                "execPrice",
-                "price_filled",
-                "fill_price",
-                "executionPrice",
-                "price",
-                "avg_price",
-                "fillPrice",
-                "execprice",
-                "execution_price",
-                "intendedPrice",
+                "execPrice", "price_filled", "fill_price", "executionPrice", "price",
+                "avg_price", "fillPrice", "execprice", "execution_price", "intendedPrice",
             ])
             size_col = pick_col(cols, [
-                "filledSize",
-                "size_filled",
-                "size",
-                "volume",
-                "requestedVolume",
-                "theoretical_units",
-                "theoretical_lots",
+                "filledSize", "size_filled", "size", "volume", "requestedVolume",
+                "theoretical_units", "theoretical_lots",
             ])
             # Prefer explicit ms epoch columns; avoid generic names that may refer to entry/exit rather than FILL time
             epoch_col = pick_col(cols, [
-                "timestamp_ms",
-                "epoch_ms",
-                "event_time_ms",
-                "event_epoch_ms",
-                "time_ms",
-                "t_ms",
-                "epoch",
+                "timestamp_ms", "epoch_ms", "event_time_ms", "event_epoch_ms", "time_ms", "t_ms", "epoch",
             ])
             # ISO-like fallbacks strictly for event/fill time (exclude entry_time/exit_time)
             ts_col = pick_col(cols, [
-                "timestamp_iso",
-                "fill_time",
-                "fill_timestamp",
-                "event_time",
-                "time",
-                "timestamp",
+                "timestamp_iso", "fill_time", "fill_timestamp", "event_time", "time", "timestamp",
             ])
 
             for row in reader:
@@ -212,7 +188,8 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     except FileNotFoundError:
         raise
     except Exception as e:
-        raise RuntimeError(f\"Failed reading orders CSV: {e}\")
+        # FIX: remove stray backslash in f-string
+        raise RuntimeError(f"Failed reading orders CSV: {e}")
 
     # sort by time to ensure FIFO is chronological
     fills.sort(key=lambda f: f.epoch_ms)
@@ -267,6 +244,7 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, Decima
 
         elif f.side == "SELL":
             # Close existing longs first
+            vol_left = Decimal(f.volume)  # FIX: ensure vol_left is defined for SELL branch
             while vol_left > Decimal("0") and longs[sym]:
                 l = longs[sym][0]
                 take = l.volume if l.volume <= vol_left else vol_left
