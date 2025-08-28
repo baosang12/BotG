@@ -1,0 +1,56 @@
+﻿{
+    "STATUS":  "CANNOT_CHECK",
+    "can_continue_running":  "unknown",
+    "summary":  "",
+    "process":  {
+                    "found":  false,
+                    "pid":  0,
+                    "name":  null,
+                    "memory_mb":  null,
+                    "cpu_percent":  null,
+                    "start_time":  null
+                },
+    "logs":  {
+                 "path":  null,
+                 "tail":  [
+
+                          ]
+             },
+    "disk":  {
+                 "free_gb":  null,
+                 "drive":  "C:"
+             },
+    "temp_artifacts":  [
+
+                       ],
+    "outdir":  {
+                   "path":  "",
+                   "files":  [
+
+                             ],
+                   "exists":  false
+               },
+    "run_metadata":  null,
+    "orders_header":  null,
+    "reconstruct_tool":  {
+                             "present":  false,
+                             "path":  null
+                         },
+    "host_resources":  {
+                           "cpu_percent":  null,
+                           "free_memory_mb":  null
+                       },
+    "permissions":  {
+                        "files_locked":  [
+
+                                         ],
+                        "outdir_access":  "unknown"
+                    },
+    "issues":  [
+                   "Health-check script encountered an error."
+               ],
+    "recommendations":  [
+
+                        ],
+    "notes":  "Exception during health check: Cannot bind argument to parameter \u0027LiteralPath\u0027 because it is an empty string. at line 99:     if (Test-Path -LiteralPath $OutDir) { "
+}

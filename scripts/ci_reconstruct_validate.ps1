@@ -5,6 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Write-Host "PWD=$(Get-Location)"
 Write-Host "ArtifactsRoot=$ArtifactsRoot"
 if (-not (Test-Path -LiteralPath $ArtifactsRoot)) { throw "Artifacts root not found: $ArtifactsRoot" }
 
@@ -35,21 +36,32 @@ if (-not $orders) { throw "orders.csv not found under $ArtifactsRoot (and none i
 $ordersPath = $orders.FullName
 Write-Host "orders.csv=$ordersPath"
 
-# Determine python
-$py = 'python'
-try { $v = & $py --version; Write-Host "Using $py ($v)" } catch { }
+# Determine python robustly (python, py -3, py, python3)
+$pyExe = $null; $pyArgs = @()
+foreach ($cand in @('python','py -3','py','python3')) {
+  try {
+    $parts = $cand.Split(' ')
+    $exe = $parts[0]
+    $args = if ($parts.Length -gt 1) { $parts[1..($parts.Length-1)] } else { @() }
+    $ver = & $exe @args --version 2>$null
+    if ($LASTEXITCODE -eq 0 -or $ver) { $pyExe = $exe; $pyArgs = $args; Write-Host "Using Python: $exe $($args -join ' ') ($ver)"; break }
+  } catch { }
+}
+if (-not $pyExe) { throw 'Python interpreter not found (tried: python, py -3, py, python3)' }
 
 # Path to reconstructor
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $reconPy = Join-Path $repoRoot 'reconstruct_closed_trades_sqlite.py'
+Write-Host "RepoRoot=$repoRoot"
+Write-Host "Reconstructor=$reconPy"
 if (-not (Test-Path -LiteralPath $reconPy)) { throw "Reconstructor not found: $reconPy" }
 
 # Run reconstruction
 $outCsv = Join-Path $resolvedOut 'closed_trades_fifo_reconstructed.csv'
-Write-Host "Running: $py $reconPy --orders <orders> --out $outCsv"
+Write-Host "Running: $pyExe $($pyArgs -join ' ') $reconPy --orders <orders> --out $outCsv"
 try {
   $reconLog = Join-Path $resolvedOut 'reconstruction_stdout.txt'
-  & $py $reconPy --orders $ordersPath --out $outCsv *>&1 | Tee-Object -FilePath $reconLog | Out-Null
+  & $pyExe @pyArgs $reconPy --orders $ordersPath --out $outCsv *>&1 | Tee-Object -FilePath $reconLog | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Reconstruction script exited with code $LASTEXITCODE" }
 } catch {
   $errLog = Join-Path $resolvedOut 'reconstruction_error.txt'

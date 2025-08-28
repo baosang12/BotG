@@ -6,7 +6,7 @@ param(
   [int]$FlushSec = 10
 )
 
-if (-not $LogDir) { $LogDir = 'D:\botg\logs' }
+if (-not $LogDir) { $LogDir = ($env:BOTG_LOG_PATH ? $env:BOTG_LOG_PATH : 'D:\botg\logs') }
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 $env:BOTG_LOG_PATH = $LogDir
 $env:BOTG_MODE = $Mode

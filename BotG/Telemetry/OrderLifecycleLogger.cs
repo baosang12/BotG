@@ -86,6 +86,24 @@ namespace Telemetry
                 }
 
                 var host = Environment.MachineName;
+                // Diagnostics: warn if FILL without price_filled or size_filled
+                try
+                {
+                    var stUp = (status ?? phase ?? "").ToUpperInvariant();
+                    if (string.Equals(stUp, "FILL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool missPx = !(execPrice.HasValue) || execPrice.Value == 0.0;
+                        bool missSz = !(filledSize.HasValue) || filledSize.Value == 0.0;
+                        if (missPx || missSz)
+                        {
+                            var warnDir = Path.GetDirectoryName(_filePath) ?? string.Empty;
+                            var warnPath = Path.Combine(warnDir, "orders_warnings.log");
+                            var msg = ts.ToString("o", CultureInfo.InvariantCulture) + " WARN FILL missing fields orderId=" + orderId + (missPx ? " price_filled" : "") + (missSz ? " size_filled" : "");
+                            try { File.AppendAllText(warnPath, msg + Environment.NewLine); } catch { }
+                        }
+                    }
+                }
+                catch { }
                 var line = string.Join(",",
                     phase,
                     ts.ToString("o", CultureInfo.InvariantCulture),

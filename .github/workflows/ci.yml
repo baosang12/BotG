@@ -134,6 +134,13 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Show Python and PowerShell versions
+        shell: pwsh
+        run: |
+          Write-Host "PSVersion: $($PSVersionTable.PSVersion)"
+          try { python --version } catch { Write-Warning $_ }
+          try { py -3 --version } catch { Write-Warning $_ }
+
       - name: Download smoke artifacts
         uses: actions/download-artifact@v4
         with:
@@ -149,7 +156,18 @@ jobs:
       - name: Run reconstruction validation
         shell: pwsh
         run: |
-          & .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot (Resolve-Path './smoke-artifacts') -OutDir './recon-out'
+          $art = (Resolve-Path './smoke-artifacts').Path
+          & .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot $art -OutDir './recon-out'
+
+      - name: Print validation summary (for logs)
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath './recon-out') {
+            Get-ChildItem -LiteralPath './recon-out' -Force | Format-List *
+            $summary = Get-ChildItem -LiteralPath './recon-out' -Filter 'reconstruct_validation_*.json' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($summary) { Get-Content -LiteralPath $summary.FullName -Raw | Write-Host }
+          } else { Write-Warning 'recon-out directory not found' }
 
       - name: Upload reconstruction outputs
         if: always()
