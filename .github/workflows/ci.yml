@@ -140,10 +140,16 @@ jobs:
           name: quick-smoke-artifacts
           path: smoke-artifacts
 
+      - name: List downloaded artifact contents
+        shell: pwsh
+        run: |
+          Write-Host 'Listing smoke-artifacts contents:'
+          Get-ChildItem -Recurse -Force -LiteralPath './smoke-artifacts' | Select-Object FullName, Length, LastWriteTime | Format-Table -AutoSize
+
       - name: Run reconstruction validation
         shell: pwsh
         run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot (Resolve-Path './smoke-artifacts') -OutDir './recon-out'
+          & .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot (Resolve-Path './smoke-artifacts') -OutDir './recon-out'
 
       - name: Upload reconstruction outputs
         if: always()
