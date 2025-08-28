@@ -118,12 +118,46 @@ jobs:
             ${{ steps.validate.outputs.path }}/*.json
             ${{ steps.validate.outputs.path }}/*.csv
 
+  reconstruct-validate:
+    name: Reconstruct & Validate (from smoke)
+    runs-on: windows-latest
+    needs: quick-smoke
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Download smoke artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: quick-smoke-artifacts
+          path: smoke-artifacts
+
+      - name: Run reconstruction validation
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_reconstruct_validate.ps1 -ArtifactsRoot (Resolve-Path './smoke-artifacts') -OutDir './recon-out'
+
+      - name: Upload reconstruction outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-validation-artifacts
+          path: recon-out
+
   report-required-status:
     # This job publishes a single commit status named exactly 'CI - build & test'
     # to satisfy the required check shown as "Expected — Waiting for status to be reported".
     name: CI - build & test (aggregated)
     runs-on: ubuntu-latest
-    needs: [build-test, quick-smoke]
+    needs: [build-test, quick-smoke, reconstruct-validate]
     if: ${{ always() }}
     steps:
       - name: Compute overall result
@@ -131,9 +165,11 @@ jobs:
         run: |
           BT='${{ needs.build-test.result }}'
           QS='${{ needs.quick-smoke.result }}'
+          RV='${{ needs.reconstruct-validate.result }}'
           echo "build_test=$BT" >> $GITHUB_OUTPUT
           echo "quick_smoke=$QS" >> $GITHUB_OUTPUT
-          if [ "$BT" = "success" ] && [ "$QS" = "success" ]; then
+          echo "recon_validate=$RV" >> $GITHUB_OUTPUT
+          if [ "$BT" = "success" ] && [ "$QS" = "success" ] && [ "$RV" = "success" ]; then
             echo "state=success" >> $GITHUB_OUTPUT
             echo "desc=All required CI jobs passed" >> $GITHUB_OUTPUT
           else
