@@ -1,10 +1,12 @@
-$ErrorActionPreference = 'Stop'
+
 
 param(
+
   [Parameter(Mandatory=$true)][string]$ArtifactsRoot,
   [Parameter(Mandatory=$false)][string]$OutDir = "out"
 )
-
+$ErrorActionPreference = 'Stop'
+Write-Host 'RV_SCRIPT_VERSION=2025-08-28-v2'
 Write-Host "ArtifactsRoot=$ArtifactsRoot"
 if (-not (Test-Path -LiteralPath $ArtifactsRoot)) { throw "Artifacts root not found: $ArtifactsRoot" }
 
