@@ -170,7 +170,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 # parse volume (Decimal)
                 vol_str = row.get(size_col) if size_col else None
                 try:
-                    volume = Decimal(str(vol_str)).copy_abs() if vol_str not in (None, "") else None
+                    volume = abs(Decimal(str(vol_str))) if vol_str not in (None, "") else None
                 except (InvalidOperation, Exception):
                     volume = None
                 if not volume or volume <= 0:
