@@ -89,8 +89,8 @@ class Fill:
     def __init__(self, symbol: str, side: str, volume: Decimal, price: Decimal, epoch_ms: int, iso: str):
         self.symbol = symbol
         self.side = side  # BUY or SELL
-        self.volume = Decimal(volume)
-        self.price = Decimal(price)
+        self.volume = volume
+        self.price = price
         self.epoch_ms = int(epoch_ms)
         self.iso = iso
 
