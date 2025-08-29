@@ -9,6 +9,8 @@ on:
   pull_request:
     branches:
       - main
+      - master
+      - develop
 
 # Allow this workflow to post a commit status with the exact context required by branch protection
 permissions:
@@ -21,7 +23,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest]
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

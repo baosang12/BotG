@@ -1,0 +1,174 @@
+name: Branch Protection
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+jobs:
+  enforce-protection:
+    name: Enforce Branch Protection Rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if direct push to protected branch
+        if: github.event_name == 'push'
+        run: |
+          echo "❌ Direct push to protected branch '${{ github.ref_name }}' is not allowed!"
+          echo "Please create a pull request instead."
+          echo "Protected branches: main, master, develop"
+          exit 1
+
+      - name: Validate PR requirements
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "✅ Pull request detected - checking requirements..."
+          
+          # Check if PR has a description
+          if [ -z "${{ github.event.pull_request.body }}" ]; then
+            echo "❌ Pull request must have a description"
+            exit 1
+          fi
+          
+          # Check if PR title is meaningful (not just branch name)
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          BRANCH_NAME="${{ github.head_ref }}"
+          if [ "$PR_TITLE" = "$BRANCH_NAME" ]; then
+            echo "❌ Pull request title should be more descriptive than just the branch name"
+            exit 1
+          fi
+          
+          echo "✅ PR requirements validation passed"
+
+  require-ci-success:
+    name: Require CI Success
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [enforce-protection]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --verbosity normal --configuration Release
+
+      - name: Check build artifacts
+        run: |
+          echo "✅ Build and tests completed successfully"
+          echo "This check ensures CI passes before merge is allowed"
+
+  branch-freshness-check:
+    name: Check Branch Freshness
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if branch is up to date
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          
+          # Get the merge-base between the PR branch and target branch
+          MERGE_BASE=$(git merge-base HEAD origin/${{ github.base_ref }})
+          TARGET_HEAD=$(git rev-parse origin/${{ github.base_ref }})
+          
+          if [ "$MERGE_BASE" != "$TARGET_HEAD" ]; then
+            echo "⚠️  Warning: This branch is not up to date with ${{ github.base_ref }}"
+            echo "Consider updating your branch before merging:"
+            echo "  git fetch origin"
+            echo "  git merge origin/${{ github.base_ref }}"
+            echo ""
+            echo "Commits behind: $(git rev-list --count $MERGE_BASE..$TARGET_HEAD)"
+            echo "Commits ahead: $(git rev-list --count $TARGET_HEAD..HEAD)"
+          else
+            echo "✅ Branch is up to date with ${{ github.base_ref }}"
+          fi
+
+  code-quality-check:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for large files
+        run: |
+          echo "Checking for large files (>5MB)..."
+          LARGE_FILES=$(find . -type f -size +5M -not -path "./.git/*" -not -path "./artifacts/*" -not -path "*/bin/*" -not -path "*/obj/*" || true)
+          
+          if [ -n "$LARGE_FILES" ]; then
+            echo "❌ Large files detected (>5MB):"
+            echo "$LARGE_FILES"
+            echo "Consider using Git LFS for large files or removing them"
+            exit 1
+          else
+            echo "✅ No large files detected"
+          fi
+
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for potentially sensitive files..."
+          SENSITIVE_PATTERNS="\.env$ \.key$ \.pem$ \.p12$ \.pfx$ password config\.json$ secrets\."
+          
+          for pattern in $SENSITIVE_PATTERNS; do
+            FOUND=$(find . -type f -regex ".*$pattern" -not -path "./.git/*" || true)
+            if [ -n "$FOUND" ]; then
+              echo "⚠️  Potentially sensitive files found matching pattern '$pattern':"
+              echo "$FOUND"
+            fi
+          done
+          
+          echo "✅ Sensitive file check completed"
+
+      - name: Check commit messages
+        run: |
+          echo "Checking commit message quality..."
+          
+          # Get commits in this PR
+          git fetch origin ${{ github.base_ref }}
+          COMMITS=$(git rev-list origin/${{ github.base_ref }}..HEAD)
+          
+          for commit in $COMMITS; do
+            MSG=$(git log --format=%s -n 1 $commit)
+            
+            # Check minimum length
+            if [ ${#MSG} -lt 10 ]; then
+              echo "❌ Commit $commit has too short message: '$MSG'"
+              echo "Commit messages should be at least 10 characters"
+              exit 1
+            fi
+            
+            # Check for WIP/FIXME/TODO in commit messages
+            if echo "$MSG" | grep -qiE "(wip|fixme|todo|temp|temporary)"; then
+              echo "⚠️  Commit $commit contains work-in-progress indicators: '$MSG'"
+              echo "Consider cleaning up before merging"
+            fi
+          done
+          
+          echo "✅ Commit message check passed"
