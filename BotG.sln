@@ -6,6 +6,8 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BotG", "BotG\BotG.csproj", "{b1d16a06-3e96-4496-88f8-ad277438de8a}"
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BotG.Tests", "Tests\BotG.Tests.csproj", "{A0F4DD6B-0B7A-4D24-A0C7-4B8D5C3709E8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReconstructClosedTrades", "Tools\ReconstructClosedTrades\ReconstructClosedTrades.csproj", "{9F1A2D25-0F69-4E33-8BF1-9A6B5F2D8C77}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Harness", "Harness\Harness.csproj", "{b6f93465-8f0c-4b8e-8a44-6f2b9a7dc2ad}"
 EndProject
 Global
@@ -26,6 +28,10 @@ Global
 		{A0F4DD6B-0B7A-4D24-A0C7-4B8D5C3709E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A0F4DD6B-0B7A-4D24-A0C7-4B8D5C3709E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A0F4DD6B-0B7A-4D24-A0C7-4B8D5C3709E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F1A2D25-0F69-4E33-8BF1-9A6B5F2D8C77}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F1A2D25-0F69-4E33-8BF1-9A6B5F2D8C77}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F1A2D25-0F69-4E33-8BF1-9A6B5F2D8C77}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F1A2D25-0F69-4E33-8BF1-9A6B5F2D8C77}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

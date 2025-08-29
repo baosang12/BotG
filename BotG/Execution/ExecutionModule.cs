@@ -11,7 +11,7 @@ namespace Execution
     public class ExecutionModule
     {
     private readonly List<IStrategy<TradeSignal>> _strategies;
-    private readonly Robot _bot;
+    private readonly Robot? _bot;
     private readonly IOrderExecutor _executor;
 
         // telemetry
@@ -19,19 +19,19 @@ namespace Execution
         private readonly TelemetryCollector _telemetry;
         private readonly int _retryLimit = 1;
         // optional risk manager for order sizing
-    private readonly RiskManager.RiskManager _riskManager;
+    private readonly RiskManager.RiskManager? _riskManager;
     private bool _pointValuePrinted = false; // ensure single startup print
 
         // backward-compatible constructor
-    public ExecutionModule(List<IStrategy<TradeSignal>> strategies, Robot bot)
+    public ExecutionModule(List<IStrategy<TradeSignal>> strategies, Robot? bot)
             : this(strategies, bot, null) {}
 
         // new constructor with optional RiskManager for sizing
-    public ExecutionModule(List<IStrategy<TradeSignal>> strategies, Robot bot, RiskManager.RiskManager riskManager)
+    public ExecutionModule(List<IStrategy<TradeSignal>> strategies, Robot? bot, RiskManager.RiskManager? riskManager)
         {
             _strategies = strategies;
             _bot = bot;
-            _executor = new RobotOrderExecutor(bot);
+            _executor = new RobotOrderExecutor(bot ?? new cAlgo.API.Robot());
             // Initialize telemetry with defaults; overridden by startup wiring if available
             var cfg = TelemetryConfig.Load();
             _orderLogger = new OrderLifecycleLogger(cfg.LogPath, cfg.OrderLogFile);
@@ -45,7 +45,7 @@ namespace Execution
             try { _riskManager.SetSymbolReference(_bot.Symbol); } catch {}
                     // Prefer SetPointValueFromSymbol if available; otherwise fallback to SetPointValueFromParams using reflection
                     var rmType = _riskManager.GetType();
-                    var sym = _bot.Symbol;
+                    object sym = _bot != null ? (object)_bot.Symbol : new cAlgo.API.Symbol();
                     var setFromSym = rmType.GetMethod("SetPointValueFromSymbol", new Type[] { typeof(cAlgo.API.Internals.Symbol) })
                                    ?? rmType.GetMethod("SetPointValueFromSymbol", new Type[] { typeof(cAlgo.API.Symbol) });
                     if (setFromSym != null)
@@ -97,7 +97,7 @@ namespace Execution
         }
 
         // New constructor overload for tests or DI: provide an IOrderExecutor directly.
-        public ExecutionModule(List<IStrategy<TradeSignal>> strategies, IOrderExecutor executor, Robot bot, RiskManager.RiskManager riskManager = null)
+    public ExecutionModule(List<IStrategy<TradeSignal>> strategies, IOrderExecutor executor, Robot? bot, RiskManager.RiskManager? riskManager = null)
         {
             _strategies = strategies;
             _bot = bot;
@@ -192,6 +192,7 @@ namespace Execution
                     requestedUnits = 1000; // legacy default
                 }
                 // derive stopLoss for logging: prefer signal.StopLoss; else try ATR*multiplier; else blank
+                var act = signal != null ? signal.Action : TradeAction.None;
                 double? stopLossLog = null;
                 try
                 {
@@ -224,13 +225,31 @@ namespace Execution
                         // TODO: wire real ATR source; for now, leave blank if not available
                         if (atr > 0)
                         {
-                            stopLossLog = signal.Action == TradeAction.Buy ? (price - atr * mult) : (price + atr * mult);
+                            stopLossLog = act == TradeAction.Buy ? (price - atr * mult) : (price + atr * mult);
                         }
                     }
                 }
                 catch { }
                 // REQUEST log with theoretical lots/units and requested volume
-                _orderLogger.Log("REQUEST", orderId, price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, $"Action={signal.Action}");
+                var sideStr = act == TradeAction.Buy ? "Buy" : (act == TradeAction.Sell ? "Sell" : "Exit");
+                _orderLogger.LogV2(
+                    phase: "REQUEST",
+                    orderId: orderId,
+                    clientOrderId: orderId,
+                    side: sideStr,
+                    action: act.ToString(),
+                    type: "Market",
+                    intendedPrice: price,
+                    stopLoss: stopLossLog,
+                    execPrice: null,
+                    theoreticalLots: theoreticalLots,
+                    theoreticalUnits: requestedUnits,
+                    requestedVolume: requestedUnits,
+                    filledSize: null,
+                    status: "REQUEST",
+                    reason: null,
+                    session: GetSymbolName()
+                );
                 _telemetry.IncOrderRequested();
 
                 int attempts = 0;
@@ -239,7 +258,7 @@ namespace Execution
                     try
                     {
             ExecuteResult result;
-                        switch (signal.Action)
+                        switch (act)
                         {
                             case TradeAction.Buy:
                 result = _executor.ExecuteMarketOrder(TradeType.Buy, GetSymbolName(), Math.Round(requestedUnits), "Bot3", null, null);
@@ -258,19 +277,22 @@ namespace Execution
                                     }
                                 }
                                 }
-                                _orderLogger.Log("ACK", orderId, price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, "Exit processed");
+                                _orderLogger.LogV2("ACK", orderId, orderId, sideStr, act.ToString(), "Exit",
+                                    price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, "ACK", "Exit processed", GetSymbolName());
                                 return;
                             default:
                                 return;
                         }
                         double? execPrice = result?.EntryPrice;
                         double? filled = result?.FilledVolumeInUnits;
-                        string brokerMsg = (result?.IsSuccessful == true) ? "OK" : result?.ErrorText;
+                        string brokerMsg = (result?.IsSuccessful == true) ? "OK" : (result?.ErrorText ?? "");
                         // Log ACK with any available executed price/fill info
-                        _orderLogger.Log("ACK", orderId, price, stopLossLog, execPrice, theoreticalLots, requestedUnits, requestedUnits, filled, brokerMsg);
+                        _orderLogger.LogV2("ACK", orderId, orderId, sideStr, act.ToString(), "Market",
+                            price, stopLossLog, execPrice, theoreticalLots, requestedUnits, requestedUnits, filled, "ACK", brokerMsg, GetSymbolName());
                         if (result?.IsSuccessful == true && filled.HasValue && filled.Value > 0)
                         {
-                            _orderLogger.Log("FILL", orderId, price, stopLossLog, execPrice, theoreticalLots, requestedUnits, requestedUnits, filled, "filled");
+                            _orderLogger.LogV2("FILL", orderId, orderId, sideStr, act.ToString(), "Market",
+                                price, stopLossLog, execPrice, theoreticalLots, requestedUnits, requestedUnits, filled, "FILL", "filled", GetSymbolName());
                             _telemetry.IncOrderFilled();
                         }
                         break;
@@ -278,7 +300,8 @@ namespace Execution
                     catch (Exception ex) when (attempts < _retryLimit)
                     {
                         attempts++;
-                        _orderLogger.Log("ERROR", orderId, price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, ex.Message);
+                        _orderLogger.LogV2("ERROR", orderId, orderId, sideStr, act.ToString(), "Market",
+                            price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, "ERROR", ex.Message, GetSymbolName());
                         _telemetry.IncError();
                         // brief backoff
                         System.Threading.Thread.Sleep(200);
@@ -302,43 +325,35 @@ namespace Execution
         {
             try
             {
-                var sym = _bot.Symbol;
-                var prop = sym.GetType().GetProperty("LotSize");
-                if (prop != null)
+                if (_bot == null)
                 {
-                    var v = prop.GetValue(sym);
-                    if (v != null)
-                    {
-                        var d = Convert.ToDouble(v);
-                        if (d > 0) return d;
-                    }
+                    return (_riskManager != null ? _riskManager.GetSettings().LotSizeDefault : 1000);
+                }
+
+                var symbolObj = _bot.GetType().GetProperty("Symbol")?.GetValue(_bot);
+                if (symbolObj == null)
+                {
+                    return (_riskManager != null ? _riskManager.GetSettings().LotSizeDefault : 1000);
+                }
+
+                // Try direct known properties first
+                var symbolType = symbolObj.GetType();
+                var lotSizeProp = symbolType.GetProperty("LotSize")
+                                 ?? symbolType.GetProperty("VolumeInUnits")
+                                 ?? symbolType.GetProperty("VolumeMin");
+                if (lotSizeProp != null)
+                {
+                    var val = lotSizeProp.GetValue(symbolObj);
+                    if (val is double d) return d;
+                    if (val is int i) return i;
+                    if (val is long l) return l;
+                    if (val is float f) return f;
+                    if (double.TryParse(val?.ToString(), out var parsed)) return parsed;
                 }
             }
             catch { }
-            try
-            {
-                // read default from RiskSettings via _riskManager if available
-                if (_riskManager != null)
-                {
-                    var rsField = typeof(RiskManager.RiskManager).GetField("_settings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var rsVal = rsField?.GetValue(_riskManager);
-                    if (rsVal != null)
-                    {
-                        var prop = rsVal.GetType().GetProperty("LotSizeDefault");
-                        if (prop != null)
-                        {
-                            var v = prop.GetValue(rsVal);
-                            if (v != null)
-                            {
-                                var d = Convert.ToDouble(v);
-                                if (d > 0) return d;
-                            }
-                        }
-                    }
-                }
-            }
-            catch { }
-            return 100.0;
+            // ultimate fallback
+            return (_riskManager != null ? _riskManager.GetSettings().LotSizeDefault : 1000);
         }
     }
 

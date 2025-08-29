@@ -1,6 +1,7 @@
-name: CI — build & test
+name: CI - build & test
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -11,45 +12,185 @@ on:
       - master
       - develop
 
+# Allow this workflow to post a commit status with the exact context required by branch protection
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build-test:
-    name: Build and Test (${{ matrix.os }} / .NET ${{ matrix.dotnet }})
+    name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        dotnet: ['8.0']
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET SDK ${{ matrix.dotnet }}
-        uses: actions/setup-dotnet@v3
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet }}
+          dotnet-version: |
+            6.0.x
+            9.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ matrix.dotnet }}-${{ hashFiles('**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            nuget-${{ matrix.dotnet }}-
+            nuget-${{ runner.os }}-
 
       - name: Restore
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build --no-restore --configuration Debug
+
+      - name: Show installed runtimes
+        run: |
+          dotnet --info
+          dotnet --list-runtimes
 
       - name: Test
-        run: dotnet test --no-build --verbosity normal --results-directory ./test-results || true
+        run: dotnet test --configuration Debug --verbosity normal --results-directory ./test-results
 
       - name: Upload test results (optional)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}-dotnet-${{ matrix.dotnet }}
+          name: test-results-${{ matrix.os }}
           path: ./test-results
+
+  quick-smoke:
+    name: Quick Smoke (60s)
+    runs-on: windows-latest
+    needs: build-test
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run 60s smoke with drain
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_smoke_test.ps1 -Seconds 60 -DrainSeconds 10
+
+      - name: Find artifact dir and validate orphans == 0
+        id: validate
+        shell: pwsh
+        run: |
+          $artRoot = Join-Path $env:TEMP 'botg_ci_smoke'
+          if (-not (Test-Path $artRoot)) { throw "Smoke artifact root not found: $artRoot" }
+          $dir = Get-ChildItem -Path $artRoot -Directory | Where-Object { $_.Name -like 'telemetry_run_*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dir) { throw 'No telemetry_run_* directory found' }
+          echo "path=$($dir.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $rr = Join-Path $dir.FullName 'reconcile_report.json'
+          if (-not (Test-Path $rr)) { throw "reconcile_report.json missing in $($dir.FullName)" }
+          $json = Get-Content -LiteralPath $rr -Raw | ConvertFrom-Json
+          $orph = [int]$json.orphan_fills_count
+          Write-Host ("orphan_fills_count=" + $orph)
+          if ($orph -gt 0) { throw "Orphan fills detected in smoke: $orph" }
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-smoke-artifacts
+          path: |
+            ${{ steps.validate.outputs.path }}
+            ${{ steps.validate.outputs.path }}/*.json
+            ${{ steps.validate.outputs.path }}/*.csv
+
+  reconstruct-validate:
+    name: Reconstruct & Validate (from smoke)
+    runs-on: windows-latest
+    needs: quick-smoke
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Download smoke artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: quick-smoke-artifacts
+          path: smoke-artifacts
+
+
+      - name: Upload reconstruction outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recon-validation-artifacts
+          path: recon-out
+
+  report-required-status:
+    # This job publishes a single commit status named exactly 'CI - build & test'
+    # to satisfy the required check shown as "Expected — Waiting for status to be reported".
+    name: CI - build & test (aggregated)
+    runs-on: ubuntu-latest
+    needs: [build-test, quick-smoke, reconstruct-validate]
+    if: ${{ always() }}
+    steps:
+      - name: Compute overall result
+        id: verdict
+        run: |
+          BT='${{ needs.build-test.result }}'
+          QS='${{ needs.quick-smoke.result }}'
+          RV='${{ needs.reconstruct-validate.result }}'
+          echo "build_test=$BT" >> $GITHUB_OUTPUT
+          echo "quick_smoke=$QS" >> $GITHUB_OUTPUT
+          echo "recon_validate=$RV" >> $GITHUB_OUTPUT
+          if [ "$BT" = "success" ] && [ "$QS" = "success" ] && [ "$RV" = "success" ]; then
+            echo "state=success" >> $GITHUB_OUTPUT
+            echo "desc=All required CI jobs passed" >> $GITHUB_OUTPUT
+          else
+            echo "state=failure" >> $GITHUB_OUTPUT
+            echo "desc=One or more CI jobs failed or were skipped" >> $GITHUB_OUTPUT
+          fi
+      - name: Publish commit status 'CI - build & test'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = (context.eventName === 'pull_request' || context.eventName === 'pull_request_target')
+              ? context.payload.pull_request.head.sha
+              : context.sha;
+            const state = `${{ steps.verdict.outputs.state }}`; // success | failure | error | pending
+            const description = `${{ steps.verdict.outputs.desc }}`;
+            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha,
+              state,
+              context: 'CI - build & test',
+              description,
+              target_url
+            });
