@@ -12,13 +12,7 @@ function Safe-Json {
 }
 
 $ts = (Get-Date).ToString("yyyyMMdd_HHmmss")
-# Resolve a stable workspace root (prefer parent of this script folder) and ensure ASCII artifacts folder exists at repo root
-$workspaceRoot = if ($PSScriptRoot) { (Split-Path -Parent $PSScriptRoot) } else { (Get-Location).Path }
-$asciiDir = Join-Path -Path $workspaceRoot -ChildPath "artifacts_ascii"
-if (-not (Test-Path -LiteralPath $asciiDir)) {
-    try { New-Item -ItemType Directory -Path $asciiDir -Force -ErrorAction Stop | Out-Null } catch {}
-}
-$outReport = Join-Path -Path $asciiDir -ChildPath "health_check_$ts.json"
+
 $report = [ordered]@{
     STATUS = $null
     can_continue_running = $null
@@ -36,7 +30,7 @@ $report = [ordered]@{
         tail = @()
     }
     disk = @{
-        drive = $(if ($OutDir) { (Split-Path -Qualifier $OutDir) } else { $env:SystemDrive })
+
         free_gb = $null
     }
     temp_artifacts = @()
@@ -117,10 +111,7 @@ try {
 
     foreach ($dir in $possibleRunDirs | Select-Object -Unique) {
         $candidates = @(
-            (Join-Path -Path ([string]$dir) -ChildPath "harness_stdout.log"),
-            (Join-Path -Path ([string]$dir) -ChildPath "harness.log"),
-            (Join-Path -Path ([string]$dir) -ChildPath "logs\harness.log"),
-            (Join-Path -Path ([string]$dir) -ChildPath "harness_stderr.log")
+
         )
         foreach ($c in $candidates) {
             if (Test-Path -LiteralPath $c) {
@@ -183,7 +174,7 @@ try {
             if ($dirsTemp.Count -gt 0) { $searchDirs += $dirsTemp[0].FullName }
         }
         foreach ($d in $searchDirs | Select-Object -Unique) {
-            $rm = Join-Path -Path ([string]$d) -ChildPath "run_metadata.json"
+
             if (Test-Path -LiteralPath $rm) {
                 $content = Get-Content -LiteralPath $rm -Raw -ErrorAction SilentlyContinue
                 try { $obj = $content | ConvertFrom-Json; $report.run_metadata = $obj; $runMetaFound = $true; break } catch {}
@@ -196,7 +187,7 @@ try {
     try {
         $ordersHeader = $null
         foreach ($d in $searchDirs | Select-Object -Unique) {
-            $f = Join-Path -Path ([string]$d) -ChildPath "orders.csv"
+
             if (Test-Path -LiteralPath $f) {
                 $header = Get-Content -LiteralPath $f -TotalCount 1 -ErrorAction SilentlyContinue
                 if ($header) {
@@ -210,17 +201,7 @@ try {
 
     # 8) reconstruct tool presence
     $reconPaths = @("tools\reconstruct.py","reconstruct_closed_trades_sqlite.py","Tools\ReconstructClosedTrades")
-    $rootsForTools = @($workspaceRoot, $PSScriptRoot)
-    foreach ($root in $rootsForTools | Where-Object { $_ }) {
-        foreach ($rp in $reconPaths) {
-            $candidate = Join-Path -Path ([string]$root) -ChildPath ([string]$rp)
-            if (Test-Path -LiteralPath $candidate) {
-                $report.reconstruct_tool.present = $true
-                $report.reconstruct_tool.path = $candidate
-                break
-            }
-        }
-        if ($report.reconstruct_tool.present) { break }
+
     }
     if (-not $report.reconstruct_tool.present) { $report.reconstruct_tool.present = $false; $report.issues += "Reconstruct tool not found in expected paths." }
 
@@ -261,9 +242,7 @@ try {
 
 } catch {
     $report.STATUS = "CANNOT_CHECK"
-    $err = $_
-    $lineInfo = if ($err.InvocationInfo) { " at line " + $err.InvocationInfo.ScriptLineNumber + ": " + ($err.InvocationInfo.Line -replace "`r?`n", ' ') } else { "" }
-    $report.notes = "Exception during health check: " + $err.Exception.Message + $lineInfo
+
     $report.issues += "Health-check script encountered an error."
     $report.can_continue_running = "unknown"
 }

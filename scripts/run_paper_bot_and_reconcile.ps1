@@ -21,8 +21,7 @@ $env:BOTG_MODE = 'paper'
 $env:BOTG_TELEMETRY_FLUSH_SEC = '5'
 Write-Info "Using BOTG_LOG_PATH=$logDir"
 
-# Resolve workspace root robustly using this script's path
-$ws = Split-Path -Parent $PSScriptRoot
+
 
 # Prefer real bot exe if present; else fallback to harness
 $botExe = Join-Path $ws 'BotG\bin\Release\net6.0\BotG.exe'
