@@ -21,12 +21,11 @@ function Show-DirSummary([string]$path) {
 
 try {
   $ErrorActionPreference = 'Stop'
-  Write-Info "PWD=$(Get-Location)"
 
   # 1) Audit env + config
   $envPath = $env:BOTG_LOG_PATH; if (-not $envPath) { $envPath = '<null>' }
   Write-Info ("ENV BOTG_LOG_PATH=$envPath")
-  $cfgPath = Join-Path (Get-Location) 'config.runtime.json'
+
   $cfgLog = '<null>'
   if (Test-Path $cfgPath) {
     try { $cfgLog = (Get-Content -Raw $cfgPath | ConvertFrom-Json).LogPath } catch { $cfgLog = '<parse-error>' }
@@ -34,14 +33,7 @@ try {
   Write-Info ("CONFIG LogPath=$cfgLog")
 
   # 2) Inspect both roots
-  Show-DirSummary 'C:\botg\logs'
-  Show-DirSummary 'D:\botg\logs'
 
-  # 3) Run harness via run_harness_and_collect.ps1 -> ensures BOTG_LOG_PATH points to the artifact dir
-  $psArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/run_harness_and_collect.ps1','-DurationSeconds', [string]$DurationSeconds, '-FillProb', ([System.String]::Format([System.Globalization.CultureInfo]::InvariantCulture, '{0:G}', $FillProb)))
-  if ($ForceRun) { $psArgs += '-ForceRun' }
-  Write-Info ("Starting run_harness_and_collect.ps1 with args: $($psArgs -join ' ')")
-  $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -NoNewWindow -PassThru
   $p.WaitForExit()
   Write-Info ("run_harness_and_collect exit=$($p.ExitCode)")
   if ($p.ExitCode -ne 0) { throw "run_harness_and_collect failed with exit $($p.ExitCode)" }

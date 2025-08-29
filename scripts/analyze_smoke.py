@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Analyze a smoke artifact folder:
  - Reads closed_trades_fifo.csv and orders.csv

@@ -42,3 +42,4 @@ Windows (PowerShell 5.1) recommended steps:
 5) Acceptance gate
   - In `reconstruct_report.json`, require `estimated_orphan_fills_after_reconstruct == 0`.
   - `final_report.json` contains a summarized verdict. The daemon retries once automatically if orphans persist.
+

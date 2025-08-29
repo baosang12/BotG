@@ -10,6 +10,11 @@ on:
     branches:
       - main
 
+# Allow this workflow to post a commit status with the exact context required by branch protection
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build-test:
     name: Build and Test (${{ matrix.os }})
@@ -112,3 +117,4 @@ jobs:
             ${{ steps.validate.outputs.path }}
             ${{ steps.validate.outputs.path }}/*.json
             ${{ steps.validate.outputs.path }}/*.csv
+
