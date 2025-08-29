@@ -89,8 +89,6 @@ class Fill:
     def __init__(self, symbol: str, side: str, volume: Decimal, price: Decimal, epoch_ms: int, iso: str):
         self.symbol = symbol
         self.side = side  # BUY or SELL
-        self.volume = Decimal(volume)
-        self.price = Decimal(price)
         self.epoch_ms = int(epoch_ms)
         self.iso = iso
 
@@ -170,7 +168,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 # parse volume (Decimal)
                 vol_str = row.get(size_col) if size_col else None
                 try:
-                    volume = Decimal(str(vol_str)).copy_abs() if vol_str not in (None, "") else None
+                    volume = abs(Decimal(str(vol_str))) if vol_str not in (None, "") else None
                 except (InvalidOperation, Exception):
                     volume = None
                 if not volume or volume <= 0:
@@ -273,7 +271,6 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, Decima
 
         elif f.side == "SELL":
             # Close existing longs first
-            vol_left = Decimal(f.volume)
             while vol_left > Decimal("0") and longs[sym]:
                 l = longs[sym][0]
                 take = l.volume if l.volume <= vol_left else vol_left
