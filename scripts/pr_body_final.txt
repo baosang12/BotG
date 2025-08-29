@@ -1,42 +1,60 @@
-feat(telemetry): add streaming compute + artifact reconcile wrapper (safe chunking + backup)
+fix(preflight): handle shutdown drain, flush closed trades, finalize preflight
 
-Tóm tắt
-Thêm các script tự động hoá để:
-- Tạo file "closes" từ reconstructed closed trades,
-- Chạy reconcile giữa closed trades và closes,
-- Tính toán fill-breakdown trên orders.csv lớn bằng chế độ streaming/chunked để tránh OOM.
+Tóm tắt / Summary
+- VN: Sửa race orphan/shutdown bằng drain + flush an toàn; hoàn tất pre-flight (reconcile, breakdown, monitoring, plots) và thêm quick-smoke CI (60s).
+- EN: Fix orphan/shutdown race with drain + safe flush; complete pre-flight (reconcile, breakdown, monitoring, plots) and add 60s quick-smoke CI.
 
-What changed
-- scripts/make_closes_from_reconstructed.py — stream + dedupe, xuất cleaned closes CSV/JSONL.
-- scripts/compute_fill_breakdown_stream.py — streaming/chunked compute; outputs: fill_rate_by_side.csv, fill_breakdown_by_hour.csv, analysis_summary_stats.json.
-- scripts/run_reconcile_and_compute.ps1 — parameterized wrapper with backups, logging, CSV/JSONL fallback.
-- scripts/reconcile.py — compatibility tweaks for closes keys.
+What changed (highlights)
+- scripts/run_smoke.ps1: tham số -DrainSeconds, drain window, auto top-up, reconstruct fallback, monitoring_summary.json, optional plots.
+- scripts/ci_smoke_test.ps1: nhận -DrainSeconds, assert orphan_fills_count==0.
+- .github/workflows/ci.yml: thêm job Quick Smoke (60s) trên Windows, upload artifacts.
+- .github/workflows/paper-pulse.yml: loại bỏ block lặp, giữ workflow_dispatch (4/24h).
+- Telemetry/CsvUtils.cs + ClosedTradesWriter: đảm bảo flush sau mỗi append (FileStream.Flush(true)).
+- Tools/plot_analysis.py: tạo PNGs nếu có matplotlib.
 
-Why
-Giải quyết nguy cơ OOM và cải thiện khả năng xử lý orders.csv lớn bằng streaming và wrapper an toàn.
+Quick smoke results (artifact)
+- SMOKE_ARTIFACT_PATH: c:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts\\telemetry_run_20250823_082920
+- reconcile_report.json: { "orphan_fills_count": 0, "request_count": 36, "fill_count": 36, "closed_trades_count": 18 }
+- monitoring_summary.json: { "fill_rate": 1.0, "trades_per_min": 108, "avg_pnl_per_trade": 0.149000, "max_drawdown": 0.0 }
 
-How I tested
-- Reconcile: closed_sum == closes_sum == 150016.07399960753 (diff 0)
-- Sample run: rows: 3,010,362; chunks: 302; elapsed ~277.38s
-- Build: dotnet build (PASS); Tests: dotnet test (7 passed)
+orders.csv (first 10 lines)
+phase,timestamp_iso,epoch_ms,orderId,intendedPrice,stopLoss,execPrice,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg,client_order_id,side,action,type,status,reason,latency_ms,price_requested,price_filled,size_requested,size_filled,session,host
+REQUEST,2025-08-23T01:29:22.4130201Z,1755912562413,ORD-0,100,99.95,,,,1,,,,ORD-0,Buy,BUY,Market,REQUEST,,,100,,1,,HARNESS,DESKTOP-584MV4B
+ACK,2025-08-23T01:29:22.4151029Z,1755912562415,ORD-0,100,99.95,,,,1,,,,ORD-0,Buy,BUY,Market,ACK,,2,100,,1,,HARNESS,DESKTOP-584MV4B
+FILL,2025-08-23T01:29:22.4157715Z,1755912562415,ORD-0,100,99.95,100.0005,,,1,1,0.0005000000000023874,filled,ORD-0,Buy,BUY,Market,FILL,filled,2,100,100.0005,1,1,HARNESS,DESKTOP-584MV4B
+REQUEST,2025-08-23T01:29:22.6447305Z,1755912562644,ORD-15,100.15,,,,,1,,,,ORD-15,Sell,SELL,Market,REQUEST,,,100.15,,1,,HARNESS,DESKTOP-584MV4B
+ACK,2025-08-23T01:29:22.6450083Z,1755912562645,ORD-15,100.15,,,,,1,,,,ORD-15,Sell,SELL,Market,ACK,,1,100.15,,1,,HARNESS,DESKTOP-584MV4B
+FILL,2025-08-23T01:29:22.6451124Z,1755912562645,ORD-15,100.15,,100.1495,,,1,1,-0.0005000000000023874,filled,ORD-15,Sell,SELL,Market,FILL,filled,1,100.15,100.1495,1,1,HARNESS,DESKTOP-584MV4B
+REQUEST,2025-08-23T01:29:22.8839734Z,1755912562883,ORD-30,100.3,100.25,,,,1,,,,ORD-30,Buy,BUY,Market,REQUEST,,,100.3,,1,,HARNESS,DESKTOP-584MV4B
+ACK,2025-08-23T01:29:22.8846570Z,1755912562884,ORD-30,100.3,100.25,,,,1,,,,ORD-30,Buy,BUY,Market,ACK,,1,100.3,,1,,HARNESS,DESKTOP-584MV4B
+FILL,2025-08-23T01:29:22.8850247Z,1755912562885,ORD-30,100.3,100.25,100.3005,,,1,1,0.0005000000000023874,filled,ORD-30,Buy,BUY,Market,FILL,filled,2,100.3,100.3005,1,1,HARNESS,DESKTOP-584MV4B
+REQUEST,2025-08-23T01:29:23.1293711Z,1755912563129,ORD-45,100.45,,,,,1,,,,ORD-45,Sell,SELL,Market,REQUEST,,,100.45,,1,,HARNESS,DESKTOP-584MV4B
 
-How to validate locally
-1. Fetch & checkout:
-   git fetch origin
-   git checkout botg/automation/reconcile-streaming-20250821_084334
-2. Build & tests:
-   dotnet build
-   dotnet test
-3. Run wrapper (sample):
-   .\scripts\run_reconcile_and_compute.ps1 -ArtifactPath .\artifacts\telemetry_run_20250819_154459 -ChunkSize 10000
-   Expect: exit code 0 and auto_reconcile_compute_summary.json with closed_sum == closes_sum.
+closed_trades_fifo.csv (first 10 lines)
+trade_id,entry_order_id,exit_order_id,open_time_iso,close_time_iso,side,size,open_price,close_price,pnl_in_account_currency,fee,notes,gross_pnl
+T-ORD-15,ORD-0,ORD-15,2025-08-23T01:29:22.4159623Z,2025-08-23T01:29:22.6451983Z,BUY-SELL,1,100.0005,100.1495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-45,ORD-30,ORD-45,2025-08-23T01:29:22.8853433Z,2025-08-23T01:29:23.1351357Z,BUY-SELL,1,100.3005,100.4495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-75,ORD-60,ORD-75,2025-08-23T01:29:23.3697456Z,2025-08-23T01:29:23.5997749Z,BUY-SELL,1,100.6005,100.7495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-105,ORD-90,ORD-105,2025-08-23T01:29:23.8351697Z,2025-08-23T01:29:24.0797733Z,BUY-SELL,1,100.90050000000001,101.0495,0.1489999999999867,0,harness,0.1489999999999867
+T-ORD-135,ORD-120,ORD-135,2025-08-23T01:29:24.3203220Z,2025-08-23T01:29:24.5576588Z,BUY-SELL,1,101.2005,101.34949999999999,0.1489999999999867,0,harness,0.1489999999999867
+T-ORD-165,ORD-150,ORD-165,2025-08-23T01:29:24.7536794Z,2025-08-23T01:29:25.0024251Z,BUY-SELL,1,101.5005,101.6495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-195,ORD-180,ORD-195,2025-08-23T01:29:25.2378028Z,2025-08-23T01:29:25.4877367Z,BUY-SELL,1,101.8005,101.9495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-225,ORD-210,ORD-225,2025-08-23T01:29:25.7377914Z,2025-08-23T01:29:25.9375602Z,BUY-SELL,1,102.1005,102.2495,0.1490000000000009,0,harness,0.1490000000000009
+T-ORD-255,ORD-240,ORD-255,2025-08-23T01:29:26.1372583Z,2025-08-23T01:29:26.3776159Z,BUY-SELL,1,102.40050000000001,102.5495,0.1489999999999867,0,harness,0.1489999999999867
+T-ORD-285,ORD-270,ORD-285,2025-08-23T01:29:26.6211908Z,2025-08-23T01:29:26.8652872Z,BUY-SELL,1,102.7005,102.84949999999999,0.1489999999999867,0,harness,0.1489999999999867
 
-Risk & rollback
-- Backup tag: pre_push_backup_20250821_105716
-- Revert: git checkout main; git reset --hard pre_push_backup_20250821_105716
+Reconcile summary (json)
+{"request_count":36,"fill_count":36,"filled_request_rate":1,"closed_trades_count":18,"fills_matched_to_closes":36,"orphan_fills_count":0,"orphan_closes_count":0,"status":"ok"}
 
-Files changed
-- scripts/compute_fill_breakdown_stream.py
-- scripts/make_closes_from_reconstructed.py
-- scripts/reconcile.py
-- scripts/run_reconcile_and_compute.ps1
+Preflight report (summary)
+SMOKE_ARTIFACT_PATH=c:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts\\telemetry_run_20250823_082920
+requests=36, fills=36, fill_rate=1
+closed_trades_count=18, total_pnl≈2.682
+orphans_fills=0
+
+Acceptance criteria
+- [x] Build & Tests pass.
+- [x] Quick smoke (60s) => orphan_fills_count == 0.
+- [x] closed_trades_fifo.csv flushed fully on shutdown.
+- [x] monitoring_summary.json present (fill_rate == 1.0 for deterministic harness).
+- [x] Branch pushed and PR opened; CI includes smoke gate.

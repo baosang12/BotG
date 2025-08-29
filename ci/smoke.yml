@@ -1,0 +1,36 @@
+name: Nightly Smoke (deterministic)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+      - name: Build
+        run: dotnet build .\BotG.sln --nologo
+      - name: Test
+        run: dotnet test .\BotG.sln --no-build --nologo
+      - name: Prepare log path
+        run: |
+          $env:BOTG_LOG_PATH = "$env:LOCALAPPDATA\BotG\logs"
+          New-Item -ItemType Directory -Force -Path $env:BOTG_LOG_PATH | Out-Null
+          echo BOTG_LOG_PATH=$env:BOTG_LOG_PATH
+      - name: Short Harness run (60s)
+        run: dotnet run --project .\Harness\Harness.csproj -- --seconds 60 --fill-prob 1.0
+      - name: Analyze smoke
+        run: |
+          python -m pip install --upgrade pip || echo "pip skip"
+          python -m pip install matplotlib || echo "matplotlib optional"
+          python .\scripts\analyze_smoke.py
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke_artifacts
+          path: |
+            path_issues\*

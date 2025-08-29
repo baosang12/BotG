@@ -1,20 +1,10 @@
 {
+	// VS Code tasks to streamline build, tests, quick smoke, and realtime helpers
+	"$schema": "vscode://schemas/tasks",
 	"version": "2.0.0",
 	"tasks": [
 		{
 			"label": "build",
-			"command": "dotnet",
-			"type": "process",
-			"args": [
-				"build",
-				"${workspaceFolder}",
-				"/property:GenerateFullPaths=true",
-				"/consoleLoggerParameters:NoSummary"
-			],
-			"problemMatcher": "$msCompile"
-		},
-		{
-			"label": "build",
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
@@ -22,21 +12,90 @@
 				"${workspaceFolder}",
 				"/property:GenerateFullPaths=true",
 				"/consoleLoggerParameters:NoSummary"
-			]
+			],
+			"group": "build",
+			"problemMatcher": ["$msCompile"]
 		},
 		{
-			"label": "run-harness",
+			"label": "test",
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
-				"run",
-				"--project",
-				"${workspaceFolder}\\Harness\\Harness.csproj"
+				"test",
+				"${workspaceFolder}\\BotG.sln",
+				"--no-build",
+				"--verbosity:minimal"
 			],
-			"problemMatcher": [
-				"$msCompile"
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "smoke-60s-ascii",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\run_smoke.ps1",
+				"-Seconds",
+				"60",
+				"-SecondsPerHour",
+				"300",
+				"-DrainSeconds",
+				"20",
+				"-FillProb",
+				"1.0",
+				"-UseSimulation"
 			],
-			"group": "build"
+			"problemMatcher": []
+		},
+		{
+			"label": "realtime-quick-60s",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\start_realtime_1h_ascii.ps1",
+				"-Seconds","60",
+				"-SecondsPerHour","300",
+				"-Drain","20",
+				"-Grace","5",
+				"-PRNumber","13"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "preflight-last-ascii",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\preflight_last_ascii.ps1",
+				"-LogTail",
+				"120"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "finalize-last-ascii",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$out = (Get-ChildItem -LiteralPath $env:TEMP\\botg_artifacts -Directory -Filter 'realtime_1h_*' | Sort-Object LastWriteTime -Desc | Select-Object -First 1).FullName; if(-not $out){throw 'No realtime_1h_* found'}; & '${workspaceFolder}\\scripts\\finalize_realtime_1h_report.ps1' -OutBase $out -PRNumber 13"
+			],
+			"problemMatcher": []
 		}
 	]
 }

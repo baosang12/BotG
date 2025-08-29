@@ -1,0 +1,1542 @@
+﻿commit bc03f2dc370cfece86f7999d0060867118f75d24
+Author: BotG Dev <botg@example.com>
+Date:   Wed Aug 27 13:50:15 2025 +0700
+
+    fix(postrun): reconcile PnL, slippage/latency analysis + plots, runbook & CI; minor logging patch (if applied)
+
+diff --git a/Harness/Program.cs b/Harness/Program.cs
+index 5cb2056..f65a4a4 100644
+--- a/Harness/Program.cs
++++ b/Harness/Program.cs
+@@ -147,9 +147,11 @@ class Program
+                 try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
+                 double net = gross - fee;
+-                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
+-                // Also log the synthetic exit fill to orders.csv for reconciliation consistency
+-                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
++            TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
++        // Also log the synthetic exit order lifecycle to ensure latency_ms is derivable
++        TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "REQUEST", "drain", "HARNESS");
++        TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "ACK", "drain", "HARNESS");
++        TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+             }
+             else if (sellStack.Count > 0 && buyStack.Count == 0)
+             {
+@@ -167,6 +169,8 @@ class Program
+                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
+                 double net = gross - fee;
+                 TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{s.orderId}", "DRAIN-BUY", s.orderId, s.ts, now, "BUY-SELL", 1.0, fakeBuyPrice, s.price, net, fee, "drain_close", gross);
++                TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "REQUEST", "drain", "HARNESS");
++                TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "ACK", "drain", "HARNESS");
+                 TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, fakeBuyPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+             }
+             else
+diff --git a/docs/runbook_postrun.md b/docs/runbook_postrun.md
+new file mode 100644
+index 0000000..2d2ea9e
+--- /dev/null
++++ b/docs/runbook_postrun.md
+@@ -0,0 +1,20 @@
++# Postrun Runbook and Alerts
++
++Acceptance thresholds (suggested):
++  - fill_rate < 0.95: stop and investigate.
++  - latency median > 200 ms: review.
++  - slippage p95 above instrument thresholds: review.
++Kill switch: create a file named `RUN_PAUSE` in the run folder to stop further execution loops.
++Re-run deterministic smoke locally (2ΓÇô5 min): set `BOTG_LOG_PATH` to a writable folder, `FillProb=1.0`.
++Artifacts to review: orders.csv, closed_trades_fifo.csv, trade_closes.log, run_metadata.json, analysis_summary.json.
++
++## CI smoke (skeleton)
++
++- Non-blocking template at `ci/smoke.yml` for scheduled nightly smoke.
++- Steps: checkout ΓåÆ dotnet build/test ΓåÆ short Harness run ΓåÆ run `scripts/analyze_smoke.py` ΓåÆ upload artifacts to CI workspace.
++
++---
++
++## Troubleshooting
++- Unicode paths on Windows PowerShell 5.1: prefer using environment variables and avoid passing -File with Unicode paths.
++- If plotting fails, `matplotlib` is optional; JSON/CSV outputs still generated.
+\ No newline at end of file
+diff --git a/path_issues/README.txt b/path_issues/README.txt
+new file mode 100644
+index 0000000..db3c977
+--- /dev/null
++++ b/path_issues/README.txt
+@@ -0,0 +1,10 @@
++This folder stores path scanning findings, build/test logs, and smoke verification outputs for the UnicodeΓåÆASCII path migration.
++
++Files produced by scripts:
++- findings_paths_to_fix.txt
++- build_and_test_output.txt
++- smoke_analysis_summary.json
++- diagnostic_preview_head.csv
++- closed_trades_head.csv
++- orders_warnings_tail.txt
++- summary_report.md
+diff --git a/path_issues/agent_summary_20250827_124841.json b/path_issues/agent_summary_20250827_124841.json
+new file mode 100644
+index 0000000..0f2a737
+--- /dev/null
++++ b/path_issues/agent_summary_20250827_124841.json
+@@ -0,0 +1,5 @@
++∩╗┐{
++    "botg_log_path":  "D:\\botg\\logs",
++    "repo":  "D:\\OneDrive\\Ta╠Çi li├¬╠úu\\cAlgo\\Sources\\Robots\\BotG",
++    "ts":  "20250827_124841"
++}
+diff --git a/path_issues/agent_ts.txt b/path_issues/agent_ts.txt
+new file mode 100644
+index 0000000..5435554
+--- /dev/null
++++ b/path_issues/agent_ts.txt
+@@ -0,0 +1 @@
++20250827_124502
+diff --git a/path_issues/build_and_test_output.txt b/path_issues/build_and_test_output.txt
+new file mode 100644
+index 0000000..5232d59
+Binary files /dev/null and b/path_issues/build_and_test_output.txt differ
+diff --git a/path_issues/draintag_fix_report.txt b/path_issues/draintag_fix_report.txt
+new file mode 100644
+index 0000000..b28ce9c
+--- /dev/null
++++ b/path_issues/draintag_fix_report.txt
+@@ -0,0 +1,4 @@
++∩╗┐Orders hits:
++
++Trade closes hits:
++
+diff --git a/path_issues/fillrate_hourly.csv b/path_issues/fillrate_hourly.csv
+new file mode 100644
+index 0000000..719b443
+--- /dev/null
++++ b/path_issues/fillrate_hourly.csv
+@@ -0,0 +1,2 @@
++timestamp,fills,requests,fill_rate,median_latency_ms,median_slippage
++2025-08-15 19:00:00+00:00,3,,,,
+diff --git a/path_issues/findings_paths_to_fix.txt b/path_issues/findings_paths_to_fix.txt
+new file mode 100644
+index 0000000..9c3e30a
+--- /dev/null
++++ b/path_issues/findings_paths_to_fix.txt
+@@ -0,0 +1,753 @@
++∩╗┐D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\README.md	50	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\README.md	52	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\README.md	54	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\pyvenv.cfg	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\autocompletion.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\base_command.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\cmdoptions.cpython-313.pyc	72	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\command_context.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\index_command.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\main.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\main_parser.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\parser.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\progress_bars.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\req_command.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\spinners.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\status_codes.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\cli\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\cache.cpython-313.pyc	32	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\check.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\completion.cpython-313.pyc	71	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\configuration.cpython-313.pyc	40	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\debug.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\download.cpython-313.pyc	29	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\freeze.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\hash.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\help.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\index.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\inspect.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\install.cpython-313.pyc	36	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\list.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\lock.cpython-313.pyc	31	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\search.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\show.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\uninstall.cpython-313.pyc	24	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\wheel.cpython-313.pyc	33	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\commands\__pycache__\__init__.cpython-313.pyc	29	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\distributions\__pycache__\base.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\distributions\__pycache__\installed.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\distributions\__pycache__\sdist.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\distributions\__pycache__\wheel.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\distributions\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\index\__pycache__\collector.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\index\__pycache__\package_finder.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\index\__pycache__\sources.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\index\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\locations\__pycache__\base.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\locations\__pycache__\_distutils.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\locations\__pycache__\_sysconfig.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\locations\__pycache__\__init__.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\importlib\__pycache__\_compat.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\importlib\__pycache__\_dists.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\importlib\__pycache__\_envs.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\importlib\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\__pycache__\base.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\__pycache__\pkg_resources.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\__pycache__\_json.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\metadata\__pycache__\__init__.cpython-313.pyc	25	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\candidate.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\direct_url.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\format_control.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\index.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\installation_report.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\link.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\pylock.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\scheme.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\search_scope.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\selection_prefs.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\target_python.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\wheel.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\models\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\auth.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\cache.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\download.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\lazy_wheel.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\session.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\utils.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\xmlrpc.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\network\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\build_tracker.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\metadata.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\metadata_editable.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\metadata_legacy.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\wheel.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\wheel_editable.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\wheel_legacy.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\build\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\install\__pycache__\editable_legacy.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\install\__pycache__\wheel.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\install\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\__pycache__\check.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\__pycache__\freeze.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\__pycache__\prepare.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\operations\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\constructors.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\req_dependency_group.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\req_file.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\req_install.cpython-313.pyc	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\req_set.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\req_uninstall.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\req\__pycache__\__init__.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\legacy\__pycache__\resolver.cpython-313.pyc	31	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\legacy\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\base.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\candidates.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\factory.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\found_candidates.cpython-313.pyc	22	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\provider.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\reporter.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\requirements.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\resolver.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\resolvelib\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\__pycache__\base.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\resolution\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\appdirs.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\compat.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\compatibility_tags.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\datetime.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\deprecation.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\direct_url_helpers.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\egg_link.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\entrypoints.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\filesystem.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\filetypes.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\glibc.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\hashes.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\logging.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\misc.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\packaging.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\retry.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\setuptools_build.cpython-313.pyc	50	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\subprocess.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\temp_dir.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\unpacking.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\urls.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\virtualenv.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\wheel.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\_jaraco_text.cpython-313.pyc	33	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\_log.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\utils\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\bazaar.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\git.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\mercurial.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\subversion.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\versioncontrol.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\vcs\__pycache__\__init__.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\build_env.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\cache.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\configuration.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\exceptions.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\main.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\pyproject.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\self_outdated_check.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\wheel_builder.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_internal\__pycache__\__init__.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\caches\__pycache__\file_cache.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\caches\__pycache__\redis_cache.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\caches\__pycache__\__init__.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\adapter.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\cache.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\controller.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\filewrapper.cpython-313.pyc	22	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\heuristics.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\serialize.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\wrapper.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\_cmd.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\cachecontrol\__pycache__\__init__.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\certifi\__pycache__\core.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\certifi\__pycache__\__init__.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\certifi\__pycache__\__main__.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\_implementation.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\_lint_dependency_groups.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\_pip_wrapper.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\_toml_compat.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\dependency_groups\__pycache__\__main__.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distlib\__pycache__\compat.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distlib\__pycache__\resources.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distlib\__pycache__\scripts.cpython-313.pyc	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distlib\__pycache__\util.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distlib\__pycache__\__init__.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distro\__pycache__\distro.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distro\__pycache__\__init__.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\distro\__pycache__\__main__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\codec.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\compat.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\core.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\idnadata.cpython-313.pyc	415	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\intranges.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\package_data.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\uts46data.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\idna\__pycache__\__init__.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\msgpack\__pycache__\exceptions.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\msgpack\__pycache__\ext.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\msgpack\__pycache__\fallback.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\msgpack\__pycache__\__init__.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\licenses\__pycache__\_spdx.cpython-313.pyc	714	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\licenses\__pycache__\__init__.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\markers.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\metadata.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\requirements.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\specifiers.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\tags.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\utils.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\version.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_elffile.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_manylinux.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_musllinux.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_parser.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_structures.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\_tokenizer.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\packaging\__pycache__\__init__.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pkg_resources\__pycache__\__init__.cpython-313.pyc	27	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\android.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\api.cpython-313.pyc	34	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\macos.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\unix.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\version.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\windows.cpython-313.pyc	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\__init__.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\platformdirs\__pycache__\__main__.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\filters\__pycache__\__init__.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\formatters\__pycache__\_mapping.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\formatters\__pycache__\__init__.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\lexers\__pycache__\python.cpython-313.pyc	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\lexers\__pycache__\_mapping.cpython-313.pyc	226	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\lexers\__pycache__\__init__.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\styles\__pycache__\_mapping.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\styles\__pycache__\__init__.cpython-313.pyc	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\console.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\filter.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\formatter.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\lexer.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\modeline.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\plugin.cpython-313.pyc	38	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\regexopt.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\scanner.cpython-313.pyc	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\sphinxext.cpython-313.pyc	52	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\style.cpython-313.pyc	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\token.cpython-313.pyc	37	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\unistring.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\util.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\__init__.cpython-313.pyc	40	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pygments\__pycache__\__main__.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pyproject_hooks\_in_process\__pycache__\_in_process.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pyproject_hooks\_in_process\__pycache__\__init__.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pyproject_hooks\__pycache__\_impl.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\pyproject_hooks\__pycache__\__init__.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\adapters.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\api.cpython-313.pyc	50	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\auth.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\certs.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\compat.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\cookies.cpython-313.pyc	24	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\exceptions.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\help.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\hooks.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\models.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\packages.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\sessions.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\status_codes.cpython-313.pyc	29	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\structures.cpython-313.pyc	34	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\utils.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\_internal_utils.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\__init__.cpython-313.pyc	41	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\requests\__pycache__\__version__.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\resolvers\__pycache__\abstract.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\resolvers\__pycache__\criterion.cpython-313.pyc	24	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\resolvers\__pycache__\exceptions.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\resolvers\__pycache__\resolution.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\resolvers\__pycache__\__init__.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\__pycache__\providers.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\__pycache__\reporters.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\__pycache__\structs.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\resolvelib\__pycache__\__init__.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\abc.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\align.cpython-313.pyc	34	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\ansi.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\bar.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\box.cpython-313.pyc	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\cells.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\color.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\color_triplet.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\columns.cpython-313.pyc	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\console.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\constrain.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\containers.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\control.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\default_styles.cpython-313.pyc	110	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\diagnose.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\emoji.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\errors.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\filesize.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\file_proxy.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\highlighter.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\json.cpython-313.pyc	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\jupyter.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\layout.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\live.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\live_render.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\logging.cpython-313.pyc	46	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\markup.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\measure.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\padding.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\pager.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\palette.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\panel.cpython-313.pyc	33	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\pretty.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\progress.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\progress_bar.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\prompt.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\protocol.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\region.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\repr.cpython-313.pyc	25	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\rule.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\scope.cpython-313.pyc	29	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\screen.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\segment.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\spinner.cpython-313.pyc	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\status.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\style.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\styled.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\syntax.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\table.cpython-313.pyc	37	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\terminal_theme.cpython-313.pyc	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\text.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\theme.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\themes.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\traceback.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\tree.cpython-313.pyc	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_cell_widths.cpython-313.pyc	42	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_emoji_codes.cpython-313.pyc	436	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_emoji_replace.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_export_format.cpython-313.pyc	70	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_extension.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_fileno.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_inspect.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_log_render.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_loop.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_null_file.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_palettes.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_pick.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_ratio.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_spinners.cpython-313.pyc	31	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_stack.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_timer.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_win32_console.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_windows.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_windows_renderer.cpython-313.pyc	22	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\_wrap.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\__init__.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\rich\__pycache__\__main__.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli\__pycache__\_parser.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli\__pycache__\_re.cpython-313.pyc	41	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli\__pycache__\_types.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli_w\__pycache__\_writer.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\tomli_w\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\_api.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\_macos.cpython-313.pyc	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\_openssl.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\_ssl_constants.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\_windows.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\truststore\__pycache__\__init__.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\_securetransport\__pycache__\bindings.cpython-313.pyc	50	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\_securetransport\__pycache__\low_level.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\_securetransport\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\appengine.cpython-313.pyc	42	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\ntlmpool.cpython-313.pyc	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\pyopenssl.cpython-313.pyc	51	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\securetransport.cpython-313.pyc	70	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\socks.cpython-313.pyc	44	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\_appengine_environ.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\contrib\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\backports\__pycache__\makefile.cpython-313.pyc	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\backports\__pycache__\weakref_finalize.cpython-313.pyc	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\backports\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\__pycache__\six.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\packages\__pycache__\__init__.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\connection.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\proxy.cpython-313.pyc	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\queue.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\request.cpython-313.pyc	45	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\response.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\retry.cpython-313.pyc	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\ssltransport.cpython-313.pyc	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\ssl_.cpython-313.pyc	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\ssl_match_hostname.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\timeout.cpython-313.pyc	81	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\url.cpython-313.pyc	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\wait.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\util\__pycache__\__init__.cpython-313.pyc	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\connection.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\connectionpool.cpython-313.pyc	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\exceptions.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\fields.cpython-313.pyc	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\filepost.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\poolmanager.cpython-313.pyc	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\request.cpython-313.pyc	32	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\response.cpython-313.pyc	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\_collections.cpython-313.pyc	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\_version.cpython-313.pyc	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\urllib3\__pycache__\__init__.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\_vendor\__pycache__\__init__.cpython-313.pyc	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\__pycache__\__init__.cpython-313.pyc	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\__pycache__\__main__.cpython-313.pyc	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Lib\site-packages\pip\__pycache__\__pip-runner__.cpython-313.pyc	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\activate	44	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\activate	49	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\activate.bat	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\activate.fish	36	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\pip.exe	365	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\pip3.13.exe	365	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\.venv\Scripts\pip3.exe	365	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_121103.json	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_121103.json	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_121103.json	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_121103.json	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_122149.json	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_122149.json	28	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_122149.json	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_123425.json	41	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_123425.json	42	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_123425.json	82	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_124902.json	44	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_124902.json	45	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_124902.json	85	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_130043.json	43	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_130043.json	44	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_130043.json	84	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_132616.json	39	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_132616.json	40	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\artifacts_ascii\combined_runs_report_20250824_132616.json	80	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Debug\net6.0\BotG.dll	4689	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Debug\net6.0\BotG.pdb	125	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Debug\net6.0\BotG.pdb	147	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net6.0\BotG.dll	4508	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net6.0\BotG.pdb	131	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net6.0\BotG.pdb	153	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\DataFetcher\Interfaces\IAccountDataProvider.cs	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\DataFetcher\Interfaces\IAccountDataProvider.cs	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\DataFetcher\Providers\AccountDataFetcher.cs	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\BotG.csproj.nuget.dgspec.json	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\BotG.csproj.nuget.dgspec.json	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\BotG.csproj.nuget.dgspec.json	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\BotG.csproj.nuget.dgspec.json	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\BotG.csproj.nuget.dgspec.json	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\project.assets.json	89	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\project.assets.json	91	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\project.assets.json	93	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\project.nuget.cache	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.dll	4689	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.pdb	125	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.pdb	147	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Debug\net6.0\BotG.sourcelink.json	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.dll	4508	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.pdb	131	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.pdb	153	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net6.0\BotG.sourcelink.json	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\RiskManager\AccountLevelManager.cs	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\RiskManager\AccountLevelManager.cs	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\BotG\RiskManager\AccountLevelManager.cs	40	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\BotG.dll	4689	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\BotG.pdb	125	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\BotG.pdb	147	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\Harness.dll	712	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\Harness.pdb	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\bin\Debug\net6.0\Harness.pdb	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	78	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	81	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	83	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	85	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	106	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Harness.csproj.nuget.dgspec.json	107	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.assets.json	106	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.assets.json	108	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.assets.json	110	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.assets.json	131	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.assets.json	132	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\project.nuget.cache	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.AssemblyReference.cache	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.csproj.FileListAbsolute.txt	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.dll	712	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.pdb	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.pdb	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Harness\obj\Debug\net6.0\Harness.sourcelink.json	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\scripts\scan_unicode_paths.ps1	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.dll	4689	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.pdb	125	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.pdb	147	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.dll	193	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.pdb	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net6.0\BotG.Tests.pdb	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	78	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	81	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	83	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	85	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	106	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\BotG.Tests.csproj.nuget.dgspec.json	107	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.assets.json	5574	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.assets.json	5576	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.assets.json	5578	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.assets.json	5599	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.assets.json	5600	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\project.nuget.cache	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.AssemblyReference.cache	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	21	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	22	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	23	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	24	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	25	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	26	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	27	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	28	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	29	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	30	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	31	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	32	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	33	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	34	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	35	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	36	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	37	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	38	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	39	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	40	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	41	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	42	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	43	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	44	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	45	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	46	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	47	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	48	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	49	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	50	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	51	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	52	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	53	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	54	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	55	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	56	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	57	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	58	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	59	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	60	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	61	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	62	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	63	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	64	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	65	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	66	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	67	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	68	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	69	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	70	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	71	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	72	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	73	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	74	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	75	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	76	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	77	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	78	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	79	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	80	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	81	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	82	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	83	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	84	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	85	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	86	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	87	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	88	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	89	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	90	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	91	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	92	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	93	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	94	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	95	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	96	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	97	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	98	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	99	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	100	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	101	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	102	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	103	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.csproj.FileListAbsolute.txt	104	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.dll	193	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.pdb	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.pdb	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net6.0\BotG.Tests.sourcelink.json	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\BotG.dll	4689	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\BotG.pdb	125	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\BotG.pdb	147	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\ReconstructClosedTrades.dll	174	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\ReconstructClosedTrades.pdb	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Debug\net6.0\ReconstructClosedTrades.pdb	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\BotG.dll	4508	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\BotG.pdb	131	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\BotG.pdb	153	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\ReconstructClosedTrades.dll	182	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\ReconstructClosedTrades.pdb	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\bin\Release\net6.0\ReconstructClosedTrades.pdb	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.assets.json	106	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.assets.json	108	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.assets.json	110	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.assets.json	131	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.assets.json	132	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\project.nuget.cache	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	78	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	81	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	83	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	85	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	106	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\ReconstructClosedTrades.csproj.nuget.dgspec.json	107	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.AssemblyReference.cache	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.dll	174	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.pdb	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.pdb	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Debug\net6.0\ReconstructClosedTrades.sourcelink.json	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.AssemblyReference.cache	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	1	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	2	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	3	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	5	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	6	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	7	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	8	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	9	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	10	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	13	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	14	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	15	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	16	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	17	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	18	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	19	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.csproj.FileListAbsolute.txt	20	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.dll	182	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.GeneratedMSBuildEditorConfig.editorconfig	11	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.pdb	4	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.pdb	12	
++D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG\Tools\ReconstructClosedTrades\obj\Release\net6.0\ReconstructClosedTrades.sourcelink.json	1	
+diff --git a/path_issues/git_checkout.txt b/path_issues/git_checkout.txt
+new file mode 100644
+index 0000000..06cb727
+Binary files /dev/null and b/path_issues/git_checkout.txt differ
+diff --git a/path_issues/git_revparse.txt b/path_issues/git_revparse.txt
+new file mode 100644
+index 0000000..abdce89
+Binary files /dev/null and b/path_issues/git_revparse.txt differ
+diff --git a/path_issues/git_try.txt b/path_issues/git_try.txt
+new file mode 100644
+index 0000000..cdb5159
+--- /dev/null
++++ b/path_issues/git_try.txt
+@@ -0,0 +1 @@
++∩╗┐Attempting git in PowerShell at D:\OneDrive\Ta╠Çi li├¬╠úu\cAlgo\Sources\Robots\BotG on fix/postrun/20250827_124502-logging-reconcile
+diff --git a/path_issues/latest_zip.txt b/path_issues/latest_zip.txt
+new file mode 100644
+index 0000000..990e6f1
+--- /dev/null
++++ b/path_issues/latest_zip.txt
+@@ -0,0 +1 @@
++D:\OneDrive\Ta?i li??u\cAlgo\Sources\Robots\BotG\path_issues\postrun_artifacts_20250827_124502.zip
+diff --git a/path_issues/orders_ascii.csv b/path_issues/orders_ascii.csv
+new file mode 100644
+index 0000000..d4d657b
+--- /dev/null
++++ b/path_issues/orders_ascii.csv
+@@ -0,0 +1,4 @@
++∩╗┐id,symbol,side,qty,price,timestamp
++1,EURUSD,BUY,1000,1.1000,2025-08-15T19:31:11
++2,EURUSD,SELL,500,1.1010,2025-08-15T19:31:11
++3,GBPUSD,BUY,200,1.2800,2025-08-15T19:31:11
+diff --git a/path_issues/postrun_artifacts_20250827_124017.zip b/path_issues/postrun_artifacts_20250827_124017.zip
+new file mode 100644
+index 0000000..cad3177
+Binary files /dev/null and b/path_issues/postrun_artifacts_20250827_124017.zip differ
+diff --git a/path_issues/postrun_artifacts_20250827_124502.sha256 b/path_issues/postrun_artifacts_20250827_124502.sha256
+new file mode 100644
+index 0000000..3c7ee01
+--- /dev/null
++++ b/path_issues/postrun_artifacts_20250827_124502.sha256
+@@ -0,0 +1,6 @@
++
++Algorithm       Hash                                                       
++---------       ----                                                       
++SHA256          AF82309FC0A454A53F72750A8B0AD5DCBBE30E37FE676F12834B086C...
++
++
+diff --git a/path_issues/postrun_artifacts_20250827_124502.zip b/path_issues/postrun_artifacts_20250827_124502.zip
+new file mode 100644
+index 0000000..b909570
+Binary files /dev/null and b/path_issues/postrun_artifacts_20250827_124502.zip differ
+diff --git a/path_issues/postrun_artifacts_20250827_124841.zip b/path_issues/postrun_artifacts_20250827_124841.zip
+new file mode 100644
+index 0000000..9ea14d9
+Binary files /dev/null and b/path_issues/postrun_artifacts_20250827_124841.zip differ
+diff --git a/path_issues/postrun_summary.txt b/path_issues/postrun_summary.txt
+new file mode 100644
+index 0000000..2cae886
+--- /dev/null
++++ b/path_issues/postrun_summary.txt
+@@ -0,0 +1 @@
++Slippage/Latency percentiles (see slip_latency_percentiles.json) and hourly fill-rate saved.
+diff --git a/path_issues/reconstruct_report.json b/path_issues/reconstruct_report.json
+new file mode 100644
+index 0000000..0e2fe43
+--- /dev/null
++++ b/path_issues/reconstruct_report.json
+@@ -0,0 +1,10 @@
++{
++  "fills_total": 0,
++  "closed_trades": 0,
++  "orphan_before": 0,
++  "orphan_after": 0,
++  "estimated_orphan_fills_after_reconstruct": 0,
++  "matched_count": 0,
++  "unmatched_ids": [],
++  "output": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\closed_trades_fifo_reconstructed.csv"
++}
+\ No newline at end of file
+diff --git a/path_issues/slip_latency_percentiles.json b/path_issues/slip_latency_percentiles.json
+new file mode 100644
+index 0000000..186c370
+--- /dev/null
++++ b/path_issues/slip_latency_percentiles.json
+@@ -0,0 +1,16 @@
++{
++  "slippage_abs": {
++    "p50": NaN,
++    "p75": NaN,
++    "p90": NaN,
++    "p95": NaN,
++    "p99": NaN
++  },
++  "latency_ms": {
++    "p50": NaN,
++    "p75": NaN,
++    "p90": NaN,
++    "p95": NaN,
++    "p99": NaN
++  }
++}
+\ No newline at end of file
+diff --git a/path_issues/top_slippage.csv b/path_issues/top_slippage.csv
+new file mode 100644
+index 0000000..4cf3206
+--- /dev/null
++++ b/path_issues/top_slippage.csv
+@@ -0,0 +1,4 @@
++timestamp,slippage,abs_slip
++2025-08-15 19:31:11+00:00,,
++2025-08-15 19:31:11+00:00,,
++2025-08-15 19:31:11+00:00,,
+diff --git a/scripts/analyze_postrun.py b/scripts/analyze_postrun.py
+new file mode 100644
+index 0000000..56d3658
+--- /dev/null
++++ b/scripts/analyze_postrun.py
+@@ -0,0 +1,317 @@
++#!/usr/bin/env python3
++"""
++Postrun analysis: slippage and latency percentiles, hourly fill-rate, top slippages, and plots.
++
++Inputs precedence:
++  1) --fills path: reconstructed closed trades (preferred)
++  2) --orders path: raw orders events (REQUEST/ACK/FILL)
++  3) --logdir: auto-discover latest telemetry_run_* under <logdir>/artifacts and use its files
++
++Outputs (written to --outdir, default: path_issues):
++  - slip_latency_percentiles.json
++  - fillrate_hourly.csv
++  - top_slippage.csv
++  - slippage_hist.png (if matplotlib available)
++  - latency_percentiles.png (if matplotlib available)
++  - fillrate_by_hour.png (if matplotlib available)
++
++The script is resilient to missing columns: it infers common column names and skips metrics it cannot compute.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import os
++from pathlib import Path
++from typing import Dict, Optional, Tuple
++
++import pandas as pd
++
++try:
++    import numpy as np
++except Exception:  # pragma: no cover
++    np = None  # type: ignore
++
++try:  # plots optional
++    import matplotlib
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++except Exception:  # pragma: no cover
++    plt = None  # type: ignore
++
++
++def find_col(cols, candidates):
++    """Return the first column present in cols among candidates (case-insensitive)."""
++    m = {c.lower(): c for c in cols}
++    for cand in candidates:
++        if cand.lower() in m:
++            return m[cand.lower()]
++    return None
++
++
++def latest_run_dir(logdir: Path) -> Optional[Path]:
++    art = logdir / "artifacts"
++    if not art.exists():
++        return None
++    runs = [p for p in art.iterdir() if p.is_dir() and p.name.startswith("telemetry_run_")]
++    if not runs:
++        return None
++    runs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
++    return runs[0]
++
++
++def load_fills(path: Path) -> pd.DataFrame:
++    df = pd.read_csv(path)
++    return df
++
++
++def derive_from_orders(orders_csv: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
++    """Build fills dataframe and requests/fills per-hour counts from raw orders events.
++
++    Returns (fills_df, hourly_counts_df)
++    """
++    odf = pd.read_csv(orders_csv)
++    cols = list(odf.columns)
++    # Identify key fields (some may be missing in simplified CSVs)
++    ev_col = find_col(cols, ["event", "type", "status", "action"])
++    ts_col = find_col(cols, ["timestamp", "time", "event_time"]) or cols[0]
++    oid_col = find_col(cols, ["orderid", "order_id", "id"]) or "order_id"
++    req_price = find_col(cols, ["price_requested", "requested_price", "request_price", "price_request"])  # optional
++    fill_price = find_col(cols, ["price_filled", "filled_price", "execution_price"])  # optional
++    size_col = find_col(cols, ["size", "quantity", "qty", "filled_size", "size_filled"])  # optional
++
++    # Normalize
++    odf["_ts"] = pd.to_datetime(odf[ts_col], errors="coerce", utc=True)
++    odf = odf.dropna(subset=["_ts"]).sort_values([oid_col, "_ts"]).reset_index(drop=True)
++
++    # Per-hour counts
++    hdf = odf.copy()
++    hdf["hour"] = hdf["_ts"].dt.floor("H")
++    if ev_col and ev_col in hdf.columns:
++        rq = hdf[hdf[ev_col].astype(str).str.upper().eq("REQUEST")].groupby("hour").size().rename("requests")
++        fl = hdf[hdf[ev_col].astype(str).str.upper().eq("FILL")].groupby("hour").size().rename("fills")
++        hourly = pd.concat([rq, fl], axis=1).fillna(0)
++        hourly["fill_rate"] = hourly.apply(lambda r: (r["fills"] / r["requests"]) if r.get("requests", 0) > 0 else math.nan, axis=1)
++    else:
++        # Assume all rows are fills; requests unknown
++        fl = hdf.groupby("hour").size().rename("fills")
++        hourly = pd.concat([fl], axis=1)
++        hourly["requests"] = math.nan
++        hourly["fill_rate"] = math.nan
++    hourly = hourly.reset_index().rename(columns={"hour": "timestamp"})
++
++    # Derive per-order REQUEST and FILL timestamps for latency
++    if ev_col and ev_col in odf.columns:
++        req_time = (
++            odf[odf[ev_col].astype(str).str.upper().eq("REQUEST")]  # type: ignore[index]
++            .groupby(oid_col)["_ts"].min()
++            .rename("request_ts")
++        )
++        fill_time = (
++            odf[odf[ev_col].astype(str).str.upper().eq("FILL")]
++            .groupby(oid_col)["_ts"].max()
++            .rename("fill_ts")
++        )
++        base = pd.concat([req_time, fill_time], axis=1).dropna()
++        if not base.empty:
++            base["latency_ms"] = (base["fill_ts"] - base["request_ts"]).dt.total_seconds() * 1000.0
++        else:
++            base = pd.DataFrame(columns=["request_ts", "fill_ts", "latency_ms"])  # empty
++    else:
++        # Without event classification, we can't compute latency; treat each row as a fill-only observation
++        base = odf[[oid_col, "_ts"]].copy().rename(columns={"_ts": "fill_ts"})
++        base["request_ts"] = pd.NaT
++        base["latency_ms"] = pd.NA
++        base = base.set_index(oid_col)
++
++    # Slippage if prices available and we have REQUEST vs FILL separation
++    if ev_col and req_price and fill_price and req_price in odf.columns and fill_price in odf.columns:
++        last_fill = odf[odf[ev_col].astype(str).str.upper().eq("FILL")].sort_values([oid_col, "_ts"]).groupby(oid_col).tail(1)
++        last_req = odf[odf[ev_col].astype(str).str.upper().eq("REQUEST")].sort_values([oid_col, "_ts"]).groupby(oid_col).head(1)
++        price_df = pd.merge(
++            last_req[[oid_col, req_price]], last_fill[[oid_col, fill_price, "_ts"]], on=oid_col, how="inner"
++        )
++        price_df = price_df.rename(columns={"_ts": "fill_ts"})
++        try:
++            price_df["slippage"] = price_df[fill_price].astype(float) - price_df[req_price].astype(float)
++        except Exception:
++            price_df["slippage"] = pd.NA
++        base = pd.merge(base.reset_index(), price_df[[oid_col, "slippage", "fill_ts"]], on=[oid_col, "fill_ts"], how="left").set_index(oid_col)
++    else:
++        base = base.reset_index(); base["slippage"] = pd.NA; base = base.set_index(oid_col)
++
++    # Attach size if exists (from last fill)
++    if size_col and size_col in odf.columns and (not ev_col or ev_col not in odf.columns):
++        # No event classification: take per-order last size
++        sf = odf.sort_values([oid_col, "_ts"]).groupby(oid_col).tail(1)[[oid_col, size_col]].rename(columns={size_col: "size"})
++        base = pd.merge(base.reset_index(), sf, on=oid_col, how="left").set_index(oid_col)
++    elif size_col and size_col in odf.columns:
++        sf = (
++            odf[odf[ev_col].astype(str).str.upper().eq("FILL")]
++            .sort_values([oid_col, "_ts"]).groupby(oid_col).tail(1)[[oid_col, size_col]]
++            .rename(columns={size_col: "size"})
++        )
++        base = pd.merge(base.reset_index(), sf, on=oid_col, how="left").set_index(oid_col)
++
++    # Fills-like dataframe
++    fdf = base.reset_index().rename(columns={"index": oid_col})
++    fdf["timestamp"] = fdf["fill_ts"]
++    return fdf, hourly
++
++
++def percentiles(series: pd.Series, qs=(0.5, 0.75, 0.9, 0.95, 0.99)) -> Dict[str, float]:
++    s = pd.to_numeric(series, errors="coerce").dropna()
++    if s.empty:
++        return {f"p{int(q*100)}": math.nan for q in qs}
++    if np is not None:
++        vals = np.quantile(s.values, qs)
++    else:
++        vals = s.quantile(list(qs)).values
++    return {f"p{int(q*100)}": float(v) for q, v in zip(qs, vals)}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--fills", help="Path to closed_trades_fifo_reconstructed.csv")
++    ap.add_argument("--orders", help="Path to orders.csv")
++    ap.add_argument("--logdir", help="Log root to auto-discover latest run")
++    ap.add_argument("--outdir", default="path_issues", help="Output directory")
++    args = ap.parse_args()
++
++    out = Path(args.outdir)
++    out.mkdir(parents=True, exist_ok=True)
++
++    fills_path: Optional[Path] = Path(args.fills) if args.fills else None
++    orders_path: Optional[Path] = Path(args.orders) if args.orders else None
++
++    if not fills_path and not orders_path and args.logdir:
++        lrd = latest_run_dir(Path(args.logdir))
++        if lrd:
++            if (lrd / "closed_trades_fifo_reconstructed.csv").exists():
++                fills_path = lrd / "closed_trades_fifo_reconstructed.csv"
++            elif (lrd / "closed_trades_fifo.csv").exists():
++                fills_path = lrd / "closed_trades_fifo.csv"
++            if (lrd / "orders.csv").exists():
++                orders_path = lrd / "orders.csv"
++
++    fills_df: Optional[pd.DataFrame] = None
++    hourly: Optional[pd.DataFrame] = None
++
++    if fills_path and fills_path.exists():
++        fills_df = load_fills(fills_path)
++    elif orders_path and orders_path.exists():
++        fills_df, hourly = derive_from_orders(orders_path)
++    else:
++        raise SystemExit("No input found: provide --fills or --orders or --logdir with artifacts.")
++
++    # Column inference for fills
++    cols = list(fills_df.columns)
++    ts_col = find_col(cols, ["timestamp", "time", "close_time", "closed_time", "fill_ts", "_ts"]) or cols[0]
++    lat_col = find_col(cols, ["latency_ms", "latency", "latencyMillis"])  # optional
++    slip_col = find_col(cols, ["slippage", "slip", "raw_slip", "price_slip"])  # optional
++    # If missing slippage, try to compute from prices if available
++    if slip_col is None:
++        pr = find_col(cols, ["price_filled", "filled_price", "execution_price"])  # price filled
++        prq = find_col(cols, ["price_requested", "requested_price", "request_price"])  # price requested
++        if pr and prq and pr in fills_df.columns and prq in fills_df.columns:
++            try:
++                fills_df["__slippage"] = fills_df[pr].astype(float) - fills_df[prq].astype(float)
++                slip_col = "__slippage"
++            except Exception:
++                pass
++
++    # Normalize timestamp
++    f = fills_df.copy()
++    f["_ts"] = pd.to_datetime(f[ts_col], errors="coerce", utc=True)
++    f = f.dropna(subset=["_ts"]).sort_values("_ts")
++
++    # Build hourly if not from orders
++    if hourly is None:
++        # Without explicit requests count, report fills and unknown requests
++        h = f.copy(); h["timestamp"] = h["_ts"].dt.floor("H")
++        hourly = h.groupby("timestamp").size().reset_index(name="fills")
++        hourly["requests"] = math.nan
++        hourly["fill_rate"] = math.nan
++
++    # Compute percentiles
++    out_json = {}
++    if slip_col and slip_col in f.columns:
++        out_json["slippage_abs"] = percentiles(f[slip_col].abs())
++    else:
++        out_json["slippage_abs"] = {k: math.nan for k in ["p50", "p75", "p90", "p95", "p99"]}
++    if lat_col and lat_col in f.columns:
++        out_json["latency_ms"] = percentiles(f[lat_col])
++    else:
++        out_json["latency_ms"] = {k: math.nan for k in ["p50", "p75", "p90", "p95", "p99"]}
++
++    with open(out / "slip_latency_percentiles.json", "w", encoding="utf-8") as fp:
++        json.dump(out_json, fp, ensure_ascii=False, indent=2)
++
++    # Hourly fill rate & medians
++    if lat_col and lat_col in f.columns:
++        med_lat = f.assign(hour=f["_ts"].dt.floor("H")).groupby("hour")[lat_col].median().rename("median_latency_ms")
++    else:
++        med_lat = pd.Series(dtype=float)
++    if slip_col and slip_col in f.columns:
++        med_slp = f.assign(hour=f["_ts"].dt.floor("H")).groupby("hour")[slip_col].median().rename("median_slippage")
++    else:
++        med_slp = pd.Series(dtype=float)
++    hourly = hourly.set_index("timestamp").join(med_lat, how="left").join(med_slp, how="left").reset_index()
++    hourly.to_csv(out / "fillrate_hourly.csv", index=False)
++
++    # Top slippages
++    top = pd.DataFrame(columns=["timestamp", "slippage"])  # default
++    if slip_col and slip_col in f.columns:
++        top = f[["_ts", slip_col]].copy().rename(columns={"_ts": "timestamp", slip_col: "slippage"})
++        top = top.reindex(columns=[c for c in ["timestamp", "slippage"] if c in top.columns])
++        top["abs_slip"] = top["slippage"].abs()
++        top = top.sort_values("abs_slip", ascending=False).head(20)
++    top.to_csv(out / "top_slippage.csv", index=False)
++
++    # Plots
++    if plt is not None:
++        try:
++            if slip_col and slip_col in f.columns:
++                plt.figure(figsize=(6, 4))
++                f[slip_col].dropna().hist(bins=50)
++                plt.title("Slippage histogram")
++                plt.tight_layout()
++                plt.savefig(out / "slippage_hist.png", dpi=120)
++                plt.close()
++            if lat_col and lat_col in f.columns:
++                percs = [50, 75, 90, 95, 99]
++                vals = [out_json["latency_ms"].get(f"p{p}") for p in percs]
++                plt.figure(figsize=(6, 4))
++                plt.plot(percs, vals, marker="o")
++                plt.xlabel("percentile")
++                plt.ylabel("latency (ms)")
++                plt.title("Latency percentiles")
++                plt.grid(True, alpha=0.3)
++                plt.tight_layout()
++                plt.savefig(out / "latency_percentiles.png", dpi=120)
++                plt.close()
++            if not hourly.empty:
++                plt.figure(figsize=(7, 4))
++                ax = plt.gca()
++                if "fill_rate" in hourly.columns:
++                    ax.plot(hourly["timestamp"], hourly["fill_rate"], label="fill_rate")
++                if "median_latency_ms" in hourly.columns:
++                    ax2 = ax.twinx()
++                    ax2.plot(hourly["timestamp"], hourly["median_latency_ms"], color="orange", label="median_latency")
++                ax.set_title("Fill rate by hour")
++                plt.tight_layout()
++                plt.savefig(out / "fillrate_by_hour.png", dpi=120)
++                plt.close()
++        except Exception:
++            # Write marker file if plots fail
++            with open(out / "plots_skipped.txt", "w", encoding="utf-8") as fp:
++                fp.write("Plots skipped due to matplotlib/runtime error.\n")
++
++    # Minimal human summary
++    with open(out / "postrun_summary.txt", "w", encoding="utf-8") as fp:
++        fp.write("Slippage/Latency percentiles (see slip_latency_percentiles.json) and hourly fill-rate saved.\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/scripts/postrun_analyze.ps1 b/scripts/postrun_analyze.ps1
+new file mode 100644
+index 0000000..a3fd1f5
+--- /dev/null
++++ b/scripts/postrun_analyze.ps1
+@@ -0,0 +1,224 @@
++[CmdletBinding()]
++param(
++  [string]$OrdersCsv,
++  [string]$FillsCsv,
++  [string]$OutDir = 'path_issues'
++)
++
++$ErrorActionPreference = 'Stop'
++try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
++
++Add-Type -AssemblyName System.Windows.Forms | Out-Null
++Add-Type -AssemblyName System.Windows.Forms.DataVisualization | Out-Null
++
++function Ensure-Dir([string]$p) { if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null } }
++function WriteUtf8([string]$p,[string]$t){ $enc=New-Object System.Text.UTF8Encoding $false; [System.IO.File]::WriteAllText($p,$t,$enc) }
++
++Ensure-Dir $OutDir
++
++function Percentiles([double[]]$arr, [double[]]$qs) {
++  if (-not $arr -or $arr.Count -eq 0) { return @{} }
++  $a = $arr | Sort-Object
++  $n = $a.Count
++  $res = @{}
++  foreach ($q in $qs) {
++    $rank = [math]::Clamp($q * ($n - 1), 0, [double]($n - 1))
++    $lo = [int][math]::Floor($rank)
++    $hi = [int][math]::Ceiling($rank)
++    if ($lo -eq $hi) { $val = $a[$lo] } else { $val = $a[$lo] + ($rank - $lo) * ($a[$hi] - $a[$lo]) }
++    $res[('p{0}' -f ([int]($q*100)))] = [double]::Round($val, 6)
++  }
++  return $res
++}
++
++function Plot-Histogram([double[]]$data, [string]$title, [string]$outPng, [int]$bins=50) {
++  if (-not $data -or $data.Count -eq 0) { return }
++  $min = ($data | Measure-Object -Minimum).Minimum
++  $max = ($data | Measure-Object -Maximum).Maximum
++  if ($min -eq $max) { $max = $min + 1 }
++  $binSize = ($max - $min) / [double]$bins
++  if ($binSize -le 0) { $binSize = 1 }
++  $hist = @{}
++  foreach ($v in $data) {
++    $b = [math]::Floor(($v - $min) / $binSize)
++    if ($b -ge $bins) { $b = $bins - 1 }
++    $key = [double]($min + $b * $binSize)
++    if (-not $hist.ContainsKey($key)) { $hist[$key] = 0 }
++    $hist[$key] += 1
++  }
++
++  $chart = New-Object System.Windows.Forms.DataVisualization.Charting.Chart
++  $chart.Width = 800; $chart.Height = 480
++  $area = New-Object System.Windows.Forms.DataVisualization.Charting.ChartArea
++  $area.AxisX.Title = $title
++  $area.AxisY.Title = 'count'
++  $chart.ChartAreas.Add($area)
++  $series = New-Object System.Windows.Forms.DataVisualization.Charting.Series
++  $series.ChartType = [System.Windows.Forms.DataVisualization.Charting.SeriesChartType]::Column
++  $series.IsXValueIndexed = $true
++  foreach ($k in ($hist.Keys | Sort-Object)) {
++    $idx = $series.Points.AddXY([double]$k, [int]$hist[$k])
++  }
++  $chart.Series.Add($series)
++  $chart.Titles.Add($title) | Out-Null
++  $chart.SaveImage($outPng, 'Png')
++  $chart.Dispose()
++}
++
++function Plot-LineXY([object[]]$xs, [double[]]$ys, [string]$title, [string]$yTitle, [string]$outPng) {
++  if (-not $ys -or $ys.Count -eq 0) { return }
++  $chart = New-Object System.Windows.Forms.DataVisualization.Charting.Chart
++  $chart.Width = 800; $chart.Height = 480
++  $area = New-Object System.Windows.Forms.DataVisualization.Charting.ChartArea
++  $area.AxisX.Title = 'percentile'
++  $area.AxisY.Title = $yTitle
++  $chart.ChartAreas.Add($area)
++  $series = New-Object System.Windows.Forms.DataVisualization.Charting.Series
++  $series.ChartType = [System.Windows.Forms.DataVisualization.Charting.SeriesChartType]::Line
++  for ($i=0; $i -lt $ys.Count; $i++) { [void]$series.Points.AddXY($xs[$i], $ys[$i]) }
++  $chart.Series.Add($series)
++  $chart.Titles.Add($title) | Out-Null
++  $chart.SaveImage($outPng, 'Png')
++  $chart.Dispose()
++}
++
++function To-DoubleArray($values) { $arr = @(); foreach ($v in $values) { $d = $null; if ([double]::TryParse([string]$v, [ref]$d)) { $arr += $d } }; return ,$arr }
++
++# Load fills or derive from orders
++$fills = $null
++$hourly = $null
++if ($FillsCsv -and (Test-Path -LiteralPath $FillsCsv)) {
++  $fills = Import-Csv -LiteralPath $FillsCsv
++} elseif ($OrdersCsv -and (Test-Path -LiteralPath $OrdersCsv)) {
++  $orders = Import-Csv -LiteralPath $OrdersCsv
++  if ($orders.Count -eq 0) { throw "orders.csv is empty" }
++  # guess columns
++  $cols = $orders[0].PSObject.Properties.Name
++  function Find-Col([string[]]$cols,[string[]]$cands){ foreach($c in $cands){ $m = $cols | Where-Object { $_ -ieq $c }; if($m){ return $m[0] } }; return $null }
++  $ev = Find-Col $cols @('event','type','status','action')
++  if (-not $ev) { $ev = 'event' }
++  $ts = Find-Col $cols @('timestamp','time','event_time')
++  if (-not $ts) { $ts = $cols[0] }
++  $oid = Find-Col $cols @('orderid','order_id','id')
++  if (-not $oid) { $oid = 'order_id' }
++  $prq = Find-Col $cols @('price_requested','requested_price','request_price','price_request')
++  $pfl = Find-Col $cols @('price_filled','filled_price','execution_price')
++  $sz  = Find-Col $cols @('size','quantity','qty','filled_size','size_filled')
++
++  # Build per-order request and fill times
++  $reqTimes = @{}
++  $fillTimes = @{}
++  foreach ($r in $orders) {
++    $t = [datetime]::MinValue
++    [void][datetime]::TryParse($r.$ts, [ref]$t)
++    $id = $r.$oid
++    $e = [string]$r.$ev
++    if ($e.ToUpper() -eq 'REQUEST') { if (-not $reqTimes.ContainsKey($id)) { $reqTimes[$id] = $t } }
++    if ($e.ToUpper() -eq 'FILL') { $fillTimes[$id] = $t }
++  }
++  $fillsList = @()
++  foreach ($id in $fillTimes.Keys) {
++    if ($reqTimes.ContainsKey($id)) {
++      $lat = ($fillTimes[$id] - $reqTimes[$id]).TotalMilliseconds
++    } else { $lat = $null }
++    $obj = [ordered]@{ order_id = $id; timestamp = $fillTimes[$id]; latency_ms = $lat }
++    if ($prq -and $pfl) {
++      $lastFill = ($orders | Where-Object { $_.$oid -eq $id -and ([string]$_.($ev)).ToUpper() -eq 'FILL' } | Sort-Object { [datetime]$_.($ts) } | Select-Object -Last 1)
++      $firstReq = ($orders | Where-Object { $_.$oid -eq $id -and ([string]$_.($ev)).ToUpper() -eq 'REQUEST' } | Sort-Object { [datetime]$_.($ts) } | Select-Object -First 1)
++      if ($lastFill -and $firstReq) {
++        $pf=[double]0; $pr=[double]0
++        [void][double]::TryParse([string]$lastFill.($pfl), [ref]$pf)
++        [void][double]::TryParse([string]$firstReq.($prq), [ref]$pr)
++        $obj['slippage'] = $pf - $pr
++      }
++    }
++    if ($sz) { $lf = ($orders | Where-Object { $_.$oid -eq $id -and ([string]$_.($ev)).ToUpper() -eq 'FILL' } | Sort-Object { [datetime]$_.($ts) } | Select-Object -Last 1); if ($lf) { $obj['size'] = $lf.($sz) } }
++    $fillsList += [pscustomobject]$obj
++  }
++  $fills = $fillsList
++
++  # Hourly
++  $reqCounts = @{}; $fillCounts = @{}
++  foreach ($r in $orders) {
++    $t=[datetime]::MinValue; [void][datetime]::TryParse($r.$ts,[ref]$t); if ($t -eq [datetime]::MinValue) { continue }
++    $h = Get-Date $t -Format 'yyyy-MM-dd HH:00:00'
++    $e=[string]$r.$ev
++    if ($e.ToUpper() -eq 'REQUEST') { if (-not $reqCounts.ContainsKey($h)) { $reqCounts[$h]=0 }; $reqCounts[$h]++ }
++    if ($e.ToUpper() -eq 'FILL') { if (-not $fillCounts.ContainsKey($h)) { $fillCounts[$h]=0 }; $fillCounts[$h]++ }
++  }
++  $hourly = @()
++  $hours = New-Object System.Collections.Generic.HashSet[string]
++  foreach ($k in $reqCounts.Keys) { $null = $hours.Add($k) }
++  foreach ($k in $fillCounts.Keys) { $null = $hours.Add($k) }
++  foreach ($h in ($hours | Sort-Object)) {
++    $rq = if ($reqCounts.ContainsKey($h)) { $reqCounts[$h] } else { 0 }
++    $fl = if ($fillCounts.ContainsKey($h)) { $fillCounts[$h] } else { 0 }
++    $fr = if ($rq -gt 0) { [double]$fl / [double]$rq } else { [double]::NaN }
++    $hourly += [pscustomobject]@{ timestamp = $h; requests = $rq; fills = $fl; fill_rate = $fr }
++  }
++}
++
++if (-not $fills) { throw 'No inputs found. Provide -FillsCsv or -OrdersCsv.' }
++
++# Extract arrays
++$lat = To-DoubleArray ($fills | ForEach-Object { $_.latency_ms })
++$slp = To-DoubleArray ($fills | ForEach-Object { $_.slippage })
++
++$qs = @(0.5,0.75,0.9,0.95,0.99)
++$summary = @{}
++if ($lat.Count -gt 0) { $summary['latency_ms'] = Percentiles $lat $qs } else { $summary['latency_ms'] = @{ p50=$null;p75=$null;p90=$null;p95=$null;p99=$null } }
++if ($slp.Count -gt 0) { $summary['slippage_abs'] = Percentiles ($slp | ForEach-Object { [math]::Abs($_) }) $qs } else { $summary['slippage_abs'] = @{ p50=$null;p75=$null;p90=$null;p95=$null;p99=$null } }
++
++WriteUtf8 (Join-Path $OutDir 'slip_latency_percentiles.json') (($summary | ConvertTo-Json -Depth 6))
++
++# Hourly medians
++if ($fills -and $fills.Count -gt 0) {
++  $byHour = @{}
++  foreach ($r in $fills) {
++    $t=[datetime]::MinValue; [void][datetime]::TryParse([string]$r.timestamp, [ref]$t); if ($t -eq [datetime]::MinValue) { continue }
++    $h = Get-Date $t -Format 'yyyy-MM-dd HH:00:00'
++    if (-not $byHour.ContainsKey($h)) { $byHour[$h] = @{ lat = @(); slp = @() } }
++    if ($r.latency_ms -ne $null -and $r.latency_ms -ne '') { $d=[double]0; if ([double]::TryParse([string]$r.latency_ms, [ref]$d)) { $byHour[$h].lat += $d } }
++    if ($r.slippage -ne $null -and $r.slippage -ne '') { $d=[double]0; if ([double]::TryParse([string]$r.slippage, [ref]$d)) { $byHour[$h].slp += $d } }
++  }
++  $hourly2 = @()
++  foreach ($h in ($byHour.Keys | Sort-Object)) {
++    $medLat = $null; $medSlp = $null
++    if ($byHour[$h].lat.Count -gt 0) { $medLat = (Percentiles (,$byHour[$h].lat) @(0.5)).p50 }
++    if ($byHour[$h].slp.Count -gt 0) { $medSlp = (Percentiles (,$byHour[$h].slp) @(0.5)).p50 }
++    $hourly2 += [pscustomobject]@{ timestamp=$h; median_latency_ms=$medLat; median_slippage=$medSlp }
++  }
++  # Merge hourly2 with hourly counts if available
++  if ($hourly) {
++    $map = @{}; foreach($row in $hourly2){ $map[[string]$row.timestamp] = $row }
++    $merged = @()
++    foreach($row in ($hourly | Sort-Object timestamp)){
++      $h=[string]$row.timestamp
++      $medLat = $null; $medSlp = $null
++      if ($map.ContainsKey($h)) { $medLat=$map[$h].median_latency_ms; $medSlp=$map[$h].median_slippage }
++      $merged += [pscustomobject]@{ timestamp=$h; requests=$row.requests; fills=$row.fills; fill_rate=$row.fill_rate; median_latency_ms=$medLat; median_slippage=$medSlp }
++    }
++    $merged | Export-Csv -LiteralPath (Join-Path $OutDir 'fillrate_hourly.csv') -NoTypeInformation -Encoding UTF8
++  } else {
++    $hourly2 | Export-Csv -LiteralPath (Join-Path $OutDir 'fillrate_hourly.csv') -NoTypeInformation -Encoding UTF8
++  }
++}
++
++# Top slippages
++if ($slp.Count -gt 0) {
++  $top = ($fills | Where-Object { $_.slippage -ne $null -and $_.slippage -ne '' } | ForEach-Object { [pscustomobject]@{ timestamp=$_.timestamp; slippage=[double]$_.slippage } } | Sort-Object { [math]::Abs($_.slippage) } -Descending | Select-Object -First 20)
++  $top | Export-Csv -LiteralPath (Join-Path $OutDir 'top_slippage.csv') -NoTypeInformation -Encoding UTF8
++} else {
++  New-Item -ItemType File -Path (Join-Path $OutDir 'top_slippage.csv') -Force | Out-Null
++}
++
++# Plots
++if ($slp.Count -gt 0) { Plot-Histogram $slp 'Slippage' (Join-Path $OutDir 'slippage_hist.png') }
++if ($lat.Count -gt 0) {
++  $latPerc = $summary['latency_ms']
++  $xs = @('50','75','90','95','99')
++  $ys = @($latPerc.p50, $latPerc.p75, $latPerc.p90, $latPerc.p95, $latPerc.p99)
++  Plot-LineXY $xs $ys 'Latency percentiles' 'ms' (Join-Path $OutDir 'latency_percentiles.png')
++}
++
++'Postrun analysis complete.' | Write-Host
