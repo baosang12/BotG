@@ -3,11 +3,7 @@
 Reconstruct closed trades (FIFO) from orders.csv fills.
 
 Usage:
-  python reconstruct_closed_trades_sqlite.py --orders path\\to\\orders.csv --out path\\to\\closed_trades_fifo_reconstructed.csv
 
-Notes:
-- Fixes csv shadowing: do not use a local variable named `csv`; `import csv` stays at top.
-- Outputs columns: trade_id,open_time,close_time,symbol,side,volume,open_price,close_price,pnl,status
 """
 
 import argparse
@@ -16,6 +12,7 @@ import os
 from datetime import datetime, timezone
 from collections import defaultdict, deque
 from typing import Dict, Deque, List, Tuple, Optional
+
 
 
 def parse_args():
@@ -30,15 +27,7 @@ def to_epoch_ms(val: Optional[str]) -> Optional[int]:
     if val is None or str(val).strip() == "":
         return None
     s = str(val).strip()
-    # numeric path
-    try:
-        v = float(s)
-        if v > 1e12:  # already ms
-            return int(v)
-        if v > 1e9:   # seconds with decimals
-            return int(v * 1000)
-        # treat small numbers as seconds
-        return int(v * 1000)
+
     except Exception:
         pass
     # ISO path
@@ -77,16 +66,7 @@ def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
     return None
 
 
-class Fill:
-    __slots__ = ("symbol", "side", "volume", "price", "epoch_ms", "iso")
 
-    def __init__(self, symbol: str, side: str, volume: float, price: float, epoch_ms: int, iso: str):
-        self.symbol = symbol
-        self.side = side  # BUY or SELL
-        self.volume = float(volume)
-        self.price = float(price)
-        self.epoch_ms = int(epoch_ms)
-        self.iso = iso
 
 
 def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
@@ -99,34 +79,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
             symbol_col = pick_col(cols, ["symbol", "instrument", "ticker"]) or "symbol"
             side_col = pick_col(cols, ["side", "direction"]) or "side"
             price_col = pick_col(cols, [
-                "execPrice",
-                "price_filled",
-                "fill_price",
-                "executionPrice",
-                "price",
-                "avg_price",
-                "fillPrice",
-                "execprice",
-                "execution_price",
-                "intendedPrice",
-            ])
-            size_col = pick_col(cols, [
-                "filledSize",
-                "size_filled",
-                "size",
-                "volume",
-                "requestedVolume",
-                "theoretical_units",
-                "theoretical_lots",
-            ])
-            epoch_col = pick_col(cols, ["epoch_ms", "epoch"])  # prefer direct epoch if present
-            ts_col = pick_col(cols, [
-                "timestamp_iso",
-                "fill_time",
-                "time",
-                "timestamp",
-                "exit_time",
-                "entry_time",
+
             ])
 
             for row in reader:
@@ -137,45 +90,21 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
 
                 symbol = str(row.get(symbol_col, "")).strip() if symbol_col else ""
                 if not symbol:
-                    # keep going; allow reconstruction per side without symbol if missing (bucket under "?")
-                    symbol = "?"
+      symbol = "?"
 
                 side_raw = str(row.get(side_col, "")).strip().upper() if side_col else ""
                 if side_raw not in ("BUY", "SELL"):
-                    # normalize common aliases
-                    if side_raw in ("LONG", "OPEN_LONG"):  # treat as BUY
-                        side_raw = "BUY"
-                    elif side_raw in ("SHORT", "OPEN_SHORT"):  # treat as SELL
-                        side_raw = "SELL"
-                    else:
-                        # cannot interpret side
-                        continue
 
-                # parse volume
-                vol_str = row.get(size_col) if size_col else None
-                try:
-                    volume = abs(float(vol_str)) if vol_str not in (None, "") else None
-                except Exception:
                     volume = None
                 if not volume or volume <= 0:
                     continue
 
-                # parse price (fallback to intendedPrice if needed)
-                price_val = None
-                cand_vals = []
-                if price_col:
-                    cand_vals.append(row.get(price_col))
-                # explicit fallback
+
                 for alt in ("execPrice", "price", "fill_price", "intendedPrice"):
                     if alt != price_col and alt in row:
                         cand_vals.append(row.get(alt))
                 for v in cand_vals:
-                    try:
-                        if v not in (None, ""):
-                            price_val = float(v)
-                            break
-                    except Exception:
-                        continue
+
                 if price_val is None:
                     continue
 
@@ -183,14 +112,13 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
                 epoch_ms = None
                 if epoch_col and row.get(epoch_col) not in (None, ""):
                     try:
-                        epoch_ms = int(float(row.get(epoch_col)))
+
                     except Exception:
                         epoch_ms = None
                 if epoch_ms is None and ts_col and row.get(ts_col):
                     epoch_ms = to_epoch_ms(row.get(ts_col))
                 if epoch_ms is None:
-                    # try common fallbacks
-                    for alt in ("timestamp_iso", "fill_time", "timestamp"):
+
                         if alt in row and row.get(alt):
                             epoch_ms = to_epoch_ms(row.get(alt))
                             if epoch_ms is not None:
@@ -202,6 +130,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     except FileNotFoundError:
         raise
     except Exception as e:
+
         raise RuntimeError(f"Failed reading orders CSV: {e}")
 
     # sort by time to ensure FIFO is chronological
@@ -209,7 +138,7 @@ def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     return fills
 
 
-def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float, float, float, float, str]]:
+
     """
     Returns list of rows matching header:
     trade_id,open_time,close_time,symbol,side,volume,open_price,close_price,pnl,status
@@ -218,24 +147,20 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
     longs: Dict[str, Deque[Fill]] = defaultdict(deque)
     shorts: Dict[str, Deque[Fill]] = defaultdict(deque)
 
-    closed: List[Tuple[str, str, str, str, float, float, float, float, str]] = []
+
     seq = 1
 
     for f in fills:
         sym = f.symbol
         if f.side == "BUY":
             # Close existing shorts first
-            vol_left = f.volume
-            while vol_left > 0 and shorts[sym]:
-                s = shorts[sym][0]
-                take = min(s.volume, vol_left)
+
                 pnl = (s.price - f.price) * take  # short pnl = open - close
                 trade_id = f"fifo_{seq}"
                 seq += 1
                 closed.append((
                     trade_id,
-                    to_iso_utc(s.epoch_ms),
-                    f.iso,
+
                     sym,
                     "SHORT",
                     take,
@@ -246,25 +171,18 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
                 ))
                 s.volume -= take
                 vol_left -= take
-                if s.volume <= 1e-12:
-                    shorts[sym].popleft()
-            # Remainder opens long
-            if vol_left > 1e-12:
+
                 longs[sym].append(Fill(sym, "BUY", vol_left, f.price, f.epoch_ms, f.iso))
 
         elif f.side == "SELL":
             # Close existing longs first
-            vol_left = f.volume
-            while vol_left > 0 and longs[sym]:
-                l = longs[sym][0]
-                take = min(l.volume, vol_left)
+
                 pnl = (f.price - l.price) * take  # long pnl = close - open
                 trade_id = f"fifo_{seq}"
                 seq += 1
                 closed.append((
                     trade_id,
-                    to_iso_utc(l.epoch_ms),
-                    f.iso,
+
                     sym,
                     "LONG",
                     take,
@@ -275,10 +193,7 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
                 ))
                 l.volume -= take
                 vol_left -= take
-                if l.volume <= 1e-12:
-                    longs[sym].popleft()
-            # Remainder opens short
-            if vol_left > 1e-12:
+
                 shorts[sym].append(Fill(sym, "SELL", vol_left, f.price, f.epoch_ms, f.iso))
         else:
             # ignore unknown side
@@ -287,7 +202,7 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, float,
     return closed
 
 
-def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, float, float, float, str]]):
+
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     header = [
         "trade_id",
@@ -305,7 +220,7 @@ def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, floa
         w = csv.writer(fh)
         w.writerow(header)
         for r in rows:
-            # format floats cleanly
+
             trade_id, open_time, close_time, symbol, side, volume, open_p, close_p, pnl, status = r
             w.writerow([
                 trade_id,
@@ -313,10 +228,7 @@ def write_output(out_path: str, rows: List[Tuple[str, str, str, str, float, floa
                 close_time,
                 symbol,
                 side,
-                f"{float(volume):.10f}",
-                f"{float(open_p):.10f}",
-                f"{float(close_p):.10f}",
-                f"{float(pnl):.10f}",
+
                 status,
             ])
 

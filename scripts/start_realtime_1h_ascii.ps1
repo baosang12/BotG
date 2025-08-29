@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 function TimestampNow { (Get-Date).ToString('yyyyMMdd_HHmmss') }
 
-$repo = (Resolve-Path '.').Path
+
 $ts = TimestampNow
 
 # Use ASCII-safe TEMP base to avoid issues with Unicode paths
@@ -22,9 +22,7 @@ New-Item -ItemType Directory -Force -Path $asciiBase | Out-Null
 $daemon = Join-Path $repo 'scripts\run_realtime_1h_daemon.ps1'
 if (-not (Test-Path -LiteralPath $daemon)) { throw "Missing $daemon" }
 
-$psArgs = @(
-  '-NoProfile','-ExecutionPolicy','Bypass','-File',$daemon,
-  '-OutBase',$asciiBase,
+
   '-Seconds',[string]$Seconds,
   '-SecondsPerHour',[string]$SecondsPerHour,
   '-FillProb',[string]$FillProb,
@@ -33,7 +31,7 @@ $psArgs = @(
   '-PRNumber',[string]$PRNumber
 )
 
-$proc = Start-Process -FilePath 'powershell' -ArgumentList $psArgs -PassThru -WindowStyle Hidden
+
 
 $ack = [pscustomobject]@{
   action = 'started'

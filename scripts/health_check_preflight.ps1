@@ -12,7 +12,7 @@ function Safe-Json {
 }
 
 $ts = (Get-Date).ToString("yyyyMMdd_HHmmss")
-$outReport = Join-Path -Path (Join-Path (Get-Location) "artifacts_ascii") -ChildPath "health_check_$ts.json"
+
 $report = [ordered]@{
     STATUS = $null
     can_continue_running = $null
@@ -30,7 +30,7 @@ $report = [ordered]@{
         tail = @()
     }
     disk = @{
-        drive = (Split-Path -Qualifier $OutDir)
+
         free_gb = $null
     }
     temp_artifacts = @()
@@ -111,10 +111,7 @@ try {
 
     foreach ($dir in $possibleRunDirs | Select-Object -Unique) {
         $candidates = @(
-            Join-Path $dir "harness_stdout.log",
-            Join-Path $dir "harness.log",
-            Join-Path $dir "logs\harness.log",
-            Join-Path $dir "harness_stderr.log"
+
         )
         foreach ($c in $candidates) {
             if (Test-Path -LiteralPath $c) {
@@ -177,7 +174,7 @@ try {
             if ($dirsTemp.Count -gt 0) { $searchDirs += $dirsTemp[0].FullName }
         }
         foreach ($d in $searchDirs | Select-Object -Unique) {
-            $rm = Join-Path $d "run_metadata.json"
+
             if (Test-Path -LiteralPath $rm) {
                 $content = Get-Content -LiteralPath $rm -Raw -ErrorAction SilentlyContinue
                 try { $obj = $content | ConvertFrom-Json; $report.run_metadata = $obj; $runMetaFound = $true; break } catch {}
@@ -190,7 +187,7 @@ try {
     try {
         $ordersHeader = $null
         foreach ($d in $searchDirs | Select-Object -Unique) {
-            $f = Join-Path $d "orders.csv"
+
             if (Test-Path -LiteralPath $f) {
                 $header = Get-Content -LiteralPath $f -TotalCount 1 -ErrorAction SilentlyContinue
                 if ($header) {
@@ -204,12 +201,7 @@ try {
 
     # 8) reconstruct tool presence
     $reconPaths = @("tools\reconstruct.py","reconstruct_closed_trades_sqlite.py","Tools\ReconstructClosedTrades")
-    foreach ($rp in $reconPaths) {
-        if (Test-Path -LiteralPath (Join-Path (Get-Location) $rp)) {
-            $report.reconstruct_tool.present = $true
-            $report.reconstruct_tool.path = (Join-Path (Get-Location) $rp)
-            break
-        }
+
     }
     if (-not $report.reconstruct_tool.present) { $report.reconstruct_tool.present = $false; $report.issues += "Reconstruct tool not found in expected paths." }
 
@@ -250,7 +242,7 @@ try {
 
 } catch {
     $report.STATUS = "CANNOT_CHECK"
-    $report.notes = "Exception during health check: " + $_.Exception.Message
+
     $report.issues += "Health-check script encountered an error."
     $report.can_continue_running = "unknown"
 }

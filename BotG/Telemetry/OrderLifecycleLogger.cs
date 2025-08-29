@@ -86,6 +86,7 @@ namespace Telemetry
                 }
 
                 var host = Environment.MachineName;
+
                 var line = string.Join(",",
                     phase,
                     ts.ToString("o", CultureInfo.InvariantCulture),

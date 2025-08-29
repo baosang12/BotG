@@ -147,9 +147,7 @@ class Program
                 try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
-                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
-                // Also log the synthetic exit fill to orders.csv for reconciliation consistency
-                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+
             }
             else if (sellStack.Count > 0 && buyStack.Count == 0)
             {
@@ -167,6 +165,7 @@ class Program
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
                 TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{s.orderId}", "DRAIN-BUY", s.orderId, s.ts, now, "BUY-SELL", 1.0, fakeBuyPrice, s.price, net, fee, "drain_close", gross);
+
                 TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, fakeBuyPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
             }
             else
