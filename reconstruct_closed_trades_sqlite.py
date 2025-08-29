@@ -86,12 +86,7 @@ def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
 
 @dataclass
 class Fill:
-    symbol: str
-    side: str          # 'BUY' | 'SELL'
-    volume: Decimal
-    price: Decimal
-    epoch_ms: int
-    iso: str
+
 
 
 def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
@@ -244,7 +239,7 @@ def fifo_reconstruct(fills: List[Fill]) -> List[Tuple[str, str, str, str, Decima
 
         elif f.side == "SELL":
             # Close existing longs first
-            vol_left = Decimal(f.volume)  # FIX: ensure vol_left is defined for SELL branch
+
             while vol_left > Decimal("0") and longs[sym]:
                 l = longs[sym][0]
                 take = l.volume if l.volume <= vol_left else vol_left

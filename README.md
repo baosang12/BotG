@@ -42,3 +42,16 @@ Windows (PowerShell 5.1) recommended steps:
 5) Acceptance gate
   - In `reconstruct_report.json`, require `estimated_orphan_fills_after_reconstruct == 0`.
   - `final_report.json` contains a summarized verdict. The daemon retries once automatically if orphans persist.
+
+## Development
+
+### Path hardening (Windows, OneDrive)
+
+If your OneDrive folder contains Unicode in its name (for example, `D:\OneDrive\Tài Liệu\...`), prefer an ASCII-safe root and set an environment variable for the repo:
+
+- Recommended repo path: `D:\OneDrive\TaiLieu\cAlgo\Sources\Robots\BotG`
+- Set once per session:
+  - PowerShell: `./scripts/set_repo_env.ps1 -BotGRoot "D:\OneDrive\TaiLieu\cAlgo\Sources\Robots\BotG"`
+  - Or set permanently as user env `BOTG_ROOT`.
+
+Scripts now reference `$env:BOTG_ROOT` (and `$env:BOTG_RUNS_ROOT`/`$env:BOTG_LOG_PATH` when applicable) instead of hard-coded absolute paths.

@@ -1,1 +1,1 @@
-https://github.com/baosang12/BotG/pull/new/fix/postrun/20250827_124502-logging-reconcile
+https://github.com/baosang12/BotG/compare/fix/postrun-20250827_143911-finalize?expand=1

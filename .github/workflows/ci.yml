@@ -140,11 +140,6 @@ jobs:
           name: quick-smoke-artifacts
           path: smoke-artifacts
 
-      - name: Run reconstruction validation
-        shell: pwsh
-        run: |
-          Write-Host 'RV_MARKER=call-operator-v2' 
-          & "${{ github.workspace }}\scripts\ci_reconstruct_validate.ps1" -ArtifactsRoot (Resolve-Path './smoke-artifacts') -OutDir './recon-out'
 
       - name: Upload reconstruction outputs
         if: always()

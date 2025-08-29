@@ -49,12 +49,13 @@ function Invoke-OneRun([string]$pretty,[int]$sec,[int]$sph,[double]$fp,[int]$dr,
   New-Item -ItemType Directory -Path $asciiBase -Force | Out-Null
   $log = Join-Path $baseOut ("run_smoke_" + $pretty + '_' + (TimestampNow) + '.log')
   $err = Join-Path $baseOut ("run_smoke_" + $pretty + '_' + (TimestampNow) + '.err.log')
+  function Q([string]$s){ return '"' + $s + '"' }
   $qRun = $runSmoke
-  # Use ArgumentList array to avoid nested quoting issues on Windows PowerShell 5.1
-  $psArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$qRun,
-    '-Seconds',[string]$sec,'-ArtifactPath',$asciiBase,'-FillProbability',[string]$fp,
+  # Use explicit quoting for -File and -ArtifactPath to handle spaces/diacritics in paths
+  $psArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Q $qRun),
+    '-Seconds',[string]$sec,'-ArtifactPath',(Q $asciiBase),'-FillProbability',[string]$fp,
     '-DrainSeconds',[string]$dr,'-SecondsPerHour',[string]$sph,'-GracefulShutdownWaitSeconds',[string]$gr,'-UseSimulation')
-  $p = Start-Process -FilePath 'powershell' -ArgumentList $psArgs -RedirectStandardOutput $log -RedirectStandardError $err -PassThru -WindowStyle Hidden
+  $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -RedirectStandardOutput $log -RedirectStandardError $err -PassThru -WindowStyle Hidden
   $deadline = (Get-Date).AddHours(2)
   while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 5 }
   if (-not $p.HasExited) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}; return @{ status='TIMEOUT'; note='Process exceeded 2h window'; outdir=$null; zip=$null } }
