@@ -89,6 +89,7 @@ class Fill:
 
 
 
+
 def read_fills(orders_path: str, fill_phase: str) -> List[Fill]:
     fills: List[Fill] = []
     try:
