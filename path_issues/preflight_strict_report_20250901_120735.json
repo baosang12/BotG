@@ -1,0 +1,234 @@
+﻿{
+    "free_disk_bytes":  235548930048,
+    "dotnet_sdks":  [
+                        "6.0.100 [C:\\Program Files\\dotnet\\sdk]",
+                        "8.0.411 [C:\\Program Files\\dotnet\\sdk]",
+                        "9.0.304 [C:\\Program Files\\dotnet\\sdk]"
+                    ],
+    "python_version":  "Python 3.13.5",
+    "powershell_version":  "5.1.26100.4652",
+    "git_branch":  "ci/recon-validate-smoke",
+    "git_sha":  "984f81ef6997bdda949d87dfa53f844bbbc0de84",
+    "ts":  "20250901_120735",
+    "base":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG",
+    "checks":  [
+                   {
+                       "name":  "env.BOTG_ROOT",
+                       "status":  "PASS",
+                       "details":  "BOTG_ROOT=D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "env.BOTG_LOG_PATH",
+                       "status":  "PASS",
+                       "details":  "Exists and writable: D:\\botg\\logs",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "env.FreeDisk",
+                       "status":  "PASS",
+                       "details":  "Free: 235,548,930,048 bytes",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "runtime.dotnet",
+                       "status":  "PASS",
+                       "details":  "SDK \u003e= 6.0 present",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "runtime.python",
+                       "status":  "PASS",
+                       "details":  "Python 3.13.5",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "runtime.venv",
+                       "status":  "PASS",
+                       "details":  "Found venv: D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\.venv\\Scripts\\Activate.ps1",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "runtime.powershell",
+                       "status":  "PASS",
+                       "details":  "PowerShell 5.1.26100.4652",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "git.branch",
+                       "status":  "PASS",
+                       "details":  "On branch: ci/recon-validate-smoke",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "git.clean",
+                       "status":  "WARN",
+                       "details":  "Untracked files present:  M .github/workflows/ci.yml,  M .github/workflows/paper-pulse.yml,  M .github/workflows/smoke-fast.yml,  M .github/workflows/smoke-run.yml,  M path_issues/agent_ts.txt,  M path_issues/git_manual_run.txt,  M scripts/ci_reconstruct_validate.ps1, ?? path_issues/agent_summary_20250828_000000.json, ?? path_issues/agent_summary_20250828_000501.json, ?? path_issues/analyze_results_20250830_104108.json, ?? path_issues/analyze_results_20250830_104346.json, ?? path_issues/analyze_results_20250830_105347.json, ?? path_issues/analyze_results_20250830_105656.json, ?? path_issues/analyze_results_20250830_110145.json, ?? path_issues/analyze_results_20250830_110506.json, ?? path_issues/analyze_results_20250901_112841.json, ?? path_issues/build_and_test_output_20250830_104108.txt, ?? path_issues/build_and_test_output_20250830_104346.txt, ?? path_issues/build_and_test_output_20250830_105347.txt, ?? path_issues/build_and_test_output_20250830_105656.txt, ?? path_issues/build_and_test_output_20250830_110145.txt, ?? path_issues/build_and_test_output_20250830_110506.txt, ?? path_issues/build_and_test_output_20250901_112841.txt, ?? path_issues/closed_trades_fifo_reconstructed_20250830_104108.csv, ?? path_issues/closed_trades_fifo_reconstructed_20250830_104346.csv, ?? path_issues/closed_trades_fifo_reconstructed_20250830_110506.csv, ?? path_issues/closed_trades_fifo_reconstructed_20250901_112841.csv, ?? path_issues/collect_20250830_101536/, ?? path_issues/collect_20250830_104108/, ?? path_issues/collect_20250830_104346/, ?? path_issues/collect_20250830_105347/, ?? path_issues/collect_20250830_105656/, ?? path_issues/collect_20250830_110145/, ?? path_issues/collect_20250830_110506/, ?? path_issues/collect_20250901_112841/, ?? path_issues/copilot_acceptance_20250829_095421.json, ?? path_issues/copilot_acceptance_latest.json, ?? path_issues/copilot_action_items_20250829_095421.md, ?? path_issues/copilot_actions_latest.md, ?? path_issues/copilot_artifact_hashes_20250829_095421.json, ?? path_issues/copilot_artifacts_20250829_095421.json, ?? path_issues/copilot_artifacts_latest.json, ?? path_issues/copilot_blockers_20250830_104108.md, ?? path_issues/copilot_blockers_20250830_105656.md, ?? path_issues/copilot_blockers_20250830_110145.md, ?? path_issues/copilot_ci_20250829_095421.json, ?? path_issues/copilot_ci_latest.json, ?? path_issues/copilot_reconstruct_error_20250830_105347.txt, ?? path_issues/copilot_reconstruct_error_20250830_105656.txt, ?? path_issues/copilot_reconstruct_error_20250830_110145.txt, ?? path_issues/copilot_report_error_20250829_120525.txt, ?? path_issues/copilot_status_20250829_095421.md, ?? path_issues/copilot_status_latest.json, ?? path_issues/copilot_status_latest.md, ?? path_issues/full_readiness_run.ps1, ?? path_issues/generate_reports.ps1, ?? path_issues/git_error_20250828_000000.txt, ?? path_issues/git_error_20250828_000501.txt, ?? path_issues/postmerge_artifacts_checksums_20250829_122749.json, ?? path_issues/postmerge_check_20250829_122749.txt, ?? path_issues/postmerge_metrics_20250829_122749.json, ?? path_issues/postmerge_readme_20250829_122749.md, ?? path_issues/postmerge_readme_20250830_101536.md, ?? path_issues/postmerge_readme_20250830_104108.md, ?? path_issues/postmerge_readme_20250830_104346.md, ?? path_issues/postmerge_readme_20250830_105656.md, ?? path_issues/postmerge_readme_20250830_110145.md, ?? path_issues/postmerge_readme_20250830_110506.md, ?? path_issues/postmerge_readme_20250901_112841.md, ?? path_issues/postmerge_readme_pre_run.md, ?? path_issues/postmerge_readme_signed_20250830_104108.txt, ?? path_issues/postmerge_readme_signed_20250830_104346.txt, ?? path_issues/postmerge_readme_signed_20250830_105656.txt, ?? path_issues/postmerge_readme_signed_20250830_110145.txt, ?? path_issues/postmerge_readme_signed_20250830_110506.txt, ?? path_issues/postmerge_readme_signed_20250901_112841.txt, ?? path_issues/postmerge_summary_20250829_122749.json, ?? path_issues/postmerge_summary_20250830_101536.json, ?? path_issues/postmerge_summary_20250830_104108.json, ?? path_issues/postmerge_summary_20250830_104346.json, ?? path_issues/postmerge_summary_20250830_105347.json, ?? path_issues/postmerge_summary_20250830_105656.json, ?? path_issues/postmerge_summary_20250830_110145.json, ?? path_issues/postmerge_summary_20250830_110506.json, ?? path_issues/postmerge_summary_20250901_112841.json, ?? path_issues/postrun_artifacts_20250829_122749.zip, ?? path_issues/preflight_acl_20250901_120451.txt, ?? path_issues/preflight_reconstruct_report_20250901_120451.json, ?? path_issues/preflight_reconstructed_20250901_120451.csv, ?? path_issues/preflight_strict_check.ps1, ?? path_issues/preflight_strict_readme_20250901_120451.md, ?? path_issues/preflight_strict_report_20250901_120451.json, ?? path_issues/reconstruct_report_20250830_104108.json, ?? path_issues/reconstruct_report_20250830_104346.json, ?? path_issues/reconstruct_report_20250830_110506.json, ?? path_issues/reconstruct_report_20250901_112841.json, ?? path_issues/run_manual_collect.txt, ?? path_issues/runbook_weekend_checklist_20250830_101536.md, ?? path_issues/start_24h_command_monday_template.txt, ?? path_issues/start_24h_command_ready.txt, ?? path_issues/user_collect.ps1, ?? path_issues/weekend_full_checksums_20250830_104108.csv, ?? path_issues/weekend_full_checksums_20250830_104108.json, ?? path_issues/weekend_full_checksums_20250830_104346.csv, ?? path_issues/weekend_full_checksums_20250830_104346.json, ?? path_issues/weekend_full_checksums_20250830_105347.csv, ?? path_issues/weekend_full_checksums_20250830_105347.json, ?? path_issues/weekend_full_checksums_20250830_105656.csv, ?? path_issues/weekend_full_checksums_20250830_105656.json, ?? path_issues/weekend_full_checksums_20250830_110145.csv, ?? path_issues/weekend_full_checksums_20250830_110145.json, ?? path_issues/weekend_full_checksums_20250830_110506.csv, ?? path_issues/weekend_full_checksums_20250830_110506.json, ?? path_issues/weekend_full_checksums_20250901_112841.csv, ?? path_issues/weekend_full_checksums_20250901_112841.json, ?? path_issues/weekend_postmerge_checksums_20250830_101536.json",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "orchestration.ready_command",
+                       "status":  "PASS",
+                       "details":  "start_24h_command_ready.txt present and paper mode",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\start_24h_command_ready.txt"
+                                    ]
+                   },
+                   {
+                       "name":  "build",
+                       "status":  "PASS",
+                       "details":  "Build ok",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "tests",
+                       "status":  "PASS",
+                       "details":  "Tests ok",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "reconstruct.run",
+                       "status":  "PASS",
+                       "details":  "Reconstruct produced output",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\preflight_reconstructed_20250901_120735.csv",
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\preflight_reconstruct_report_20250901_120735.json"
+                                    ]
+                   },
+                   {
+                       "name":  "smoke.outputs",
+                       "status":  "PASS",
+                       "details":  "orders/telemetry/trade_closes/summary present",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250901_120749\\artifacts\\telemetry_run_20250901_050755\\orders.csv",
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250901_120749\\artifacts\\telemetry_run_20250901_050755\\telemetry.csv",
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250901_120749\\artifacts\\telemetry_run_20250901_050755\\trade_closes.log",
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250901_120749\\summary.json"
+                                    ]
+                   },
+                   {
+                       "name":  "smoke.file_growth",
+                       "status":  "FAIL",
+                       "details":  "Could not confirm file growth",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "smoke.acceptance",
+                       "status":  "PASS",
+                       "details":  "orphan_after=0, unmatched_orders_count=0",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\preflight_reconstruct_report_20250901_120735.json"
+                                    ]
+                   },
+                   {
+                       "name":  "logging.archival",
+                       "status":  "PASS",
+                       "details":  "Found archival script: archive_and_prepare_24h.ps1",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\archive_and_prepare_24h.ps1"
+                                    ]
+                   },
+                   {
+                       "name":  "logging.acl",
+                       "status":  "PASS",
+                       "details":  "Users have read/list",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\preflight_acl_20250901_120735.txt"
+                                    ]
+                   },
+                   {
+                       "name":  "orchestration.supervisor",
+                       "status":  "PASS",
+                       "details":  "Supervisor script found",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\start_realtime_24h_supervised.ps1"
+                                    ]
+                   },
+                   {
+                       "name":  "orchestration.prepare",
+                       "status":  "PASS",
+                       "details":  "archive_and_prepare_24h.ps1 present",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\archive_and_prepare_24h.ps1"
+                                    ]
+                   },
+                   {
+                       "name":  "orchestration.sentinels",
+                       "status":  "WARN",
+                       "details":  "Sentinel support not detected",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\start_realtime_24h_supervised.ps1"
+                                    ]
+                   },
+                   {
+                       "name":  "monitor.snapshot",
+                       "status":  "WARN",
+                       "details":  "No snapshot script found",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "monitor.runbook",
+                       "status":  "WARN",
+                       "details":  "Runbook lacks clear escalation",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\runbook_weekend_checklist_20250830_101536.md"
+                                    ]
+                   },
+                   {
+                       "name":  "safety.live_feed",
+                       "status":  "PASS",
+                       "details":  "Live feed enabled",
+                       "evidence":  [
+
+                                    ]
+                   },
+                   {
+                       "name":  "safety.stop_instructions",
+                       "status":  "PASS",
+                       "details":  "Stop/pause instructions present",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\runbook_weekend_checklist_20250830_101536.md"
+                                    ]
+                   }
+               ],
+    "blockers":  [
+
+                 ],
+    "warnings":  [
+                     "Untracked files present",
+                     "File growth not confirmed",
+                     "Sentinel support not detected",
+                     "Snapshot script missing"
+                 ],
+    "artifact_hashes":  {
+                            "smoke_summary_sha256":  "F9D9300089B88152C187E0F133F29DF1BE234CA433BE42E0A5BC3B7670C1AB11",
+                            "reconstruct_report_sha256":  "02EBA5B112180974C648956B05EE92270E8E8ACDB2000A628D4655B0C8398EB8"
+                        },
+    "verdict":  "PRECHECKS_FAILED"
+}

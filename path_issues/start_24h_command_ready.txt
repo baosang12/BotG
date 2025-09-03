@@ -1,0 +1,1 @@
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_realtime_24h_supervised.ps1 -PRNumber 13 -SecondsPerHour 300 -Drain 20 -Grace 5 -FillProb 1.0 -UseSimulation $true

@@ -1,43 +1,53 @@
-# Run in Git Bash at repository root:
-ts=20250827_143911
-branch="fix/postrun-${ts}-finalize"
-git checkout -b "$branch"
+## Manual git commands for CI call-operator fix (timestamp: 20250828_000000)
 
-# Stage PR body + checklist
-git add path_issues/postrun_pr_body.md path_issues/postrun_checklist.md
+# Use Git Bash at a real git clone (ASCII-safe path recommended):
+#   C:\\w\\BotG
 
-# Stage artifacts if present (safe to run even if some globs don't match)
-git add path_issues/closed_trades_fifo_reconstructed.csv \
-        path_issues/reconstruct_report.json \
-        path_issues/slip_latency_percentiles.json \
-        path_issues/slippage_hist.png \
-        path_issues/latency_percentiles.png \
-        path_issues/fillrate_hourly.csv \
-        path_issues/top_slippage.csv \
-        path_issues/postrun_summary.txt \
-        path_issues/postrun_artifacts_*.zip
+# If you need a clean clone:
+mkdir -p /c/w
+cd /c/w
+git clone https://github.com/baosang12/BotG.git
+cd /c/w/BotG
+git checkout -b ci/recon-fix-20250828_000000
 
-# Commit & push
-git commit -m "chore(postrun): add PR body + checklist and packaged artifacts for review"
+# Copy these updated files from your VS Code workspace into this clone and overwrite:
+#   .github/workflows/ci.yml
+#   scripts/ci_reconstruct_validate.ps1
+
+# Commit and push:
+git add .github/workflows/ci.yml scripts/ci_reconstruct_validate.ps1
+git commit -m "CI: call-operator for recon validate + markers"
 git push -u origin HEAD
 
-# Save branch name for operator reference
-echo "$branch" > path_issues/last_branch_pushed.txt
+# After push, a new Actions run should start. In job 'Reconstruct & Validate (from smoke)',
+# verify you see both markers in logs:
+#   RV_MARKER=call-operator-v2
+#   RV_SCRIPT_VERSION=2025-08-28-v2
+# Do not re-run old jobs; ensure a new run is created from the latest commit.
 
-# Then create PR in GitHub UI and paste path_issues/postrun_pr_body.md into description; attach ZIP from path_issues.
-# Run these in Git Bash from the repo root
-ts=$(date +%Y%m%d_%H%M%S)
-branch="fix/postrun-${ts}-finalize"
+## Manual git commands (additional timestamp: 20250828_000501)
+
+# Run in Git Bash at repo root (ASCII-safe path recommended, e.g., C:\\w\\BotG)
+mkdir -p /c/w
+cd /c/w
+git clone https://github.com/baosang12/BotG.git
+cd /c/w/BotG
+ts=20250828_000501
+branch="ci/recon-fix-${ts}"
 git checkout -b "$branch"
 
-# stage the new PR files and checklist
-git add path_issues/postrun_pr_body.md path_issues/postrun_checklist.md
+# Copy updated files into this clone (overwrite):
+#   .github/workflows/ci.yml
+#   scripts/ci_reconstruct_validate.ps1
 
-# optionally add artifacts for reviewer (only if they exist)
-git add path_issues/closed_trades_fifo_reconstructed.csv path_issues/reconstruct_report.json \
-        path_issues/slip_latency_percentiles.json path_issues/slippage_hist.png path_issues/latency_percentiles.png \
-        path_issues/fillrate_hourly.csv path_issues/top_slippage.csv path_issues/postrun_artifacts_*.zip path_issues/postrun_summary.txt
+# If identity missing, set it first:
+# git config user.email "you@example.com"
+# git config user.name "Your Name"
 
-git commit -m "chore(postrun): add PR body + checklist and packaged artifacts for review"
+git add .github/workflows/ci.yml scripts/ci_reconstruct_validate.ps1
+git commit -m "CI: call-operator for recon validate + markers (fix runner quoting)"
+git fetch origin
+git merge origin/main
 git push -u origin HEAD
-echo "BRANCH_PUSHED:$branch"
+
+# Check Actions runs for this branch and confirm markers in logs as above.
