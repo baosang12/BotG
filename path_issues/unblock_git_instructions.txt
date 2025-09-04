@@ -1,0 +1,30 @@
+Git appears blocked in this PowerShell session due to Unicode path issues. Use one of these options:
+
+Option A — Git Bash Here (recommended)
+1) Open File Explorer at: D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG
+2) Right-click empty space > "Git Bash Here".
+3) Verify repo:
+   git rev-parse --is-inside-work-tree
+   git status -sb
+4) Run the finalize commands from path_issues/git_manual_run.txt.
+
+Option B — Map a short drive (no diacritics) with SUBST
+1) Open Command Prompt (cmd.exe) as your user (no admin needed).
+2) Map a temporary drive letter:
+   subst X: "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG"
+3) Use X:\ in Git Bash or cmd:
+   git -C X:\ rev-parse --is-inside-work-tree
+   git -C X:\ status -sb
+   cd /d X:\
+   # then run the commands in path_issues/git_manual_run.txt
+4) When done, remove the mapping:
+   subst X: /d
+
+Option C — VS Code Source Control UI
+1) Open the repo in VS Code.
+2) Source Control tab: Stage the files under path_issues/; commit.
+3) Use the "Publish Branch" or push menu to push the new branch.
+
+Notes:
+- Prefer Git Bash for Unicode paths.
+- Do not merge PR automatically; follow the acceptance gates.

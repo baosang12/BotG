@@ -1,4 +1,288 @@
 #!/usr/bin/env python3
+import os, sys, json, csv, math
+from datetime import datetime
+
+def find_latest_run(log_path: str) -> str | None:
+    art = os.path.join(log_path, 'artifacts')
+    if not os.path.isdir(art):
+        return None
+    runs = [os.path.join(art, d) for d in os.listdir(art) if d.startswith('telemetry_run_')]
+    runs = [d for d in runs if os.path.isdir(d)]
+    if not runs:
+        return None
+    runs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+    return runs[0]
+
+def try_float(s):
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+def parse_csv(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    return rows, reader.fieldnames
+
+def write_csv(path, rows, fieldnames):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+
+def percentile(values, q):
+    if not values:
+        return None
+    xs = sorted(values)
+    idx = int(round((len(xs)-1) * q))
+    return xs[idx]
+
+def main():
+    botg_root = os.environ.get('BOTG_ROOT') or os.getcwd()
+    log_path = os.environ.get('BOTG_LOG_PATH') or os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'BotG', 'logs')
+    out_dir = os.path.join(botg_root, 'path_issues')
+    os.makedirs(out_dir, exist_ok=True)
+    steps_log = os.path.join(out_dir, f'agent_steps_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.log')
+    def log(msg):
+        print(msg)
+        try:
+            with open(steps_log, 'a', encoding='utf-8') as f:
+                f.write(msg + '\n')
+        except Exception:
+            pass
+
+    run_dir = find_latest_run(log_path)
+    if not run_dir:
+        log('[ERR] No telemetry_run_* found under ' + log_path)
+        return 2
+    log('[INFO] Using run_dir: ' + run_dir)
+
+    # Load orders
+    orders_csv = os.path.join(run_dir, 'orders.csv')
+    if not os.path.isfile(orders_csv):
+        log('[ERR] orders.csv missing in run_dir')
+        return 3
+    orders, order_fields = parse_csv(orders_csv)
+
+    # Investigate DRAIN-SELL missing latency
+    drain_rows = [r for r in orders if 'DRAIN-SELL' in (r.get('orderId','') or r.get('order_id','')) and (r.get('status')=='FILL' or r.get('phase')=='FILL')]
+    missing_latency = [r for r in drain_rows if not (r.get('latency_ms') or '').strip()]
+    inv = {
+        'drain_sell_total_fills': len(drain_rows),
+        'drain_sell_missing_latency': len(missing_latency)
+    }
+    with open(os.path.join(out_dir, 'investigate_drain.json'),'w',encoding='utf-8') as f:
+        json.dump(inv, f, indent=2)
+    log(f"[INFO] DRAIN-SELL fills={inv['drain_sell_total_fills']} missing_latency={inv['drain_sell_missing_latency']}")
+
+    # Reconcile: base on closed_trades if present, else create minimal by pairing fills (fallback: copy file)
+    closed_csv = os.path.join(run_dir, 'closed_trades_fifo.csv')
+    recon_out = os.path.join(out_dir, 'closed_trades_fifo_reconstructed.csv')
+    report = {'source': 'closed_trades_fifo.csv' if os.path.isfile(closed_csv) else 'orders.csv', 'unmatched_orders_count': 0, 'unmatched_trade_closes_count': 0}
+    if os.path.isfile(closed_csv):
+        # augment with latency/slippage joined from orders by entry/exit ids when possible
+        closed, closed_fields = parse_csv(closed_csv)
+        # Build latency/slip maps by orderId for FILL rows
+        fill_rows = [r for r in orders if (r.get('status')=='FILL' or r.get('phase')=='FILL')]
+        fill_by_id = {}
+        for r in fill_rows:
+            oid = r.get('orderId') or r.get('order_id')
+            if not oid: 
+                continue
+            slip = r.get('slippage')
+            if slip is None or str(slip)=='' or str(slip).lower()=='nan':
+                pr = try_float(r.get('price_filled') or r.get('execPrice'))
+                rq = try_float(r.get('price_requested') or r.get('intendedPrice'))
+                slip = None if pr is None or rq is None else (pr - rq)
+            lat = r.get('latency_ms')
+            fill_by_id[oid] = {
+                'latency_ms': int(try_float(lat)) if lat not in (None, '') and try_float(lat) is not None else '' ,
+                'slippage': try_float(slip) if slip not in (None, '') else '' ,
+                'timestamp_fill': r.get('timestamp_iso') or ''
+            }
+        # augment
+        out_fields = list(closed_fields) + [fn for fn in ['entry_latency_ms','exit_latency_ms','entry_slippage','exit_slippage'] if fn not in closed_fields]
+        aug = []
+        for tr in closed:
+            e = tr.get('entry_order_id'); x = tr.get('exit_order_id')
+            enr = fill_by_id.get(e, {})
+            exr = fill_by_id.get(x, {})
+            tr = dict(tr)
+            tr['entry_latency_ms'] = enr.get('latency_ms','')
+            tr['exit_latency_ms'] = exr.get('latency_ms','')
+            tr['entry_slippage'] = enr.get('slippage','')
+            tr['exit_slippage'] = exr.get('slippage','')
+            aug.append(tr)
+        write_csv(recon_out, aug, out_fields)
+        # Simple consistency vs trade_closes.log
+        tclose = os.path.join(run_dir, 'trade_closes.log')
+        seen_ids = set()
+        if os.path.isfile(tclose):
+            with open(tclose,'r',encoding='utf-8') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 3 and parts[1]=='CLOSED':
+                        seen_ids.add(parts[2])
+        reported = set([r.get('trade_id') for r in aug if r.get('trade_id')])
+        report['unmatched_trade_closes_count'] = max(0, len(seen_ids - reported))
+    else:
+        # minimal fallback: write fills only with computed slippage; not ideal but ensures downstream files exist
+        fills = [r for r in orders if (r.get('status')=='FILL' or r.get('phase')=='FILL')]
+        out_fields = ['orderId','side','price_requested','price_filled','size_filled','timestamp_request','timestamp_fill','latency_ms','slippage']
+        out_rows = []
+        for r in fills:
+            oid = r.get('orderId') or r.get('order_id')
+            pr = r.get('price_requested') or r.get('intendedPrice')
+            pf = r.get('price_filled') or r.get('execPrice')
+            sz = r.get('size_filled') or r.get('filledSize')
+            lat = r.get('latency_ms')
+            slip = r.get('slippage')
+            if not slip:
+                pfn = try_float(pf); prn = try_float(pr)
+                slip = '' if (pfn is None or prn is None) else (pfn - prn)
+            out_rows.append({
+                'orderId': oid,
+                'side': r.get('side') or r.get('action'),
+                'price_requested': pr,
+                'price_filled': pf,
+                'size_filled': sz,
+                'timestamp_request': r.get('timestamp_request') or '',
+                'timestamp_fill': r.get('timestamp_iso') or '',
+                'latency_ms': lat or '',
+                'slippage': slip
+            })
+        write_csv(recon_out, out_rows, out_fields)
+
+    # Percentiles and per-hour summary
+    # Extract slippage and latency from orders fills
+    fills = [r for r in orders if (r.get('status')=='FILL' or r.get('phase')=='FILL')]
+    slip_vals = []
+    lat_vals = []
+    by_hour = {}
+    for r in fills:
+        slip = r.get('slippage')
+        if not slip:
+            pr = try_float(r.get('price_requested') or r.get('intendedPrice'))
+            pf = try_float(r.get('price_filled') or r.get('execPrice'))
+            if pr is not None and pf is not None:
+                slip = pf - pr
+        s = try_float(slip)
+        if s is not None:
+            slip_vals.append(abs(s))
+        lt = try_float(r.get('latency_ms'))
+        if lt is not None:
+            lat_vals.append(lt)
+        ts_iso = r.get('timestamp_iso') or ''
+        hr = ts_iso[:13] if len(ts_iso)>=13 else ''
+        if hr:
+            d = by_hour.setdefault(hr, {'requests':0,'fills':0,'lat_samples':[],'slip_samples':[]})
+            d['fills'] += 1
+
+    # count requests per hour
+    reqs = [r for r in orders if (r.get('status')=='REQUEST' or r.get('phase')=='REQUEST')]
+    for r in reqs:
+        ts_iso = r.get('timestamp_iso') or ''
+        hr = ts_iso[:13] if len(ts_iso)>=13 else ''
+        if hr:
+            d = by_hour.setdefault(hr, {'requests':0,'fills':0,'lat_samples':[],'slip_samples':[]})
+            d['requests'] += 1
+
+    # recompute per-hour medians
+    for r in fills:
+        ts_iso = r.get('timestamp_iso') or ''
+        hr = ts_iso[:13] if len(ts_iso)>=13 else ''
+        if hr and hr in by_hour:
+            lt = try_float(r.get('latency_ms'))
+            if lt is not None:
+                by_hour[hr]['lat_samples'].append(lt)
+            slip = r.get('slippage')
+            if not slip:
+                pr = try_float(r.get('price_requested') or r.get('intendedPrice'))
+                pf = try_float(r.get('price_filled') or r.get('execPrice'))
+                if pr is not None and pf is not None:
+                    slip = pf - pr
+            s = try_float(slip)
+            if s is not None:
+                by_hour[hr]['slip_samples'].append(s)
+
+    def median(a):
+        if not a: return None
+        b = sorted(a)
+        n = len(b)
+        m = n//2
+        if n%2==1:
+            return b[m]
+        return 0.5*(b[m-1]+b[m])
+
+    # write percentiles JSON
+    pct = {
+        'slip_abs': { 'p50': percentile(slip_vals,0.5), 'p75': percentile(slip_vals,0.75), 'p90': percentile(slip_vals,0.9), 'p95': percentile(slip_vals,0.95), 'p99': percentile(slip_vals,0.99) },
+        'latency_ms': { 'p50': percentile(lat_vals,0.5), 'p75': percentile(lat_vals,0.75), 'p90': percentile(lat_vals,0.9), 'p95': percentile(lat_vals,0.95), 'p99': percentile(lat_vals,0.99) }
+    }
+    with open(os.path.join(out_dir, 'slip_latency_percentiles.json'),'w',encoding='utf-8') as f:
+        json.dump(pct, f, indent=2)
+
+    # per-hour CSV
+    hourly_path = os.path.join(out_dir, 'fillrate_by_hour.csv')
+    with open(hourly_path,'w',newline='',encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(['hour','requests','fills','fill_rate','median_latency_ms','median_slippage'])
+        for hr in sorted(by_hour.keys()):
+            d = by_hour[hr]
+            req = d['requests']; fl = d['fills']
+            fr = (float(fl)/req) if req>0 else 0.0
+            w.writerow([hr, req, fl, f"{fr:.4f}", median(d['lat_samples']) if d['lat_samples'] else '', median(d['slip_samples']) if d['slip_samples'] else ''])
+
+    # Top outliers (abs slippage)
+    out_rows = sorted(fills, key=lambda r: abs(try_float(r.get('slippage') or 0) or 0), reverse=True)[:20]
+    out_path = os.path.join(out_dir, 'top20_slippage.csv')
+    if out_rows:
+        fields = list(out_rows[0].keys())
+        write_csv(out_path, out_rows, fields)
+
+    # Save reconstruct report
+    with open(os.path.join(out_dir,'reconstruct_report.json'),'w',encoding='utf-8') as f:
+        json.dump(report, f, indent=2)
+
+    # Try plots if matplotlib available
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        # Slippage histogram
+        if slip_vals:
+            plt.figure(figsize=(6,4))
+            plt.hist(slip_vals, bins=100)
+            plt.title('Slippage distribution (abs)')
+            plt.xlabel('abs(slippage)')
+            plt.ylabel('count')
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir,'slippage_hist.png'))
+            plt.close()
+        # Latency percentiles plot (CDF-ish)
+        if lat_vals:
+            xs = sorted(lat_vals)
+            ys = [i/(len(xs)-1) if len(xs)>1 else 1.0 for i,_ in enumerate(xs)]
+            plt.figure(figsize=(6,4))
+            plt.plot(xs, ys)
+            plt.title('Latency empirical CDF')
+            plt.xlabel('latency_ms')
+            plt.ylabel('cdf')
+            plt.tight_layout()
+            plt.savefig(os.path.join(out_dir,'latency_percentiles.png'))
+            plt.close()
+    except Exception as e:
+        log('[WARN] Plotting skipped: ' + str(e))
+
+    log('[OK] Analysis complete.')
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
+#!/usr/bin/env python3
 """
 Analyze a smoke artifact folder:
  - Reads closed_trades_fifo.csv and orders.csv

@@ -3,7 +3,7 @@ param(
   [string]$LogDir = $env:BOTG_LOG_PATH
 )
 
-if (-not $LogDir) { $LogDir = 'D:\botg\logs' }
+if (-not $LogDir) { $LogDir = ($env:BOTG_LOG_PATH ? $env:BOTG_LOG_PATH : 'D:\botg\logs') }
 if (-not (Test-Path $LogDir)) { throw "Log directory not found: $LogDir" }
 
 $ts = Get-Date -Format 'yyyyMMdd_HHmmss'

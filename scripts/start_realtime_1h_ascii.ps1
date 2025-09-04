@@ -12,7 +12,9 @@ $ErrorActionPreference = 'Stop'
 
 function TimestampNow { (Get-Date).ToString('yyyyMMdd_HHmmss') }
 
-$repo = (Resolve-Path '.').Path
+# Resolve repo root from this script location to avoid dependency on current working directory
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repo = (Resolve-Path (Join-Path $scriptRoot '..')).Path
 $ts = TimestampNow
 
 # Use ASCII-safe TEMP base to avoid issues with Unicode paths
@@ -22,9 +24,11 @@ New-Item -ItemType Directory -Force -Path $asciiBase | Out-Null
 $daemon = Join-Path $repo 'scripts\run_realtime_1h_daemon.ps1'
 if (-not (Test-Path -LiteralPath $daemon)) { throw "Missing $daemon" }
 
+function Q([string]$s){ return '"' + $s + '"' }
+
 $psArgs = @(
-  '-NoProfile','-ExecutionPolicy','Bypass','-File',$daemon,
-  '-OutBase',$asciiBase,
+  '-NoProfile','-ExecutionPolicy','Bypass','-File',(Q $daemon),
+  '-OutBase',(Q $asciiBase),
   '-Seconds',[string]$Seconds,
   '-SecondsPerHour',[string]$SecondsPerHour,
   '-FillProb',[string]$FillProb,
@@ -33,7 +37,10 @@ $psArgs = @(
   '-PRNumber',[string]$PRNumber
 )
 
-$proc = Start-Process -FilePath 'powershell' -ArgumentList $psArgs -PassThru -WindowStyle Hidden
+# Capture daemon stdout/stderr for diagnostics and set WorkingDirectory to repo root
+$daemonStdout = Join-Path $asciiBase 'daemon_stdout.log'
+$daemonStderr = Join-Path $asciiBase 'daemon_stderr.log'
+$proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -PassThru -WindowStyle Hidden -WorkingDirectory $repo -RedirectStandardOutput $daemonStdout -RedirectStandardError $daemonStderr
 
 $ack = [pscustomobject]@{
   action = 'started'
