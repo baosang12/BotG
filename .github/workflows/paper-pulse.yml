@@ -31,7 +31,7 @@ jobs:
           if (-not $hours) { $hours = '4' }
           $art = Join-Path $env:RUNNER_TEMP 'botg_pulse_artifacts'
           New-Item -ItemType Directory -Path $art -Force | Out-Null
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_paper_pulse.ps1 -Hours [int]$hours -ArtifactPath $art -FillProb 0.9 -FeePerTrade 0.02 -GeneratePlots:$false 2>&1 | Tee-Object -FilePath (Join-Path $art 'pulse_stdout.log')
+          & "${{ github.workspace }}\scripts\run_paper_pulse.ps1" -Hours ([int]$hours) -ArtifactPath $art -FillProb 0.9 -FeePerTrade 0.02 -GeneratePlots:$false 2>&1 | Tee-Object -FilePath (Join-Path $art 'pulse_stdout.log')
 
       - name: Upload pulse artifacts
         if: always()

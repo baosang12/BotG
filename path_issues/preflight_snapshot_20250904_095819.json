@@ -1,0 +1,16 @@
+﻿{
+    "passed":  true,
+    "free_space_gb":  219.33,
+    "timestamp":  "20250904_095819",
+    "start_command_file":  "path_issues\\start_24h_command_ready.txt",
+    "checks":  {
+                   "disk_space":  "OK",
+                   "env_botg_root":  "OK",
+                   "sentinel":  "OK",
+                   "start_command":  "OK",
+                   "env_botg_log":  "OK"
+               },
+    "blocking_reasons":  [
+
+                         ]
+}

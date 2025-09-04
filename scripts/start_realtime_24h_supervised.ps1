@@ -1,4 +1,4 @@
-param(
+
   [int]$Hours = 24,
   [int]$SecondsPerHour = 3600,
   [double]$FillProbability = 1.0,
@@ -52,7 +52,7 @@ Write-Output ("RUN24_STARTED: " + $(IsoNow) + " - pid: " + $p.Id + " - outbase: 
 
 if ($WaitForFinish.IsPresent) {
   $deadline = (Get-Date).AddHours([double]$Hours + 1)
-  while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 10 }
+
   # Copy back and synthesize a final report similar to 1h daemon
   $cand = Get-ChildItem -LiteralPath $asciiBase -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if ($cand) {

@@ -1,5 +1,4 @@
 
-
 Write-Host "ArtifactsRoot=$ArtifactsRoot"
 if (-not (Test-Path -LiteralPath $ArtifactsRoot)) { throw "Artifacts root not found: $ArtifactsRoot" }
 
@@ -11,11 +10,6 @@ Write-Host "OutDir=$resolvedOut"
 # Path to reconstructor
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $reconPy = Join-Path $repoRoot 'reconstruct_closed_trades_sqlite.py'
-
-if (-not (Test-Path -LiteralPath $reconPy)) { throw "Reconstructor not found: $reconPy" }
-
-# Run reconstruction
-$outCsv = Join-Path $resolvedOut 'closed_trades_fifo_reconstructed.csv'
 
 
 # Validate: no close_time < open_time and PnL with 1-8 decimals

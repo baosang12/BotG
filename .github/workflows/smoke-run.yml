@@ -36,7 +36,7 @@ jobs:
           $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
           if (Test-Path -LiteralPath $art) { Remove-Item -Recurse -Force $art }
           New-Item -ItemType Directory -Path $art | Out-Null
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\ci_smoke_test.ps1 -Seconds ([int]$sec) -DrainSeconds 10
+          & "${{ github.workspace }}\scripts\ci_smoke_test.ps1" -Seconds ([int]$sec) -DrainSeconds 10
           $dir = Get-ChildItem -Path $art -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($dir) {
             ("path=" + $dir.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

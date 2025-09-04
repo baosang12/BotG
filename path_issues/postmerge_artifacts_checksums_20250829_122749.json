@@ -1,0 +1,38 @@
+[
+  {
+    "name": "postrun_artifacts_20250827_101615.zip",
+    "path": "D:\\OneDrive\\Tai lieu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\postrun_artifacts_20250827_101615.zip",
+    "size": 12821,
+    "mtimeUtc": "2025-08-27T03:16:15.1703932Z",
+    "sha256": "1B46C04E78CB65C415B154FF6F610141EDFAB7FEFF7B79A9F79CC85DCD496FB2"
+  },
+  {
+    "name": "postrun_artifacts_20250827_102232.zip",
+    "path": "D:\\OneDrive\\Tai lieu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\postrun_artifacts_20250827_102232.zip",
+    "size": 93312,
+    "mtimeUtc": "2025-08-27T03:22:32.6585293Z",
+    "sha256": "4E66E8C6BBF8620F5D4E8E8CF7B27E1BD879FCA6787BC09C492D25F06DB94D83"
+  },
+  {
+    "name": "postrun_artifacts_20250827_102333.zip",
+    "path": "D:\\OneDrive\\Tai lieu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\postrun_artifacts_20250827_102333.zip",
+    "size": 93312,
+    "mtimeUtc": "2025-08-27T03:23:33.8917537Z",
+    "sha256": "27B63D084E92973C0979439F397A1688AEF85E0BC4135A70EF197361B32DEDDF"
+  },
+  {
+    "name": "telemetry_run_20250827_200336.zip",
+    "path": "D:\\botg\\logs\\artifacts\\telemetry_run_20250827_200336\\telemetry_run_20250827_200336.zip",
+    "size": 48901,
+    "mtimeUtc": "2025-08-27T13:05:39.9629432Z",
+    "sha256": "3F88D20B0AF48EC6A2FBBFC4C13F5D8FE238E608868E538476BEB52BF29DA6D1"
+  }
+  ,
+  {
+    "name": "telemetry_run_20250829_180804.zip",
+    "path": "D:\\OneDrive\\Tai lieu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250829_180804.zip",
+    "size": 49599,
+    "mtimeUtc": "2025-08-29T11:10:10.9202926Z",
+    "sha256": "67344907321DF100207A1C112E96D044E5BD48BB4EE4A5F5986D678EE7A25529"
+  }
+]

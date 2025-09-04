@@ -1,0 +1,25 @@
+{
+  "ts": "20250829_122749",
+  "pr": 17,
+  "gates": {
+    "build": "PASS",
+    "smoke": "PASS",
+    "reconstruct": "PASS",
+    "logging": "PASS"
+  },
+  "metrics": {
+    "request_count": null,
+    "fill_count": 1,
+    "fill_rate": null,
+    "orphan_after": 0,
+    "unmatched_orders_count": 0,
+    "sum_pnl": 36.952000000003224
+  },
+  "sources": {
+    "reconstruct_report": "path_issues/reconstruct_report.json",
+    "smoke_summary": "path_issues/smoke_summary_20250827_200336.json",
+    "postmerge_metrics": "path_issues/postmerge_metrics_20250829_122749.json",
+    "build_log": "path_issues/build_and_test_output.txt",
+    "latest_zip": "path_issues/latest_zip.txt"
+  }
+}
