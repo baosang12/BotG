@@ -1,0 +1,25 @@
+﻿diff --git a/reconstruct_closed_trades_sqlite.py b/reconstruct_closed_trades_sqlite.py
+index 1234567..abcdefg 100644
+--- a/reconstruct_closed_trades_sqlite.py
++++ b/reconstruct_closed_trades_sqlite.py
+@@ -45,6 +45,12 @@ def normalize_order_id(order_id):
++    """Normalize order ID for matching"""
++    if not order_id:
++        return ""
++    return str(order_id).strip().lower().encode('ascii', 'ignore').decode('ascii')
++
+ def match_orders_with_fills(orders_df, fills_df):
++    # Add normalized ID columns for fallback matching
++    orders_df['normalized_id'] = orders_df['orderId'].apply(normalize_order_id)
++    fills_df['normalized_entry_id'] = fills_df['entry_order_id'].apply(normalize_order_id)
++    fills_df['normalized_exit_id'] = fills_df['exit_order_id'].apply(normalize_order_id)
++    
+     matched_orders = set()
+     for _, fill_row in fills_df.iterrows():
+         if fill_row['entry_order_id']:
+             matched_orders.add(fill_row['entry_order_id'])
++            # Fallback normalized matching
++            if not fill_row['entry_order_id'] in orders_df['orderId'].values:
++                normalized_matches = orders_df[orders_df['normalized_id'] == normalize_order_id(fill_row['entry_order_id'])]
++                if not normalized_matches.empty:
++                    matched_orders.add(normalized_matches.iloc[0]['orderId'])

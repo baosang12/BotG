@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Reconstruct closed trades (FIFO) from orders.csv fills.
 
@@ -67,11 +67,6 @@ def to_iso_utc(ms: Optional[int]) -> str:
         return ""
 
 
-def normalize_order_id(order_id):
-    """Normalize order ID for matching"""
-    if not order_id:
-        return ""
-    return str(order_id).strip().lower().encode('ascii', 'ignore').decode('ascii')
 def pick_col(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
     if not fieldnames:
         return None
@@ -379,5 +374,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

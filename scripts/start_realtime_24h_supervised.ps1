@@ -1,4 +1,4 @@
-param(
+﻿param(
   [int]$Hours = 24,
   [int]$SecondsPerHour = 3600,
   [double]$FillProbability = 1.0,
@@ -52,7 +52,38 @@ Write-Output ("RUN24_STARTED: " + $(IsoNow) + " - pid: " + $p.Id + " - outbase: 
 
 if ($WaitForFinish.IsPresent) {
   $deadline = (Get-Date).AddHours([double]$Hours + 1)
-  while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 10 }
+  while (-not $p.HasExited -and (Get-Date) -lt $deadline) { 
+    # Check for sentinel files
+    $pauseFile = Join-Path $OutBase 'RUN_PAUSE'
+    $stopFile = Join-Path $OutBase 'RUN_STOP'
+    
+    if (Test-Path -LiteralPath $stopFile) {
+      $msg = "$(IsoNow): Detected RUN_STOP, initiating graceful stop"
+      Add-Content -Path $log -Value $msg -Encoding UTF8
+      Write-Output $msg
+      try { $p.Kill() } catch {}
+      break
+    }
+    
+    if (Test-Path -LiteralPath $pauseFile) {
+      $msg = "$(IsoNow): Detected RUN_PAUSE, pausing main loop"
+      Add-Content -Path $log -Value $msg -Encoding UTF8
+      Write-Output $msg
+      
+      while (Test-Path -LiteralPath $pauseFile) {
+        Start-Sleep -Seconds 5
+        if (Test-Path -LiteralPath $stopFile) { break }
+      }
+      
+      if (-not (Test-Path -LiteralPath $pauseFile)) {
+        $msg = "$(IsoNow): RUN_PAUSE removed, resuming"
+        Add-Content -Path $log -Value $msg -Encoding UTF8
+        Write-Output $msg
+      }
+    }
+    
+    Start-Sleep -Seconds 10 
+  }
   # Copy back and synthesize a final report similar to 1h daemon
   $cand = Get-ChildItem -LiteralPath $asciiBase -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if ($cand) {
@@ -70,3 +101,4 @@ if ($WaitForFinish.IsPresent) {
     ($final | ConvertTo-Json -Depth 8) | Write-Output
   }
 }
+

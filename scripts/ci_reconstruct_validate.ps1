@@ -1,11 +1,11 @@
+Write-Host 'RV_SCRIPT_VERSION=2025-08-28-v2'
+
 param(
   [Parameter(Mandatory=$true)][string]$ArtifactsRoot,
   [Parameter(Mandatory=$false)][string]$OutDir = "out"
 )
 
 $ErrorActionPreference = 'Stop'
-
-Write-Host 'RV_SCRIPT_VERSION=2025-08-28-v2'
 
 Write-Host "PWD=$(Get-Location)"
 Write-Host "ArtifactsRoot=$ArtifactsRoot"
@@ -58,23 +58,27 @@ Write-Host "RepoRoot=$repoRoot"
 Write-Host "Reconstructor=$reconPy"
 if (-not (Test-Path -LiteralPath $reconPy)) { throw "Reconstructor not found: $reconPy" }
 
-# Run reconstruction
+# Run reconstruction (preserve real exit code; do not pipeline which can hide failures)
 $outCsv = Join-Path $resolvedOut 'closed_trades_fifo_reconstructed.csv'
 Write-Host "Running: $pyExe $($pyArgs -join ' ') $reconPy --orders <orders> --out $outCsv"
+$reconLog = Join-Path $resolvedOut 'reconstruction_stdout.txt'
 try {
-  $reconLog = Join-Path $resolvedOut 'reconstruction_stdout.txt'
-  & $pyExe @pyArgs $reconPy --orders $ordersPath --out $outCsv *>&1 | Tee-Object -FilePath $reconLog | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "Reconstruction script exited with code $LASTEXITCODE" }
+  & $pyExe @pyArgs $reconPy --orders $ordersPath --out $outCsv *> $reconLog
+  $code = $LASTEXITCODE
+  if ($code -ne 0) {
+    $msg = try { Get-Content -LiteralPath $reconLog -Raw } catch { '' }
+    throw ("Reconstruction script exited with code {0}. Output:\n{1}" -f $code, $msg)
+  }
+  if (-not (Test-Path -LiteralPath $outCsv)) {
+    $msg = try { Get-Content -LiteralPath $reconLog -Raw } catch { '' }
+    throw ("Expected output CSV not found: {0}`nReconstructor output:`n{1}" -f $outCsv, $msg)
+  }
 } catch {
   $errLog = Join-Path $resolvedOut 'reconstruction_error.txt'
   "Error running reconstruction: $($_.Exception.Message)" | Out-File -FilePath $errLog -Encoding UTF8
   throw
 }
 Write-Host "Reconstruction complete -> $outCsv"
-
-if (-not (Test-Path -LiteralPath $outCsv)) {
-  throw "Expected output CSV not found: $outCsv"
-}
 
 # Validate: no close_time < open_time and PnL with 1-8 decimals
 $rows = Import-Csv -LiteralPath $outCsv
