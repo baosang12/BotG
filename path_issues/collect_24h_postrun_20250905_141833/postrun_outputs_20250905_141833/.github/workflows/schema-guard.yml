@@ -1,0 +1,132 @@
+﻿name: Schema Guard Validation
+
+on:
+  pull_request:
+    paths:
+      - 'tools/**.py'
+      - 'tests/**.py'
+      - '.github/workflows/schema-guard.yml'
+      - 'artifacts/**.csv'
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'tools/**.py'
+      - 'tests/**.py'
+
+jobs:
+  schema-validation:
+    runs-on: ubuntu-latest
+    name: Schema Guard Tests & Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas pytest
+        
+    - name: Run Schema Guard Unit Tests
+      run: |
+        python -m pytest tests/test_schema_guard.py -v --tb=short
+        
+    - name: Test Schema Guard CLI
+      run: |
+        python tools/schema_guard.py --help
+        
+    - name: Validate Schema Guard on Sample Data
+      run: |
+        # Test với fixtures
+        python tools/schema_guard.py --in tests/fixtures/camelcase_sample.csv --normalize --check
+        
+    - name: Check Schema Guard trên artifacts (nếu có)
+      run: |
+        # Tìm CSV files trong artifacts và validate
+        CSV_FILE=$(find . -name "*.csv" -path "*/artifacts/*" | head -1)
+        if [ -n "$CSV_FILE" ]; then
+          echo "Validating artifact: $CSV_FILE"
+          python tools/schema_guard.py --in "$CSV_FILE" --check --normalize
+        else
+          echo "No artifacts CSV found, skipping artifact validation"
+        fi
+        
+    - name: Schema Guard Report
+      if: always()
+      run: |
+        echo "## Schema Guard Validation Summary" >> schema_guard_report.txt
+        echo "-  Unit tests completed" >> schema_guard_report.txt
+        echo "-  CLI validation completed" >> schema_guard_report.txt
+        echo "-  Sample data validation completed" >> schema_guard_report.txt
+        
+  schema-lint:
+    runs-on: ubuntu-latest
+    name: Schema Standards Check
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas
+        
+    - name: Check for camelCase columns trong CSV files
+      run: |
+        # Script để check camelCase columns
+        python -c "
+        import pandas as pd
+        import glob
+        import re
+        import sys
+
+        def has_camelcase(text):
+            return bool(re.search(r'[a-z][A-Z]', text))
+
+        csv_files = glob.glob('**/*.csv', recursive=True)
+        issues_found = False
+
+        for csv_file in csv_files:
+            if 'test' in csv_file.lower() or 'fixture' in csv_file.lower():
+                continue
+                
+            try:
+                df = pd.read_csv(csv_file, nrows=0)  # Chỉ đọc headers
+                camel_columns = [col for col in df.columns if has_camelcase(col)]
+                
+                if camel_columns:
+                    print(f' File {csv_file} có camelCase columns: {camel_columns}')
+                    print(f'   Suggestion: Sử dụng Schema Guard để normalize:')
+                    print(f'   python tools/schema_guard.py --in {csv_file} --out {csv_file.replace(\".csv\", \".normalized.csv\")} --normalize')
+                    issues_found = True
+                    
+            except Exception as e:
+                print(f'Cannot read {csv_file}: {e}')
+        
+        if issues_found:
+            print('\n CamelCase columns found. Please normalize schema using Schema Guard.')
+            print('Run: python tools/schema_guard.py --normalize on affected files.')
+            sys.exit(1)
+        else:
+            print(' No camelCase columns found in CSV files.')
+        "
+        
+    - name: Schema Standards Summary
+      if: always()
+      run: |
+        echo "## Schema Standards Check" >> 
+        echo "- Checked CSV files for camelCase columns" >> 
+        echo "- Enforced snake_case naming convention" >> 
+        echo "- Suggested Schema Guard usage where needed" >> 
