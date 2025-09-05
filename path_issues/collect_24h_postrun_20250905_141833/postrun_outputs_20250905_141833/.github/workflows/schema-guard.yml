@@ -48,10 +48,10 @@ jobs:
     - name: Check Schema Guard trên artifacts (nếu có)
       run: |
         # Tìm CSV files trong artifacts và validate
-        if find . -name "*.csv" -path "*/artifacts/*" | head -1 > /dev/null; then
-          CSV_FILE=
-          echo "Validating artifact: "
-          python tools/schema_guard.py --in "" --check --normalize
+        CSV_FILE=$(find . -name "*.csv" -path "*/artifacts/*" | head -1)
+        if [ -n "$CSV_FILE" ]; then
+          echo "Validating artifact: $CSV_FILE"
+          python tools/schema_guard.py --in "$CSV_FILE" --check --normalize
         else
           echo "No artifacts CSV found, skipping artifact validation"
         fi
