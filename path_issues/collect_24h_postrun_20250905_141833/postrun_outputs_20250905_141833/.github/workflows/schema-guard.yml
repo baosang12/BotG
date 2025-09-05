@@ -59,10 +59,10 @@ jobs:
     - name: Schema Guard Report
       if: always()
       run: |
-        echo "## Schema Guard Validation Summary" >> 
-        echo "-  Unit tests completed" >> 
-        echo "-  CLI validation completed" >> 
-        echo "-  Sample data validation completed" >> 
+        echo "## Schema Guard Validation Summary" >> schema_guard_report.txt
+        echo "-  Unit tests completed" >> schema_guard_report.txt
+        echo "-  CLI validation completed" >> schema_guard_report.txt
+        echo "-  Sample data validation completed" >> schema_guard_report.txt
         
   schema-lint:
     runs-on: ubuntu-latest
