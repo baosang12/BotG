@@ -1,7 +1,7 @@
 {
   "format": 1,
   "restore": {
-    "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj": {}
+    "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj": {}
   },
   "projects": {
     "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG\\BotG.Core.csproj": {
@@ -69,14 +69,14 @@
         }
       }
     },
-    "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj": {
+    "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj",
+        "projectUniqueName": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj",
         "projectName": "BotG.Tests",
-        "projectPath": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj",
+        "projectPath": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\BotG.Tests.csproj",
         "packagesPath": "C:\\Users\\TechCare\\.nuget\\packages\\",
-        "outputPath": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\obj\\",
+        "outputPath": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\Tests\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

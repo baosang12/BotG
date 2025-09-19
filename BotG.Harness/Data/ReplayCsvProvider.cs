@@ -261,6 +261,23 @@ namespace BotG.Harness.Data
             return Array.Empty<double>();
         }
 
+        public bool SupportsLive => false;
+
+        public Task<bool> InitializeAsync()
+        {
+            if (!_initialized)
+            {
+                Initialize();
+                _initialized = true;
+            }
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> CheckHealthAsync()
+        {
+            return Task.FromResult(true);
+        }
+
         public void Dispose()
         {
             _barQueues.Clear();

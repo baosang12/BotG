@@ -73,6 +73,25 @@ namespace BotG.Harness
                     return 2;
                 }
 
+                // Check for handshake-only path (live mode with minimal bars)
+                if (config.Mode.ToLower() == "live" && config.Bars <= 1)
+                {
+                    // Handshake-only path: verify connectivity and create run structure
+                    var healthCheck = await provider.CheckHealthAsync();
+                    if (!healthCheck)
+                    {
+                        Console.WriteLine("CANNOT_RUN: live handshake failed (cannot reach CTRADER_API_BASEURI)");
+                        return 1;
+                    }
+
+                    // Logger header is already created in constructor
+                    // Update config stamp to indicate handshake-only mode
+                    await UpdateConfigStampForHandshake(config, runDir);
+                    
+                    Console.WriteLine("HANDSHAKE_OK");
+                    return 0;
+                }
+
                 // Initialize SMC components and run trading
                 return await RunTrading(config, provider, logger, runDir);
             }
@@ -320,9 +339,8 @@ namespace BotG.Harness
                 
                 if (!string.IsNullOrEmpty(baseUri) && !string.IsNullOrEmpty(apiKey))
                 {
-                    // TODO: Implement live cTrader provider when available
-                    Console.WriteLine("LIVE mode requested but not yet implemented");
-                    return null;
+                    // Create CTraderLiveProvider for handshake
+                    return new CTraderLiveProvider(baseUri, apiKey, config.Symbol, config.Timeframe);
                 }
             }
 
@@ -830,6 +848,29 @@ namespace BotG.Harness
 
             var stampPath = Path.Combine(runDir, "config_stamp.json");
             var json = System.Text.Json.JsonSerializer.Serialize(stamp, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(stampPath, json);
+        }
+
+        static async Task UpdateConfigStampForHandshake(HarnessConfig config, string runDir)
+        {
+            var stampPath = Path.Combine(runDir, "config_stamp.json");
+            
+            // Read existing stamp
+            var existingJson = await File.ReadAllTextAsync(stampPath);
+            var existingStamp = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(existingJson);
+            
+            // Create updated stamp with handshake info
+            var stampDict = new Dictionary<string, object>();
+            foreach (var prop in existingStamp.EnumerateObject())
+            {
+                stampDict[prop.Name] = prop.Value;
+            }
+            
+            // Add handshake-specific properties
+            stampDict["handshakeOnly"] = true;
+            stampDict["liveProvider"] = "ctrader";
+            
+            var json = System.Text.Json.JsonSerializer.Serialize(stampDict, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(stampPath, json);
         }
 

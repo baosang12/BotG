@@ -6,8 +6,13 @@ namespace BotG.Harness.Data
     {
         bool HasMore { get; }
         DateTime CurrentTime { get; }
+        bool SupportsLive { get; }
+        
         Bar? GetNextBar(string timeframe);
         void Reset();
         void Dispose();
+        
+        Task<bool> InitializeAsync();
+        Task<bool> CheckHealthAsync();
     }
 }

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj": {}
+    "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj": {}
   },
   "projects": {
-    "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj": {
+    "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj",
+        "projectUniqueName": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj",
         "projectName": "BotG.Harness",
-        "projectPath": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj",
+        "projectPath": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\BotG.Harness.csproj",
         "packagesPath": "C:\\Users\\TechCare\\.nuget\\packages\\",
-        "outputPath": "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\obj\\",
+        "outputPath": "d:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\BotG.Harness\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

@@ -1,0 +1,4 @@
+READY_TO_RUN_DEMO
+exe=D:\OneDrive\Tài li?u\cAlgo\Sources\Robots\BotG\BotG.Harness\bin\Release\net9.0\BotG.Harness.exe
+symbol=XAUUSD tf=M15 trend=H1
+logPath=D:\botg\logs
