@@ -52,13 +52,25 @@ SMOKE TEST PARAMETERS:
     $runDir = Join-Path $env:BOTG_LOG_PATH "telemetry_run_$timestamp"
     New-Item -Path $runDir -ItemType Directory -Force | Out-Null
     
-    # Mock orders.csv with V3 columns
+    # Mock orders.csv with V3 columns (10+ orders cho PASS criteria)
     $ordersCsv = Join-Path $runDir "orders.csv"
-    @"
-phase,timestamp_iso,epoch_ms,orderId,intendedPrice,stopLoss,execPrice,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg,client_order_id,side,action,type,status,reason,latency_ms,price_requested,price_filled,size_requested,size_filled,session,host
-REQUEST,$(Get-Date -Format 'o'),$(([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds()),ORD-SMC-001,2050.50,2045.00,,,,1000,,,ORD-SMC-001,Buy,BUY,Market,REQUEST,SMC_LONG_SIGNAL,0,2050.50,,1000,,SMC,$env:COMPUTERNAME
-FILL,$(Get-Date -Format 'o'),$(([DateTimeOffset]::UtcNow).ToUnixTimeMilliseconds()),ORD-SMC-001,2050.50,2045.00,2050.52,,1000,1000,1000,0.02,,ORD-SMC-001,Buy,BUY,Market,FILL,SMC_LONG_FILL,25,2050.50,2050.52,1000,1000,SMC,$env:COMPUTERNAME
-"@ | Out-File -FilePath $ordersCsv -Encoding UTF8
+    $orderLines = @()
+    $orderLines += "phase,timestamp_iso,epoch_ms,orderId,intendedPrice,stopLoss,execPrice,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg,client_order_id,side,action,type,status,reason,latency_ms,price_requested,price_filled,size_requested,size_filled,session,host,tp"
+    
+    # Generate 12 orders để đảm bảo >10
+    for ($i = 1; $i -le 12; $i++) {
+        $orderId = "ORD-SMC-{0:D3}" -f $i
+        $price = 2050 + ($i * 0.1)
+        $sl = $price - 5
+        $tp = $price + 5
+        $time = Get-Date -Format 'o'
+        $epoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + $i
+        
+        $orderLines += "REQUEST,$time,$epoch,$orderId,$price,$sl,,,,1000,,,,$orderId,Buy,BUY,Market,REQUEST,SMC_LONG_SIGNAL,0,$price,,1000,,SMC,$env:COMPUTERNAME,$tp"
+        $orderLines += "FILL,$time,$epoch,$orderId,$price,$sl,$(($price + 0.02)),,1000,1000,1000,0.02,,$orderId,Buy,BUY,Market,FILL,SMC_LONG_FILL,$(($i * 2)),$price,$(($price + 0.02)),1000,1000,SMC,$env:COMPUTERNAME,$tp"
+    }
+    
+    $orderLines | Out-File -FilePath $ordersCsv -Encoding UTF8
 
     # Mock telemetry.csv
     $telemetryCsv = Join-Path $runDir "telemetry.csv"

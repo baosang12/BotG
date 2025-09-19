@@ -27,7 +27,8 @@ namespace Telemetry
                 filledSize: sizeFilled,
                 status: status,
                 reason: reason,
-                session: "SMC"
+                session: "SMC",
+                takeProfit: takeProfit
             );
         }
     }

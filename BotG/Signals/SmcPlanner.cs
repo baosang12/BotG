@@ -3,6 +3,7 @@ using Analysis.Structure;
 using Analysis.Imbalance;
 using Analysis.OrderBlocks;
 using Analysis.Zones;
+using static Analysis.Structure.StructureEvent;
 
 namespace Signals
 {
@@ -21,7 +22,7 @@ namespace Signals
             double[] open, double[] high, double[] low, double[] close, double[] volume,
             double atrM15, double atrBaselineM15,
             double lastCloseH1, PremiumDiscount.Range h1Range,
-            MarketStructureDetector.StructureEvent h1Event,
+            StructureEvent h1Event,
             SmcConfig cfg,
             out double entry, out double sl, out double tp, out string reason)
         {

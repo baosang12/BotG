@@ -7,10 +7,13 @@ public class StructureTests
     [Fact]
     public void Detects_BOS_Bull_Simple()
     {
-        var highs = new double[] {1,2,3,3.1,3.2,3.25};
-        var lows  = new double[] {0.5,1,1.5,1.9,2.0,2.1};
-        var swings = MarketStructureDetector.DetectSwings(highs, lows, 2);
-        var evt = MarketStructureDetector.DetectEvent(swings, highs.Length-1, 3.25);
+        // Test với data rõ ràng hơn: uptrend với breakout
+        var highs = new double[] {1.0, 1.2, 1.1, 1.5, 1.3, 1.8}; 
+        var lows  = new double[] {0.8, 1.0, 0.9, 1.2, 1.1, 1.4};
+        var swings = MarketStructureDetector.DetectSwings(highs, lows, 1);
+        
+        // Với close price > highest swing high → BOS Bull
+        var evt = MarketStructureDetector.DetectEvent(swings, highs.Length-1, 1.9);
         Assert.True(evt==StructureEvent.BOS_Bull || evt==StructureEvent.ChoCH_Bull);
     }
 

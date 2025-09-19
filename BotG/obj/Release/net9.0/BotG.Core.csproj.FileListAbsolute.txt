@@ -1,0 +1,11 @@
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.AssemblyInfoInputs.cache
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.AssemblyInfo.cs
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.csproj.CoreCompileInputs.cache
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net9.0\BotG.Core.deps.json
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net9.0\BotG.Core.dll
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\bin\Release\net9.0\BotG.Core.pdb
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.dll
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\refint\BotG.Core.dll
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\BotG.Core.pdb
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\BotG\obj\Release\net9.0\ref\BotG.Core.dll
