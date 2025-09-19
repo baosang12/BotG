@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BotG.Harness")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9b06d132b9bbc8c3e6f2aed05a63e57bf3ac2f0c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c58537a39992e814c7803a36fb592f63ce910e5d")]
 [assembly: System.Reflection.AssemblyProductAttribute("BotG.Harness")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BotG.Harness")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
