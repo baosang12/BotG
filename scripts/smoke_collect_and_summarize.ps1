@@ -1,22 +1,27 @@
 param(
+    [string]$RunName,
     [string]$Out="D:\botg\logs\smoke_$(Get-Date -Format yyyyMMdd_HHmmss)"
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== SMOKE COLLECT AND SUMMARIZE ===" -ForegroundColor Green
-Write-Host "Output directory: $Out" -ForegroundColor Cyan
+Write-Output "=== SMOKE COLLECT AND SUMMARIZE ==="
+Write-Output "Output directory: $Out"
 
 # Create output directory
 New-Item -Force -ItemType Directory -Path $Out | Out-Null
 
-# Find latest telemetry run
+# Find specified run or latest telemetry run
 $logPath = $env:BOTG_LOG_PATH
 if (-not $logPath) { $logPath = "D:\botg\logs" }
 
-$latestRun = Get-ChildItem -Path $logPath -Directory -Filter "telemetry_run_*" | 
-    Sort-Object LastWriteTime -Descending | 
-    Select-Object -First 1
+if ($RunName) {
+    $latestRun = Get-ChildItem -Path $logPath -Directory -Filter $RunName -ErrorAction SilentlyContinue | Select-Object -First 1
+} else {
+    $latestRun = Get-ChildItem -Path $logPath -Directory -Filter "telemetry_run_*" | 
+        Sort-Object LastWriteTime -Descending | 
+        Select-Object -First 1
+}
 
 if (-not $latestRun) {
     $latestRun = Get-ChildItem -Path $logPath -Directory -Filter "paper_live_*" | 
