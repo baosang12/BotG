@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BotG.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+65a6741415bd25de9ea6635b5664ec30823a2e2e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9b06d132b9bbc8c3e6f2aed05a63e57bf3ac2f0c")]
 [assembly: System.Reflection.AssemblyProductAttribute("BotG.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BotG.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,5 +1,6 @@
 {
   "profile": "xauusd_mtf",
+  "tradeMode": "Strict",
   "preferredTimeframe": "M15",
   "trendTimeframe": "H1",
   "primarySymbols": ["XAUUSD"],
@@ -13,9 +14,10 @@
     "dailyStopPct": -0.05
   },
   "smc": {
+    "confirmationsRequired": 2,
     "volumeSpikeMultiplier": 1.8,
     "atrSpikeMultiplier": 1.2,
-    "confirmationsRequired": 2,
+    "useObOrFvg": true,
     "discountWindowBarsH1": 100
   },
   "telemetry": {

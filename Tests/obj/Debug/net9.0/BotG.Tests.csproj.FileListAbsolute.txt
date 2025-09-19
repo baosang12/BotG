@@ -1,0 +1,7 @@
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net9.0\.msCoverageSourceRootsMapping_BotG.Tests
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\bin\Debug\net9.0\CoverletSourceRootsMapping_BotG.Tests
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net9.0\BotG.Tests.csproj.AssemblyReference.cache
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net9.0\BotG.Tests.GeneratedMSBuildEditorConfig.editorconfig
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net9.0\BotG.Tests.AssemblyInfoInputs.cache
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net9.0\BotG.Tests.AssemblyInfo.cs
+D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\Tests\obj\Debug\net9.0\BotG.Tests.csproj.CoreCompileInputs.cache

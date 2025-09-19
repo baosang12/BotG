@@ -31,5 +31,14 @@ namespace Risk
             double rpct = BaseRiskPct / System.Math.Max(0.75, System.Math.Min(1.5, scale));
             return System.Math.Max(MinRiskPct, System.Math.Min(MaxRiskPct, rpct));
         }
+
+        /// <summary>
+        /// Apply Test mode risk clamping for safer testing
+        /// </summary>
+        public void ApplyTestModeClamp()
+        {
+            BaseRiskPct = System.Math.Min(BaseRiskPct, 0.005); // Max 0.5% in test mode
+            DailyStopR = System.Math.Max(DailyStopR, -1.5); // Limit daily stop to -1.5R in test mode
+        }
     }
 }
