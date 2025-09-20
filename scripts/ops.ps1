@@ -13,7 +13,12 @@ function Invoke-Smoke60mMergeLatest {
 function Show-PhaseStats {
     param([string]$OutRoot = "D:\botg\runs")
     
-    $root = (Get-ChildItem "$OutRoot\paper_smoke_60m_v2_*" | Sort-Object LastWriteTime -Desc | Select-Object -First 1).FullName
+    $latestDir = Get-ChildItem "$OutRoot\paper_smoke_60m_v2_*" | Sort-Object LastWriteTime -Desc | Select-Object -First 1
+    if ($null -eq $latestDir) {
+        "PHASES: No matching directories found"
+        return
+    }
+    $root = $latestDir.FullName
     $merged = Join-Path $root 'orders_merged.csv'
     
     if (Test-Path $merged) {
