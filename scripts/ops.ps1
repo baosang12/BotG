@@ -18,7 +18,7 @@ function Show-PhaseStats {
     
     if (Test-Path $merged) {
         $csv = Import-Csv $merged
-        "PHASES: " + (($csv | Group-Object phase | % { "$($_.Name)=$($_.Count)" }) -join '; ')
+        "PHASES: " + (($csv | Group-Object phase | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join '; ')
     } else {
         "PHASES: No merged CSV found"
     }
