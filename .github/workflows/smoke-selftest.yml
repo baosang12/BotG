@@ -1,0 +1,19 @@
+name: Smoke self-test (Windows)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * 1"  # Weekly Mon 18:00 UTC
+jobs:
+  selftest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run smoke self-test
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          . .\scripts\ops.ps1
+          .\scripts\ops_selftest.ps1
