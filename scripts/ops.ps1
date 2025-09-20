@@ -7,7 +7,7 @@ function Invoke-Smoke60mMergeLatest {
         [string]$LogPath = "D:\botg\logs"
     )
     
-    & ".\scripts\run_smoke_60m_wrapper_v2.ps1" -MergeOnly -OutRoot $OutRoot -LogPath $LogPath
+    & (Find-SmokeWrapper) -MergeOnly -OutRoot $OutRoot -LogPath $LogPath
 }
 
 function Show-PhaseStats {
