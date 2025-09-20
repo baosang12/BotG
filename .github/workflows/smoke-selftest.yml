@@ -1,19 +1,30 @@
-name: Smoke self-test (Windows)
+name: CI - Build & test
+
 on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
   workflow_dispatch:
-  schedule:
-    - cron: "0 18 * * 1"  # Weekly Mon 18:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  selftest:
+  build-and-test:
+    name: Build and Test (windows-latest)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run smoke self-test
+      - name: Self-test (PowerShell)
         shell: pwsh
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          . .\scripts\ops.ps1
-          .\scripts\ops_selftest.ps1
+        run: .\scripts\ops_selftest.ps1
