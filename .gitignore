@@ -1,0 +1,22 @@
+# Build artifacts
+**/bin/
+**/obj/
+*.dll
+*.pdb
+*.exe
+*.cache
+
+# Large telemetry artifacts (>100MB)
+artifacts/telemetry_run_*.zip
+artifacts_ascii/combined_runs_report_*.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+test_*.csv
+
+# OS files
+.DS_Store
+Thumbs.db

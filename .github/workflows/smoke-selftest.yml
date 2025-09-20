@@ -1,0 +1,43 @@
+name: smoke-selftest
+on: 
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+jobs:
+  selftest:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+          
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas sqlite3
+        
+      - name: PowerShell ops.ps1 self-test
+        shell: pwsh
+        run: |
+          Write-Host "=== Loading ops.ps1 ==="
+          . .\scripts\ops.ps1
+          
+          Write-Host "=== Running self-test ==="
+          .\scripts\ops_selftest.ps1
+          
+      - name: Upload self-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-results
+          path: |
+            scripts/ops_selftest.ps1
+            .vscode/tasks.json
+            docs/RUNBOOK_smoke60m.md

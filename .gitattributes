@@ -1,0 +1,20 @@
+# Normalize line endings
+* text=auto
+
+# PowerShell scripts should use CRLF
+*.ps1 text eol=crlf
+
+# Markdown files should use LF
+*.md text eol=lf
+
+# JSON files should use LF
+*.json text eol=lf
+
+# C# files should use CRLF
+*.cs text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+
+# YAML files should use LF
+*.yml text eol=lf
+*.yaml text eol=lf

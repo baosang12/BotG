@@ -1,0 +1,95 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Smoke: 4×15′ run",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Invoke-Smoke60mRun -Segments 4 -OutRoot 'D:\\botg\\runs' -LogPath 'D:\\botg\\logs'"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Smoke: Merge latest",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Invoke-Smoke60mMergeLatest -OutRoot 'D:\\botg\\runs' -LogPath 'D:\\botg\\logs'"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Smoke: Show report",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Show-Smoke60mReport -OutRoot 'D:\\botg\\runs'"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Smoke: Show phase stats",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Show-PhaseStats -OutRoot 'D:\\botg\\runs'"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Tests: Pester",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Run-UnitTests"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Precommit: quick check",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Invoke-Precommit"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Rollback: restore backups",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Invoke-Rollback"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Smoke: Self-test (no 60')",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; .\\scripts\\ops_selftest.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Smoke: Clean old runs",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ". .\\scripts\\ops.ps1; Clean-OldRuns -Days 14"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
