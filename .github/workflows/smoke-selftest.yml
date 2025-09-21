@@ -27,4 +27,4 @@ jobs:
           python-version: '3.11'
       - name: Self-test (PowerShell)
         shell: pwsh
-        run: .\scripts\ops_selftest.ps1
+        run:  .\scripts\run_smoke_60m.ps1
