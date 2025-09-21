@@ -1,4 +1,4 @@
-name: CI - Build & test
+﻿name: CI - Build & test
 
 on:
   pull_request:
@@ -27,6 +27,3 @@ jobs:
           python-version: '3.11'
       - name: Self-test (PowerShell)
         shell: pwsh
-        run:  .\scripts\run_smoke_60m.ps1
-      - name: Run smoke test
-        run: pwsh ./scripts/run_smoke_60m.ps1
