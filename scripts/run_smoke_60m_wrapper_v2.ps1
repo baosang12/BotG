@@ -1,4 +1,6 @@
-﻿[CmdletBinding()]
+﻿# NOTE: Shim for CI. Real preflight/smoke takes precedence when present.
+# On main, CI_BLOCK_FAIL=1 makes missing scripts fail CI.
+[CmdletBinding()]
 param(
   [switch]$MergeOnly,
   [string]$OutRoot = ".",
@@ -40,3 +42,4 @@ catch {
   Write-Error "[wrapper] $_"
   if ($env:CI_BLOCK_FAIL -eq '1') { exit 1 } else { Write-Host "[wrapper] SOFT PASS"; exit 0 }
 }
+
