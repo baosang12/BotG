@@ -1,4 +1,4 @@
-name: CI - Build & test
+﻿name: CI - Build & test
 
 on:
   pull_request:
@@ -28,3 +28,5 @@ jobs:
       - name: Self-test (PowerShell)
         shell: pwsh
         run: .\scripts\ops_selftest.ps1
+      working-directory: ${{ github.workspace }}}
+
