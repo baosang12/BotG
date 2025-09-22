@@ -1,4 +1,9 @@
 ﻿name: smoke-selftest
+
+concurrency:
+  group: smoke-selftest-${{ github.ref }}
+  cancel-in-progress: true
+
 on: 
   pull_request:
     branches: [ main ]
@@ -41,6 +46,29 @@ jobs:
           
           Write-Host "=== Running self-test ==="
           .\scripts\ops_selftest.ps1
+          
+      - name: Summarize health-check
+        if: always()
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD 'artifacts_ascii'
+          $latest = Get-ChildItem $folder -Filter 'health_check_*.json' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $latest) {
+            "`n### Smoke selftest summary`n_No health JSON found_`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 0
+          }
+          $j = Get-Content $latest.FullName -Raw | ConvertFrom-Json
+          $issues = if ($j.issues -and $j.issues.Count -gt 0) { ($j.issues | ForEach-Object { "- $_" }) -join "`n" } else { "_None_" }
+          $summary = @"
+          ### Smoke selftest summary
+          - **STATUS**: $($j.STATUS)
+          - **Can continue**: $($j.can_continue_running)
+          - **Reconstruct tool**: $($j.reconstruct_tool.present) ($($j.reconstruct_tool.path))
+          - **Issues**:
+          $issues
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           
       - name: Upload self-test results
         if: always()
