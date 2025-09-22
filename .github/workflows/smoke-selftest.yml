@@ -6,7 +6,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    - cron: "0 1 * * *"   # 08:00 ICT daily (adjust if needed)
+    - cron: '0 1 * * *'   # 08:00 ICT daily (adjust if needed)
 
 jobs:
   selftest:
@@ -28,17 +28,13 @@ jobs:
         
       - name: Verify stdlib sqlite3
         shell: pwsh
-        run: |
-          python - <<'PY'
-          import sqlite3, sys
-          print("sqlite3 OK, version:", sqlite3.sqlite_version)
-          PY
+        run: python -c "import sqlite3, sys; print('sqlite3 OK, version:', sqlite3.sqlite_version)"
         
       - name: PowerShell ops.ps1 self-test
         shell: pwsh
         working-directory: ${{ github.workspace }}
         env:
-          CI_BLOCK_FAIL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '1' || '0' }}
+          CI_BLOCK_FAIL: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && '1' || '0' }}
         run: |
           Write-Host "=== Loading ops.ps1 ==="
           . .\scripts\ops.ps1
