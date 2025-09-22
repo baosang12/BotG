@@ -17,14 +17,22 @@ jobs:
         uses: actions/checkout@v4
         
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
           
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas sqlite3
+          pip install pandas
+        
+      - name: Verify stdlib sqlite3
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          import sqlite3, sys
+          print("sqlite3 OK, version:", sqlite3.sqlite_version)
+          PY
         
       - name: PowerShell ops.ps1 self-test
         shell: pwsh
