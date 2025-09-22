@@ -16,6 +16,7 @@ on:
 jobs:
   selftest:
     runs-on: windows-latest
+    timeout-minutes: 12
     
     steps:
       - name: Checkout repository
@@ -25,6 +26,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+          cache: 'pip'
           
       - name: Install Python dependencies
         run: |
@@ -48,6 +50,7 @@ jobs:
           .\scripts\ops_selftest.ps1
           
       - name: Summarize health-check
+        id: sum
         if: always()
         shell: pwsh
         run: |
@@ -55,26 +58,51 @@ jobs:
           $latest = Get-ChildItem $folder -Filter 'health_check_*.json' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $latest) {
-            "`n### Smoke selftest summary`n_No health JSON found_`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "### Smoke selftest summary`n_No health JSON found_" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "status=UNKNOWN" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
           $j = Get-Content $latest.FullName -Raw | ConvertFrom-Json
-          $issues = if ($j.issues -and $j.issues.Count -gt 0) { ($j.issues | ForEach-Object { "- $_" }) -join "`n" } else { "_None_" }
-          $summary = @"
-          ### Smoke selftest summary
-          - **STATUS**: $($j.STATUS)
-          - **Can continue**: $($j.can_continue_running)
-          - **Reconstruct tool**: $($j.reconstruct_tool.present) ($($j.reconstruct_tool.path))
-          - **Issues**:
-          $issues
-          "@
-          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          
+          $issues = @($j.issues) | Where-Object { $_ } 
+          $issuesMd = if ($issues.Count -gt 0) { ($issues | ForEach-Object { "- $_" }) -join "`n" } else { "_None_" }
+          @"
+        ### Smoke selftest summary
+        - **STATUS**: $($j.STATUS)
+        - **Can continue**: $($j.can_continue_running)
+        - **Reconstruct tool**: $($j.reconstruct_tool.present) ($($j.reconstruct_tool.path))
+        - **Issues**:
+        $issuesMd
+        "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "status=$($j.STATUS)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "issues_count=$($issues.Count)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Comment summary on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = [
+              '### Smoke selftest (auto-summary)',
+              `**STATUS**: ${{ steps.sum.outputs.status }}`,
+              `**Issues**: ${{ steps.sum.outputs.issues_count }}`,
+              '',
+              '> Full details are in the job summary and artifacts.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
       - name: Upload self-test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: selftest-results
+          retention-days: 7
           path: |
             scripts/ops_selftest.ps1
             .vscode/tasks.json
