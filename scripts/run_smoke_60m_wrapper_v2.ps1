@@ -20,8 +20,19 @@ if (-not (Test-Path $OutRoot)) { New-Item -ItemType Directory -Force -Path $OutR
 function Invoke-Safely {
   param([string]$Path,[object[]]$Args)
   Write-Host "[wrapper] running: $Path $($Args -join ' ')"
+
+  # reset any stale code
+  if (Test-Path variable:LASTEXITCODE) { Remove-Variable LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+
   & $Path @Args
-  if ($LASTEXITCODE -ne 0) { throw "child exit $LASTEXITCODE" }
+
+  $native = if (Test-Path variable:LASTEXITCODE) { $LASTEXITCODE } else { $null }
+  $rc = if ($null -ne $native) { [int]$native } elseif ($?) { 0 } else { 1 }
+
+  # propagate for legacy callers (e.g., v1)
+  $global:LASTEXITCODE = $rc
+
+  if ($rc -ne 0) { throw "child exit $rc" }
 }
 
 try {
@@ -42,4 +53,3 @@ catch {
   Write-Error "[wrapper] $_"
   if ($env:CI_BLOCK_FAIL -eq '1') { exit 1 } else { Write-Host "[wrapper] SOFT PASS"; exit 0 }
 }
-
