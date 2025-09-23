@@ -77,6 +77,126 @@ jobs:
           "status=$($j.STATUS)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "issues_count=$($issues.Count)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+
+          - name: Open/update incident issue when unhealthy
+
+            if: ${{ github.event_name != 'pull_request' && steps.sum.outputs.status != 'OK' }}
+
+            uses: actions/github-script@v7
+
+            with:
+
+              github-token: ${{ secrets.GITHUB_TOKEN }}
+
+              script: |
+
+                const {owner, repo} = context.repo;
+
+                const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+                const status = `${{ steps.sum.outputs.status }}`;
+
+                const issuesCount = `${{ steps.sum.outputs.issues_count }}`;
+
+                const title = `Selftest incident: ${status}`;
+
+                const labels = ['ci-selftest','incident'];
+
+
+                // ensure labels exist
+
+                for (const name of labels) {
+
+                  try { await github.rest.issues.getLabel({owner, repo, name}); }
+
+                  catch { try {
+
+                    await github.rest.issues.createLabel({
+
+                      owner, repo, name,
+
+                      color: name==='incident' ? 'B60205' : '0E8A16'
+
+                    });
+
+                  } catch {} }
+
+                }
+
+
+                // find existing open incident
+
+                const q = `repo:${owner}/${repo} is:issue is:open label:ci-selftest label:incident in:title "Selftest incident"`;
+
+                const res = await github.rest.search.issuesAndPullRequests({ q });
+
+
+                const body = [
+
+                  '###  Smoke selftest incident',
+
+                  `- **STATUS**: ${status}`,
+
+                  `- **Issues**: ${issuesCount}`,
+
+                  `- **Run**: ${runUrl}`,
+
+                  '',
+
+                  '_Maintained automatically by CI._'
+
+                ].join('\n');
+
+
+                if (res.data.items.length) {
+
+                  const num = res.data.items[0].number;
+
+                  await github.rest.issues.update({owner, repo, issue_number: num, title});
+
+                  await github.rest.issues.createComment({owner, repo, issue_number: num, body});
+
+                } else {
+
+                  await github.rest.issues.create({owner, repo, title, body, labels});
+
+                }
+
+
+          - name: Close incident issue when healthy
+
+            if: ${{ github.event_name != 'pull_request' && steps.sum.outputs.status == 'OK' }}
+
+            uses: actions/github-script@v7
+
+            with:
+
+              github-token: ${{ secrets.GITHUB_TOKEN }}
+
+              script: |
+
+                const {owner, repo} = context.repo;
+
+                const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+                const q = `repo:${owner}/${repo} is:issue is:open label:ci-selftest label:incident`;
+
+                const res = await github.rest.search.issuesAndPullRequests({ q });
+
+                for (const it of res.data.items) {
+
+                  await github.rest.issues.createComment({
+
+                    owner, repo, issue_number: it.number,
+
+                    body: ` Resolved by healthy run: ${runUrl}`
+
+                  });
+
+                  await github.rest.issues.update({owner, repo, issue_number: it.number, state:'closed'});
+
+                }
+
       - name: Comment summary on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -107,3 +227,4 @@ jobs:
             scripts/ops_selftest.ps1
             .vscode/tasks.json
             docs/RUNBOOK_smoke60m.md
+
