@@ -1,4 +1,4 @@
-﻿name: smoke-selftest
+name: smoke-selftest
 
 on:
   pull_request:
@@ -6,6 +6,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      force_ok:
+        description: "Force STATUS=OK to exercise auto-close path (manual only)"
+        type: boolean
+        default: false
   schedule:
     - cron: '0 1 * * *' # 01:00 UTC / 08:00 ICT
 
@@ -66,6 +71,21 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          # Override for manual dispatch test
+          $event = "${{ github.event_name }}"
+          $forceOk = "${{ inputs.force_ok || false }}"
+          if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true') {
+            $forced = @"
+          ### Smoke selftest summary (FORCED)
+          - **STATUS**: OK
+          - **Reason**: Manual dispatch with force_ok=true (incident auto-close exercise)
+          "@
+            $forced | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            "status=OK" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            return
+          }
+
           $folder = Join-Path $PWD 'artifacts_ascii'
           $latest = Get-ChildItem $folder -Filter 'health_check_*.json' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
