@@ -1,4 +1,4 @@
-# RUNBOOK: Smoke 60m Operations
+﻿# RUNBOOK: Smoke 60m Operations
 
 ## Quick commands via ops.ps1
 ```powershell
@@ -19,3 +19,5 @@ Run the self-test to verify operational readiness:
 
 ## Maintenance
 Regular maintenance commands for keeping the system clean and operational.
+
+
