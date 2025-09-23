@@ -1,4 +1,6 @@
-﻿[![CI - build & test](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml/badge.svg)](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml)
+﻿[![CI - smoke-selftest](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml/badge.svg)](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml)
+
+[![CI - build & test](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml/badge.svg)](https://github.com/baosang12/BotG/actions/workflows/smoke-selftest.yml)
 
 # BotG Runtime Configuration
 
