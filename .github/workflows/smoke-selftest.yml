@@ -75,19 +75,19 @@ jobs:
           $event = "${{ github.event_name }}"
           $forceOk = "${{ inputs.force_ok || false }}"
 
-          "@
+
             $denied | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             "status=UNKNOWN" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             return
           }
           if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true') {
-            $forced = @"
-          ### Smoke selftest summary (FORCED)
-          - **STATUS**: OK
-          - **Reason**: Manual dispatch with force_ok=true (incident auto-close exercise)
-          "@
-            $forced | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            $forced = "Manual dispatch with force_ok=true (incident auto-close exercise)"
+
+
+
+
+"`n### Smoke selftest summary (FORCED)`n- **STATUS**: OK`n- **Reason**: $forced`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             "status=OK" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             return
@@ -105,15 +105,15 @@ jobs:
           $j = Get-Content $latest.FullName -Raw | ConvertFrom-Json
           $issues = if ($j.issues) { $j.issues } else { @() }
           $issuesList = if ($issues.Count -gt 0) { ($issues | ForEach-Object { "- $_" }) -join "`n" } else { "_None_" }
-          $summary = @"
+          
           ### Smoke selftest summary
           - **STATUS**: $($j.STATUS)
           - **Can continue**: $($j.can_continue_running)
           - **Issues**:
           $issuesList
           - **Artifact**: $($latest.Name)
-          "@
-          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+"`n### Smoke selftest summary`n- **STATUS**: $($j.STATUS)`n- **Can continue**: $($j.can_continue_running)`n- **Issues**: `n$issuesList`n- **Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           "status=$($j.STATUS)"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "issues_count=$($issues.Count)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -127,7 +127,7 @@ jobs:
             const body = `${marker}
             ###  Smoke selftest
             - **STATUS**: ${{ steps.sum.outputs.status }}
-            - **Issues**: ${{ steps.sum.outputs.issues_count }}
+ ${{ steps.sum.outputs.issues_count }}
             - **Run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
             _Auto-updated by CI._`;
             const {owner, repo} = context.repo;
