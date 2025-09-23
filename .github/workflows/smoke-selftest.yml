@@ -74,12 +74,13 @@ jobs:
           # Override for manual dispatch test
           $event = "${{ github.event_name }}"
           $forceOk = "${{ inputs.force_ok || false }}"
-          $actorOk = "${{ github.actor_association }}" -in @("OWNER","MEMBER")
-          if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true' -and -not $actorOk) {
+          $guardAllowed = "${{ steps.guard.outputs.allowed }}"
+          $guardReason = "${{ steps.guard.outputs.reason }}"
+          if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true' -and $guardAllowed -ne 'true') {
             $denied = @"
           ### Smoke selftest summary (FORCED REQUEST DENIED)
           - **STATUS**: UNKNOWN
-          - **Reason**: force_ok is restricted to repo OWNER/MEMBER
+          - **Reason**: $guardReason
           "@
             $denied | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             "status=UNKNOWN" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
