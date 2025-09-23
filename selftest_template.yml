@@ -1,0 +1,13 @@
+name: Manual diag
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'why'
+        required: false
+        default: 'ping'
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "manual-dispatch-ok"
