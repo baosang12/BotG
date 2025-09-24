@@ -1,0 +1,199 @@
+# reindex: move to new path
+name: Smoke selftest
+on:
+  workflow_dispatch:
+    inputs:
+      force_ok:
+        description: 'Force OK (owner-only)'
+        required: false
+        default: 'false'   # so sánh dạng chuỗi
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 1 * * *'
+permissions:
+  contents: read
+  actions: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  selftest:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: PowerShell ops.ps1 self-test
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        env:
+          CI_BLOCK_FAIL: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && '1' || '0' }}
+        run: |
+          Write-Host "=== Loading ops.ps1 ==="
+          . .\scripts\ops.ps1
+          
+          Write-Host "=== Running self-test ==="
+          .\scripts\ops_selftest.ps1
+
+      - name: Guard evaluate
+        id: guard
+        if: always()
+        shell: pwsh
+        run: |
+          $isOwner = "${{ github.actor }}" -eq "${{ github.repository_owner }}"
+          $forceOk = "${{ inputs.force_ok }}" -eq "true"
+          if ($forceOk -and -not $isOwner) {
+            $allowed = "false"
+            $reason  = "FORCED REQUEST DENIED (non-owner)"
+          } elseif ($forceOk -and $isOwner) {
+            $allowed = "true"
+            $reason  = "FORCED REQUEST APPROVED (OWNER)"
+          } else {
+            $allowed = "true"
+            $reason  = "NORMAL RUN"
+          }
+          "allowed=$allowed" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "reason=$reason"  | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          
+      - name: Summarize health-check
+        id: sum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Fix PowerShell here-string parsing issues in GitHub Actions
+          $folder = Join-Path $PWD 'artifacts_ascii'
+          $latest = Get-ChildItem $folder -Filter 'health_check_*.json' -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $latest) {
+            "`n### Smoke selftest summary`n_No health JSON found_`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            "status=UNKNOWN" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            return
+          }
+
+          $j = Get-Content $latest.FullName -Raw | ConvertFrom-Json
+          $status      = "$($j.Status)"
+          $issues      = @($j.issues)
+          $issuesCount = $issues.Count
+          $canContinue = "$($j.can_continue_running)"
+
+          # force_ok override (owner-only)
+          $event   = "${{ github.event_name }}"
+          $forceOk = "${{ inputs.force_ok }}"
+          $allowed = "${{ steps.guard.outputs.allowed }}"
+          if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true' -and $allowed -eq 'true') {
+            $status = 'OK'
+            $forced = "Manual dispatch with force_ok=true (incident auto-close exercise)"
+            "`n### Smoke selftest summary`n**STATUS**: $status (**FORCED**)`n**Can continue**: $canContinue`n**Issues**: $issuesCount`n**Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } else {
+            $issuesList = ($issues | ForEach-Object { "- $_" }) -join "`n"
+            "`n### Smoke selftest summary`n**STATUS**: $status`n**Can continue**: $canContinue`n**Issues**:`n$issuesList`n**Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "issues_count=$issuesCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Dump summary
+        if: always()
+        shell: pwsh
+        run: |
+          "`n### Guard diag`nactor: ${{ github.actor }}`nowner: ${{ github.repository_owner }}`ninputs.force_ok: ${{ inputs.force_ok }}`nallowed: ${{ steps.guard.outputs.allowed }}`nsum.status: ${{ steps.sum.outputs.status }}`nreason: ${{ steps.guard.outputs.reason }}`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Open/update incident issue when unhealthy
+        if: ${{ github.event_name != 'pull_request' && !(steps.guard.outputs.allowed == 'true' && steps.sum.outputs.status == 'OK') }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const {owner, repo} = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const status = `${{ steps.sum.outputs.status }}`;
+            const issuesCount = `${{ steps.sum.outputs.issues_count }}`;
+            const title = `Selftest incident: ${status}`;
+            const labels = ['ci-selftest','incident'];
+
+            // ensure labels exist
+            for (const name of labels) {
+              try { await github.rest.issues.getLabel({owner, repo, name}); }
+              catch { try {
+                await github.rest.issues.createLabel({
+                  owner, repo, name,
+                  color: name==='incident' ? 'B60205' : '0E8A16'
+                });
+              } catch {} }
+            }
+
+            // find existing open incident
+            const q = `repo:${owner}/${repo} is:issue is:open label:ci-selftest label:incident in:title "Selftest incident"`;
+            const res = await github.rest.search.issuesAndPullRequests({ q });
+
+            const body = [
+              '### 🚨 Smoke selftest incident',
+              `- **STATUS**: ${status}`,
+              `- **Issues**: ${issuesCount}`,
+              `- **Run**: ${runUrl}`,
+              '',
+              '_Maintained automatically by CI._'
+            ].join('\n');
+
+            if (res.data.items.length) {
+              const num = res.data.items[0].number;
+              await github.rest.issues.update({owner, repo, issue_number: num, title});
+              await github.rest.issues.createComment({owner, repo, issue_number: num, body});
+            } else {
+              await github.rest.issues.create({owner, repo, title, body, labels});
+            }
+
+      - name: Close incident issue when healthy
+        if: ${{ github.event_name != 'pull_request' && steps.guard.outputs.allowed == 'true' && steps.sum.outputs.status == 'OK' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const {owner, repo} = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const q = `repo:${owner}/${repo} is:issue is:open label:ci-selftest label:incident`;
+            const res = await github.rest.search.issuesAndPullRequests({ q });
+            for (const it of res.data.items) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: it.number,
+                body: `✅ Resolved by healthy run: ${runUrl}`
+              });
+              await github.rest.issues.update({owner, repo, issue_number: it.number, state:'closed'});
+            }
+
+      - name: Comment summary on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = [
+              '### Smoke selftest (auto-summary)',
+              `**STATUS**: ${{ steps.sum.outputs.status }}`,
+              `**Issues**: ${{ steps.sum.outputs.issues_count }}`,
+              '',
+              '> Full details are in the job summary and artifacts.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: Upload self-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-results
+          retention-days: 7
+          path: |
+            scripts/ops_selftest.ps1
+            .vscode/tasks.json
+            docs/RUNBOOK_smoke60m.md

@@ -73,25 +73,32 @@ jobs:
     - name: Create tracking issue
       id: issue
       uses: actions/github-script@v7
+      env:
+        MODE: ${{ steps.resolve.outputs.mode }}
+        HOURS: ${{ steps.resolve.outputs.hours }}
+        SOURCE: ${{ steps.resolve.outputs.source }}
+        SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
           const issue = await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: `Gate 24h: ${context.runNumber} (${{ steps.resolve.outputs.mode }}_${{ steps.resolve.outputs.hours }}h @ ${{ steps.resolve.outputs.source }})`,
+            title: `Gate 24h: ${context.runNumber} (${process.env.MODE}_${process.env.HOURS}h @ ${process.env.SOURCE})`,
             body: `**Gate 24h run started** - run #${context.runNumber}
             
-            - **Mode**: \`${{ steps.resolve.outputs.mode }}\`
-            - **Hours**: \`${{ steps.resolve.outputs.hours }}\`
-            - **Source**: \`${{ steps.resolve.outputs.source }}\`
-            - **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - **Mode**: \`${process.env.MODE}\`
+            - **Hours**: \`${process.env.HOURS}\`
+            - **Source**: \`${process.env.SOURCE}\`
+            - **Run**: ${process.env.SERVER_URL}/${process.env.REPOSITORY}/actions/runs/${process.env.RUN_ID}
             
             Heartbeats will appear below with \`[HB]\` markers.`,
             labels: ['automation', 'gate24h', 'in-progress']
           });
           
-          console.log(\`Created tracking issue: \${issue.data.number}\`);
+          console.log(`Created tracking issue: ${issue.data.number}`);
           return issue.data.number;
 
     - name: Run supervised 24h gate
@@ -101,7 +108,7 @@ jobs:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        ISSUE_NUMBER: ${{ steps.issue.outputs.number || steps.issue.outputs.result }}
+        ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
         HB_MINUTES: ${{ vars.HB_MINUTES || '15' }}
         TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -193,16 +200,24 @@ jobs:
     - name: Close tracking issue
       if: always()
       uses: actions/github-script@v7
+      env:
+        ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
+        STATUS: ${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}
+        MINUTES: ${{ steps.supervise.outputs.minutes_done || '0' }}
+        OK: ${{ steps.supervise.outputs.ok || '0' }}
+        WARN: ${{ steps.supervise.outputs.warn || '0' }}
+        FAIL: ${{ steps.supervise.outputs.fail || '0' }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const issue_number = Number(`${{ steps.issue.outputs.number || steps.issue.outputs.result }}`);
-          const status = `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`;
-          const minutes = `${{ steps.supervise.outputs.minutes_done || '0' }}`;
-          const ok = `${{ steps.supervise.outputs.ok || '0' }}`;
-          const warn = `${{ steps.supervise.outputs.warn || '0' }}`;
-          const fail = `${{ steps.supervise.outputs.fail || '0' }}`;
-          const runUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+          const issue_number = Number(process.env.ISSUE_NUMBER);
+          const status = process.env.STATUS;
+          const minutes = process.env.MINUTES;
+          const ok = process.env.OK;
+          const warn = process.env.WARN;
+          const fail = process.env.FAIL;
+          const runUrl = process.env.RUN_URL;
 
           const body = [
             `**Gate 24h – Supervisor Summary**`,
