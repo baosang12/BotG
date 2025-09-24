@@ -1,0 +1,19 @@
+**Mục tiêu**: Đảm bảo GitHub đăng ký workflow_dispatch trigger đúng cách để có thể chạy manual dispatch.
+
+**Thay đổi**:
+- ✅ Đặt `name: Smoke selftest` (thay vì `smoke-selftest`)
+- ✅ Di chuyển `workflow_dispatch` lên đầu trong `on:` 
+- ✅ Loại bỏ `type: boolean` cho input `force_ok` (để mặc định string)
+- ✅ Chuẩn hóa thứ tự: workflow_dispatch → push → pull_request → schedule
+- ✅ Thêm permissions section đầy đủ
+- ✅ Loại bỏ concurrency (không cần thiết cho manual dispatch)
+- ✅ Thêm comment reindex để ép GitHub refresh
+
+**Definition of Done**:
+- [ ] `gh workflow list` hiển thị `Smoke selftest` 
+- [ ] `gh workflow view "Smoke selftest"` báo `This workflow can be triggered manually`
+- [ ] B-Verifier có thể chạy `gh workflow run` không còn lỗi 422
+
+**Không thay đổi**:
+- ❌ Logic guard/incident/steps bên dưới giữ nguyên
+- ❌ Không đụng đến phần jobs và các bước xử lý
