@@ -73,19 +73,14 @@ jobs:
     - name: Create tracking issue
       id: issue
       uses: actions/github-script@v7
+
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
           const issue = await github.rest.issues.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: `Gate 24h: ${context.runNumber} (${{ steps.resolve.outputs.mode }}_${{ steps.resolve.outputs.hours }}h @ ${{ steps.resolve.outputs.source }})`,
-            body: `**Gate 24h run started** - run #${context.runNumber}
-            
-            - **Mode**: \`${{ steps.resolve.outputs.mode }}\`
-            - **Hours**: \`${{ steps.resolve.outputs.hours }}\`
-            - **Source**: \`${{ steps.resolve.outputs.source }}\`
-            - **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
             
             Heartbeats will appear below with \`[HB]\` markers.`,
             labels: ['automation', 'gate24h', 'in-progress']
@@ -101,7 +96,7 @@ jobs:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        ISSUE_NUMBER: ${{ steps.issue.outputs.number || steps.issue.outputs.result }}
+
         HB_MINUTES: ${{ vars.HB_MINUTES || '15' }}
         TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,15 +105,6 @@ jobs:
 
         LOG="gate24h.log"
         : > "$LOG"
-
-        # Coerce numeric, defaults
-        hours="${HOURS:-1}"
-        hb_minutes="${HB_MINUTES:-15}"
-
-        # planned minutes
-        total_minutes=$(python -c "import os,math; h=os.environ.get('HOURS','1'); v=1.0 if not h else float(h); print(max(1,int(round(v*60))))")
-        if ! [[ "$hb_minutes" =~ ^[0-9]+$ ]]; then hb_minutes=15; fi
-        hb_every=$(( hb_minutes * 60 ))
 
         echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$hours source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
 
@@ -193,16 +179,18 @@ jobs:
     - name: Close tracking issue
       if: always()
       uses: actions/github-script@v7
+      env:
+        ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
+        STATUS: ${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}
+        MINUTES: ${{ steps.supervise.outputs.minutes_done || '0' }}
+        OK: ${{ steps.supervise.outputs.ok || '0' }}
+        WARN: ${{ steps.supervise.outputs.warn || '0' }}
+        FAIL: ${{ steps.supervise.outputs.fail || '0' }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const issue_number = Number(`${{ steps.issue.outputs.number || steps.issue.outputs.result }}`);
-          const status = `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`;
-          const minutes = `${{ steps.supervise.outputs.minutes_done || '0' }}`;
-          const ok = `${{ steps.supervise.outputs.ok || '0' }}`;
-          const warn = `${{ steps.supervise.outputs.warn || '0' }}`;
-          const fail = `${{ steps.supervise.outputs.fail || '0' }}`;
-          const runUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
 
           const body = [
             `**Gate 24h – Supervisor Summary**`,
