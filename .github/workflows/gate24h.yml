@@ -136,8 +136,8 @@ jobs:
         for ((i=1;i<=total_minutes;i++)); do
           # Fake probe with optional forced fail
           if [[ -n "$TEST_FORCE_FAIL" ]]; then
-            # tạo fail 1 lần mỗi ~4 phút để kích hoạt early-stop nhanh trong test ngắn
-            if (( i % 4 == 0 )); then status="FAIL"; else status="OK"; fi
+            # Force failures more aggressively for early-stop testing
+            if (( i >= 2 && i % 2 == 0 )); then status="FAIL"; else status="OK"; fi
           else
             # tỉ lệ OK/WARN/FAIL nhẹ
             r=$((RANDOM%100))
