@@ -110,67 +110,63 @@ jobs:
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
         ISSUE_NUMBER:   ${{ steps.issue.outputs.result }}
-        HB_MINUTES:     15
-        TEST_FORCE_FAIL: ''
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         set -euo pipefail
         LOG="gate24h.log"; : > "$LOG"
 
-        total_minutes=$(python - <<'PY'
-        import os
-        try: v=float(os.environ.get("HOURS","1"))
-        except: v=1.0
-        print(max(1,int(round(v*60))))
-        PY
-        )
-        tick=$([ "$total_minutes" -le 5 ] && echo 10 || echo 60)
-        hb_every=$((HB_MINUTES*60))
-        start=$(date -u +%s); last_hb=$start
-        ok=0; warn=0; fail=0
+        # Inject repository variables into local env (empty if not defined)
+        HB_MINUTES="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/HB_MINUTES --jq .value 2>/dev/null || true)"
+        TEST_FORCE_FAIL="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/TEST_FORCE_FAIL --jq .value 2>/dev/null || true)"
 
-        trap 'echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"; echo "supervisor_status=CANCELLED" >> $GITHUB_OUTPUT; exit 0' INT TERM
+        # minutes to run (ceil(HOURS*60))
+        total_minutes=$(python -c "import math,os; print(int(math.ceil(float(os.environ.get('HOURS','1'))*60)))")
+        hb_every="${HB_MINUTES:-15}"   # respect repo var, default 15
+        ok=0; warn=0; fail=0; status="OK"
+        last_hb=$(date +%s)
 
         echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$HOURS source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
+        trap 'echo "supervisor_status=CANCELLED" >> $GITHUB_OUTPUT; echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"' INT TERM
 
         for ((i=1;i<=total_minutes;i++)); do
-          st=OK
-          r=$((RANDOM % 100))
-          if [ -n "$TEST_FORCE_FAIL" ] && [ $((i%5)) -eq 0 ]; then r=99; fi
-          if   [ $r -ge 99 ]; then st=FAIL
-          elif [ $r -ge 95 ]; then st=WARN
+          # Health probe (force failure when TEST_FORCE_FAIL=1)
+          if [[ "${TEST_FORCE_FAIL:-}" == "1" && $(( i % 2 )) -eq 0 ]]; then s="FAIL"
+          else
+            r=$((RANDOM%100))
+            if   (( r < 94 )); then s="OK"
+            elif (( r < 98 )); then s="WARN"
+            else                   s="FAIL"; fi
           fi
-          case "$st" in
-            OK)   ok=$((ok+1));;
-            WARN) warn=$((warn+1));;
-            FAIL) fail=$((fail+1));;
+
+          case "$s" in
+            OK)   ((ok++));;
+            WARN) ((warn++));;
+            FAIL) ((fail++));;
           esac
+          echo "$(date -u +%FT%TZ) [ITER:$i] status=$s totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
 
-          now=$(date -u +%s)
-          echo "$(date -u +%FT%TZ) [ITER:$i] status=$st totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
-
-          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || true)
-          if [ "$recent_fail" -ge 3 ]; then
+          # Early-stop: >=3 FAIL in last 10 iterations
+          recent_fail=$(tail -n 10 "$LOG" | grep -c 'status=FAIL' || true)
+          if (( recent_fail >= 3 )); then
             echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
             echo "supervisor_status=FAIL_EARLY" >> $GITHUB_OUTPUT
+            status="FAIL_EARLY"
             break
           fi
 
-          if [ $((now-last_hb)) -ge $hb_every ]; then
-            durm=$(( (now-start)/60 ))
-            msg="**[HB]** t=${durm}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
-            gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments -f body="$msg" >/dev/null 2>&1 || true
-            last_hb=$now
+          now=$(date +%s)
+          if (( (now - last_hb) >= hb_every*60 )); then
+            msg="**[HB]** t=${i}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" -f body="$msg" >/dev/null 2>&1 || true
             echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
+            last_hb=$now
           fi
 
-          sleep "$tick"
+          sleep 60
         done
 
-        status_out=$(grep -q "\[EARLY_STOP\]" "$LOG" && echo FAIL_EARLY || echo OK)
-        echo "supervisor_status=$status_out" >> $GITHUB_OUTPUT
-
-        end=$(date -u +%s); real_minutes=$(( (end-start)/60 ))
-        echo "$(date -u +%FT%TZ) [END] status=$status_out real=${real_minutes}m totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
+        [[ "$status" == "FAIL_EARLY" ]] || echo "supervisor_status=OK" >> $GITHUB_OUTPUT
+        echo "$(date -u +%FT%TZ) [END] status=${status} totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
     
     - name: Upload artifacts
       if: always()
@@ -178,8 +174,8 @@ jobs:
       with:
         name: gate24h-artifacts-${{ github.run_number }}
         path: |
+          gate24h.log
           path_issues/
-          *.log
         retention-days: 30
     
     - name: Close tracking issue
