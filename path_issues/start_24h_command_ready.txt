@@ -1,3 +1,4 @@
-mode=paper
+﻿mode=paper
 hours=0.2
 source=file-trigger
+
