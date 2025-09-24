@@ -1,3 +1,4 @@
-﻿mode=paper
-hours=24
+mode=paper
+hours=1
 source=file-trigger
+TEST_FORCE_FAIL=1
