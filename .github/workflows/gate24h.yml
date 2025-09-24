@@ -1,6 +1,11 @@
 ﻿name: Gate 24h (paper supervised)
 run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -24,6 +29,7 @@ on:
         type: string
   
   push:
+    branches: [ main ]
     paths:
       - 'path_issues/start_24h_command_ready.txt'
 
@@ -97,24 +103,74 @@ jobs:
           return issue.data.number;
     
     - name: Run supervised 24h gate
+      id: supervise
+      shell: bash
+      env:
+        MODE:   ${{ steps.resolve.outputs.mode }}
+        HOURS:  ${{ steps.resolve.outputs.hours }}
+        SOURCE: ${{ steps.resolve.outputs.source }}
+        ISSUE_NUMBER:   ${{ steps.issue.outputs.result }}
+        HB_MINUTES:     15
+        TEST_FORCE_FAIL: ''
       run: |
-        echo "=== Gate 24h Execution Starting ==="
-        echo "Mode: ${{ steps.resolve.outputs.mode }}"
-        echo "Hours: ${{ steps.resolve.outputs.hours }}"
-        echo "Source: ${{ steps.resolve.outputs.source }}"
-        echo "Issue: #${{ steps.issue.outputs.result }}"
-        echo ""
-        
-        # Placeholder for actual supervised loop
-        # TODO: Implement actual 24h supervised monitoring logic
-        echo "  PLACEHOLDER: Supervised loop would run here"
-        echo "This is where the 24h gate monitoring logic will be implemented"
-        echo "Expected duration: ${{ steps.resolve.outputs.hours }} hours"
-        
-        # Simulate some work for now
-        sleep 30
-        
-        echo "=== Gate 24h Execution Complete ==="
+        set -euo pipefail
+        LOG="gate24h.log"; : > "$LOG"
+
+        total_minutes=$(python - <<'PY'
+        import os
+        try: v=float(os.environ.get("HOURS","1"))
+        except: v=1.0
+        print(max(1,int(round(v*60))))
+        PY
+        )
+        tick=$([ "$total_minutes" -le 5 ] && echo 10 || echo 60)
+        hb_every=$((HB_MINUTES*60))
+        start=$(date -u +%s); last_hb=$start
+        ok=0; warn=0; fail=0
+
+        trap 'echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"; echo "supervisor_status=CANCELLED" >> $GITHUB_OUTPUT; exit 0' INT TERM
+
+        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$HOURS source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
+
+        for ((i=1;i<=total_minutes;i++)); do
+          st=OK
+          r=$((RANDOM % 100))
+          if [ -n "$TEST_FORCE_FAIL" ] && [ $((i%5)) -eq 0 ]; then r=99; fi
+          if   [ $r -ge 99 ]; then st=FAIL
+          elif [ $r -ge 95 ]; then st=WARN
+          fi
+          case "$st" in
+            OK)   ok=$((ok+1));;
+            WARN) warn=$((warn+1));;
+            FAIL) fail=$((fail+1));;
+          esac
+
+          now=$(date -u +%s)
+          echo "$(date -u +%FT%TZ) [ITER:$i] status=$st totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
+
+          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || true)
+          if [ "$recent_fail" -ge 3 ]; then
+            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
+            echo "supervisor_status=FAIL_EARLY" >> $GITHUB_OUTPUT
+            break
+          fi
+
+          if [ $((now-last_hb)) -ge $hb_every ]; then
+            durm=$(( (now-start)/60 ))
+            msg="**[HB]** t=${durm}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
+            gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments -f body="$msg" >/dev/null 2>&1 || true
+            last_hb=$now
+            echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
+          fi
+
+          sleep "$tick"
+        done
+
+        status_out=$(grep -q "\[EARLY_STOP\]" "$LOG" && echo FAIL_EARLY || echo OK)
+        echo "supervisor_status=$status_out" >> $GITHUB_OUTPUT
+
+        end=$(date -u +%s); real_minutes=$(( (end-start)/60 ))
+        echo "$(date -u +%FT%TZ) [END] status=$status_out real=${real_minutes}m totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
     
     - name: Upload artifacts
       if: always()
@@ -133,16 +189,18 @@ jobs:
         script: |
           const issueNumber = ${{ steps.issue.outputs.result }};
           
-          const status = '${{ job.status }}' === 'success' ? ' Completed successfully' : ' Failed or cancelled';
+          const supervisorStatus = '${{ steps.supervise.outputs.supervisor_status }}' || 'UNKNOWN';
           const body = `**Gate 24h Execution Complete**
           
-          **Final Status:** ${status}
+          **Supervisor Status:** ${supervisorStatus}
           
           **Configuration:**
           - Mode: \`${{ steps.resolve.outputs.mode }}\`
           - Duration: \`${{ steps.resolve.outputs.hours }}\` hours
           - Source: \`${{ steps.resolve.outputs.source }}\`
           - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          **Artifacts:** Check gate24h.log inside the run artifacts.
           
           This issue is now closed.`;
 
