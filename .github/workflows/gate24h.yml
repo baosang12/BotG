@@ -1,0 +1,164 @@
+﻿name: Gate 24h (paper supervised)
+run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Operating mode'
+        required: true
+        default: 'paper'
+        type: choice
+        options:
+        - paper
+        - live
+      hours:
+        description: 'Hours to run (1-168)'
+        required: true
+        default: '24'
+        type: string
+      source:
+        description: 'Trigger source'
+        required: false
+        default: 'manual'
+        type: string
+  
+  push:
+    paths:
+      - 'path_issues/start_24h_command_ready.txt'
+
+jobs:
+  gate24h:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1500  # 25 hours
+    
+    concurrency:
+      group: gate24h-${{ github.ref }}
+      cancel-in-progress: false
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Resolve inputs
+      id: resolve
+      run: |
+        # For file trigger, read from the file
+        if [[ "${{ github.event_name }}" == "push" ]]; then
+          if [[ -f "path_issues/start_24h_command_ready.txt" ]]; then
+            mode=$(grep "mode=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
+            hours=$(grep "hours=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
+            source=$(grep "source=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
+          else
+            mode="paper"
+            hours="24" 
+            source="file-trigger-fallback"
+          fi
+        else
+          # Manual dispatch
+          mode="${{ inputs.mode }}"
+          hours="${{ inputs.hours }}"
+          source="${{ inputs.source }}"
+        fi
+        
+        echo "mode=$mode" >> $GITHUB_OUTPUT
+        echo "hours=$hours" >> $GITHUB_OUTPUT
+        echo "source=$source" >> $GITHUB_OUTPUT
+        echo "Resolved: mode=$mode, hours=$hours, source=$source"
+    
+    - name: Create tracking issue
+      id: issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = `Gate 24h run: ${{ steps.resolve.outputs.mode }} mode for ${{ steps.resolve.outputs.hours }}h (from ${{ steps.resolve.outputs.source }})`;
+          
+          const body = `**Automated Gate 24h Execution**
+
+          **Configuration:**
+          - Mode: \`${{ steps.resolve.outputs.mode }}\`
+          - Duration: \`${{ steps.resolve.outputs.hours }}\` hours
+          - Source: \`${{ steps.resolve.outputs.source }}\`
+          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          **Status:**  Starting execution...
+          
+          This issue will be automatically updated with progress and closed upon completion.`;
+
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['automation', 'gate24h', 'in-progress']
+          });
+          
+          console.log(`Created tracking issue: ${issue.data.number}`);
+          return issue.data.number;
+    
+    - name: Run supervised 24h gate
+      run: |
+        echo "=== Gate 24h Execution Starting ==="
+        echo "Mode: ${{ steps.resolve.outputs.mode }}"
+        echo "Hours: ${{ steps.resolve.outputs.hours }}"
+        echo "Source: ${{ steps.resolve.outputs.source }}"
+        echo "Issue: #${{ steps.issue.outputs.result }}"
+        echo ""
+        
+        # Placeholder for actual supervised loop
+        # TODO: Implement actual 24h supervised monitoring logic
+        echo "  PLACEHOLDER: Supervised loop would run here"
+        echo "This is where the 24h gate monitoring logic will be implemented"
+        echo "Expected duration: ${{ steps.resolve.outputs.hours }} hours"
+        
+        # Simulate some work for now
+        sleep 30
+        
+        echo "=== Gate 24h Execution Complete ==="
+    
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate24h-artifacts-${{ github.run_number }}
+        path: |
+          path_issues/
+          *.log
+        retention-days: 30
+    
+    - name: Close tracking issue
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issueNumber = ${{ steps.issue.outputs.result }};
+          
+          const status = '${{ job.status }}' === 'success' ? ' Completed successfully' : ' Failed or cancelled';
+          const body = `**Gate 24h Execution Complete**
+          
+          **Final Status:** ${status}
+          
+          **Configuration:**
+          - Mode: \`${{ steps.resolve.outputs.mode }}\`
+          - Duration: \`${{ steps.resolve.outputs.hours }}\` hours
+          - Source: \`${{ steps.resolve.outputs.source }}\`
+          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          This issue is now closed.`;
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber,
+            body: body
+          });
+          
+          await github.rest.issues.update({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber,
+            state: 'closed',
+            labels: ['automation', 'gate24h', 'completed']
+          });
+          
+          console.log(`Closed tracking issue: ${issueNumber}`);
