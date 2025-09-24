@@ -136,8 +136,7 @@ jobs:
         for ((i=1;i<=total_minutes;i++)); do
           # Fake probe with optional forced fail
           if [[ -n "$TEST_FORCE_FAIL" ]]; then
-            # Force failures more aggressively for early-stop testing
-            if (( i >= 2 && i % 2 == 0 )); then status="FAIL"; else status="OK"; fi
+
           else
             # tỉ lệ OK/WARN/FAIL nhẹ
             r=$((RANDOM%100))
