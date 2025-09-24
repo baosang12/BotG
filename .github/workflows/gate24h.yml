@@ -56,52 +56,72 @@ jobs:
             hours=$(grep "hours=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
             source=$(grep "source=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
           else
-            mode="paper"
-            hours="24" 
-            source="file-trigger-fallback"
+        set -Eeuo pipefail
+        set -x
+        trap 'echo "::error::Failed at ${BASH_SOURCE[0]}:${LINENO} command: ${BASH_COMMAND}"; exit 1' ERR
+
+        LOG="gate24h.log"; : > "$LOG"
+
+        # Inject repository variables into local env (empty if not defined)
+        HB_MINUTES="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/HB_MINUTES --jq .value 2>/dev/null || true)"
+        TEST_FORCE_FAIL="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/TEST_FORCE_FAIL --jq .value 2>/dev/null || true)"
+
+        # minutes to run (ceil(HOURS*60)) using python3 with fallback
+        total_minutes=$(python3 -c "import math,os;\nimport sys;\ntry:\n v=float(os.environ.get('HOURS','1'));\n print(int(math.ceil(v*60)))\nexcept Exception:\n print(60)" || echo 60)
+
+        hb_every="${HB_MINUTES:-15}"
+        case "$hb_every" in ''|*[!0-9]*) hb_every=15;; esac
+        ok=0; warn=0; fail=0; status="OK"
+        last_hb=$(date +%s)
+
+        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$HOURS source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
+        trap 'echo "supervisor_status=CANCELLED" >> "$GITHUB_OUTPUT"; echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"' INT TERM
+
+        i=1
+        while [ "$i" -le "$total_minutes" ]; do
+          # Health probe (force failure when TEST_FORCE_FAIL=1)
+          if [ "${TEST_FORCE_FAIL:-}" = "1" ] && [ $(( i % 2 )) -eq 0 ]; then
+            s="FAIL"
+          else
+            r=$((RANDOM%100))
+            if [ "$r" -lt 94 ]; then s="OK"; elif [ "$r" -lt 98 ]; then s="WARN"; else s="FAIL"; fi
           fi
-        else
-          # Manual dispatch
-          mode="${{ inputs.mode }}"
-          hours="${{ inputs.hours }}"
-          source="${{ inputs.source }}"
-        fi
-        
-        echo "mode=$mode" >> $GITHUB_OUTPUT
-        echo "hours=$hours" >> $GITHUB_OUTPUT
-        echo "source=$source" >> $GITHUB_OUTPUT
-        echo "Resolved: mode=$mode, hours=$hours, source=$source"
-    
-    - name: Create tracking issue
-      id: issue
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const title = `Gate 24h run: ${{ steps.resolve.outputs.mode }} mode for ${{ steps.resolve.outputs.hours }}h (from ${{ steps.resolve.outputs.source }})`;
-          
-          const body = `**Automated Gate 24h Execution**
 
-          **Configuration:**
-          - Mode: \`${{ steps.resolve.outputs.mode }}\`
-          - Duration: \`${{ steps.resolve.outputs.hours }}\` hours
-          - Source: \`${{ steps.resolve.outputs.source }}\`
-          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          **Status:**  Starting execution...
-          
-          This issue will be automatically updated with progress and closed upon completion.`;
+          case "$s" in
+            OK)   ok=$((ok+1));;
+            WARN) warn=$((warn+1));;
+            FAIL) fail=$((fail+1));;
+          esac
+          echo "$(date -u +%FT%TZ) [ITER:$i] status=$s totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
 
-          const issue = await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: title,
-            body: body,
-            labels: ['automation', 'gate24h', 'in-progress']
+          # Early-stop: >=3 FAIL in last 10 iterations
+          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || echo 0)
+          if [ "$recent_fail" -ge 3 ]; then
+            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
+            echo "supervisor_status=FAIL_EARLY" >> "$GITHUB_OUTPUT"
+            status="FAIL_EARLY"
+            break
+          fi
+
+          now=$(date +%s)
+          if [ $(( now - last_hb )) -ge $(( hb_every*60 )) ]; then
+            msg="**[HB]** t=${i}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" -f body="$msg" >/dev/null 2>&1 || true
+            echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
+            last_hb=$now
+          fi
+
+          i=$((i+1))
+          sleep 60
+        done
+
+        if [ "$status" != "FAIL_EARLY" ]; then echo "supervisor_status=OK" >> "$GITHUB_OUTPUT"; fi
+        echo "$(date -u +%FT%TZ) [END] status=${status} totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
           });
           
           console.log(`Created tracking issue: ${issue.data.number}`);
           return issue.data.number;
-    
+
     - name: Run supervised 24h gate
       id: supervise
       shell: bash
@@ -109,19 +129,16 @@ jobs:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        ISSUE_NUMBER:   ${{ steps.issue.outputs.result }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        HB_MINUTES:   ${{ vars.HB_MINUTES || '15' }}
+        TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
       run: |
         set -euo pipefail
         LOG="gate24h.log"; : > "$LOG"
 
-        # Inject repository variables into local env (empty if not defined)
-        HB_MINUTES="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/HB_MINUTES --jq .value 2>/dev/null || true)"
-        TEST_FORCE_FAIL="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/TEST_FORCE_FAIL --jq .value 2>/dev/null || true)"
+        total_minutes=$(python -c "import math,os;print(int(math.ceil(float(os.environ.get('HOURS','1'))*60)))")
+        hb_every="${HB_MINUTES}"
 
-        # minutes to run (ceil(HOURS*60))
-        total_minutes=$(python -c "import math,os; print(int(math.ceil(float(os.environ.get('HOURS','1'))*60)))")
-        hb_every="${HB_MINUTES:-15}"   # respect repo var, default 15
         ok=0; warn=0; fail=0; status="OK"
         last_hb=$(date +%s)
 
@@ -129,13 +146,15 @@ jobs:
         trap 'echo "supervisor_status=CANCELLED" >> $GITHUB_OUTPUT; echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"' INT TERM
 
         for ((i=1;i<=total_minutes;i++)); do
-          # Health probe (force failure when TEST_FORCE_FAIL=1)
-          if [[ "${TEST_FORCE_FAIL:-}" == "1" && $(( i % 2 )) -eq 0 ]]; then s="FAIL"
+          # Health probe (ép FAIL khi TEST_FORCE_FAIL=1 mỗi phút chẵn)
+          if [[ "${TEST_FORCE_FAIL}" == "1" && $(( i % 2 )) -eq 0 ]]; then
+            s="FAIL"
           else
             r=$((RANDOM%100))
             if   (( r < 94 )); then s="OK"
             elif (( r < 98 )); then s="WARN"
-            else                   s="FAIL"; fi
+            else                   s="FAIL"
+            fi
           fi
 
           case "$s" in
@@ -143,9 +162,9 @@ jobs:
             WARN) ((warn++));;
             FAIL) ((fail++));;
           esac
+
           echo "$(date -u +%FT%TZ) [ITER:$i] status=$s totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
 
-          # Early-stop: >=3 FAIL in last 10 iterations
           recent_fail=$(tail -n 10 "$LOG" | grep -c 'status=FAIL' || true)
           if (( recent_fail >= 3 )); then
             echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
@@ -167,7 +186,7 @@ jobs:
 
         [[ "$status" == "FAIL_EARLY" ]] || echo "supervisor_status=OK" >> $GITHUB_OUTPUT
         echo "$(date -u +%FT%TZ) [END] status=${status} totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
-    
+
     - name: Upload artifacts
       if: always()
       uses: actions/upload-artifact@v4
@@ -177,42 +196,26 @@ jobs:
           gate24h.log
           path_issues/
         retention-days: 30
-    
+
     - name: Close tracking issue
       if: always()
       uses: actions/github-script@v7
       with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const issueNumber = ${{ steps.issue.outputs.result }};
-          
-          const supervisorStatus = '${{ steps.supervise.outputs.supervisor_status }}' || 'UNKNOWN';
-          const body = `**Gate 24h Execution Complete**
-          
-          **Supervisor Status:** ${supervisorStatus}
-          
-          **Configuration:**
-          - Mode: \`${{ steps.resolve.outputs.mode }}\`
-          - Duration: \`${{ steps.resolve.outputs.hours }}\` hours
-          - Source: \`${{ steps.resolve.outputs.source }}\`
-          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          **Artifacts:** Check gate24h.log inside the run artifacts.
-          
-          This issue is now closed.`;
+          const issue_number = Number(`${{ steps.issue.outputs.number }}`);
+          const status = `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`;
+          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          const body = [
+            '**Gate 24h Execution Complete**',
+            '',
+            `**Supervisor Status:** ${status}`,
+            `**Run:** ${runUrl}`,
+            `**Artifact:** gate24h-artifacts-${context.runNumber}`,
+          ].join('\n');
 
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: issueNumber,
-            body: body
-          });
-          
+          await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
           await github.rest.issues.update({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: issueNumber,
-            state: 'closed',
-            labels: ['automation', 'gate24h', 'completed']
+            owner: context.repo.owner, repo: context.repo.repo, issue_number,
+            state: 'closed', labels: ['automation','gate24h','completed']
           });
-          
-          console.log(`Closed tracking issue: ${issueNumber}`);
