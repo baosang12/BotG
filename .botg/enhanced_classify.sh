@@ -47,12 +47,3 @@ cat > .botg/status.json << EOF
 EOF
 
 echo "Classification: $STATUS ($REASON)"
-
-# Repository guard (prevent external forks)
-REPO_OWNER="${{ github.repository_owner }}"
-HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
-  echo "External fork detected: $HEAD_REPO"
-  STATUS="NEEDS_ACTION"
-  REASON="external_fork"
-fi
