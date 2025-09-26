@@ -43,12 +43,12 @@ jobs:
           set -e
           echo "running smoke..."
           # TODO: thay bằng test thật
-          if [ $((RANDOM % 10)) -eq 0 ]; then
-            echo "simulated network 502" >&2
-            echo "exit_code=502" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-          echo "exit_code=0" >> $GITHUB_OUTPUT
+          # Deterministic execution - no random failures
+          code=0
+          echo "$code" > .botg/exit_code.txt
+          # exit 1
+          # fi
+          echo "exit_code=$code" >> $GITHUB_OUTPUT
 
       - name: Classify (enhanced)
         if: always()
