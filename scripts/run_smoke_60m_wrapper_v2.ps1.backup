@@ -1,0 +1,160 @@
+#requires -version 5.0
+param(
+    [int]$Segments = 4,
+    [string]$LogPath = "D:\botg\logs",
+    [string]$OutRoot = "D:\botg\runs",
+    [switch]$MergeOnly,
+    [string]$ExistingRoot = ""
+)
+
+$ErrorActionPreference = "Stop"
+$env:BOTG_LOG_PATH = $LogPath
+
+Write-Host "=== SMOKE 60m WRAPPER v2 ==="
+Write-Host "Started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Segments: $Segments"
+Write-Host "MergeOnly: $MergeOnly"
+if ($MergeOnly -and $ExistingRoot) {
+    Write-Host "ExistingRoot: $ExistingRoot"
+}
+
+# Import CSV merge library
+. .\scripts\lib_csv_merge.ps1
+
+# MergeOnly logic: sử dụng existing run hoặc fallback
+if ($MergeOnly) {
+    if ($ExistingRoot -and (Test-Path -LiteralPath $ExistingRoot)) {
+        $runRoot = $ExistingRoot
+        Write-Host "Using existing run root: $runRoot"
+    } else {
+        # Fallback: tìm run mới nhất trong OutRoot
+        $latestRun = Get-ChildItem -LiteralPath $OutRoot -Directory -Filter "paper_smoke_60m_*" | 
+                     Sort-Object LastWriteTime -Desc | 
+                     Select-Object -First 1
+        if ($latestRun) {
+            $runRoot = $latestRun.FullName
+            Write-Host "Fallback to latest run: $runRoot"
+        } else {
+            Write-Error "MergeOnly=true nhưng không tìm thấy run nào."
+            exit 1
+        }
+    }
+} else {
+    # Tạo run mới
+    $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+    $runRoot = Join-Path $OutRoot ("paper_smoke_60m_v2_{0}" -f $ts)
+    New-Item -ItemType Directory -Force -Path $runRoot | Out-Null
+    Write-Host "Created new run: $runRoot"
+}
+
+# Kiểm tra run_smoke_15m.ps1 trước (chỉ khi không phải MergeOnly)
+if (-not $MergeOnly) {
+    if (-not (Test-Path ".\scripts\run_smoke_15m.ps1")) {
+        Write-Warning "Không tìm thấy run_smoke_15m.ps1, thử dùng run_smoke.ps1"
+        if (-not (Test-Path ".\scripts\run_smoke.ps1")) {
+            Write-Error "Không tìm thấy cả run_smoke_15m.ps1 và run_smoke.ps1"
+            exit 1
+        }
+    }
+
+    Write-Host ""
+    Write-Host "=== RUNNING $Segments SEGMENTS ==="
+
+    # Chạy từng segment 15 phút
+    for ($i = 1; $i -le $Segments; $i++) {
+        Write-Host ""
+        Write-Host "--- SEGMENT $i/$Segments ---"
+        
+        $segmentRoot = Join-Path $runRoot "segment_$i"
+        New-Item -ItemType Directory -Force -Path $segmentRoot | Out-Null
+        
+        # Tùy script có sẵn
+        if (Test-Path ".\scripts\run_smoke_15m.ps1") {
+            & .\scripts\run_smoke_15m.ps1 -OutRoot $segmentRoot
+        } else {
+            & .\scripts\run_smoke.ps1 -Seconds 900 -SecondsPerHour 300 -DrainSeconds 20 -FillProb 1.0 -UseSimulation -OutRoot $segmentRoot
+        }
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Segment $i failed với exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
+    }
+}
+
+Write-Host ""
+Write-Host "=== COLLECTING orders.csv ==="
+$ordersFiles = @()
+$segmentDirs = @()
+for ($i = 1; $i -le $Segments; $i++) {
+    # Try both segment_$i and seg0$i patterns
+    $seg1 = Join-Path $runRoot "segment_$i"
+    $seg2 = Join-Path $runRoot ("seg{0:D2}" -f $i)
+    
+    $seg = if (Test-Path -LiteralPath $seg1) { $seg1 } elseif (Test-Path -LiteralPath $seg2) { $seg2 } else { $seg1 }
+    $segmentDirs += $seg
+    $f = Resolve-OrdersCsv -segDir $seg
+    if ($f) { Write-Host "Found: $f"; $ordersFiles += $f } else { Write-Warning "orders.csv not found under $seg" }
+}
+
+Write-Host ""
+Write-Host "=== MERGING ==="
+$merged = Join-Path -Path $runRoot -ChildPath "orders_merged.csv"
+Merge-Orders -ordersFiles $ordersFiles -mergedOut $merged
+
+Write-Host ""
+Write-Host "=== VALIDATING HEADERS ==="
+try {
+    Test-MinHeaders -mergedOut $merged
+    Write-Host "HEADER VALIDATION: PASSED"
+} catch {
+    Write-Host "HEADER VALIDATION: FAILED - $($_.Exception.Message)"
+}
+
+Write-Host ""
+Write-Host "=== FIFO (Python, utf-8-sig) ==="
+$closed = Join-Path -Path $runRoot -ChildPath "closed_trades_fifo_reconstructed.csv"
+
+# Nếu merged CSV chỉ có header → bỏ qua FIFO
+$lineProbe = @(Get-Content -LiteralPath $merged -TotalCount 2 -ErrorAction SilentlyContinue)
+if (-not $lineProbe -or $lineProbe.Count -lt 2) {
+    Write-Host "No data rows in merged CSV. Skipping FIFO."
+}
+elseif (Test-Path -LiteralPath ".\reconstruct_closed_trades_sqlite.py") {
+    $fifoOut = Join-Path -Path $runRoot -ChildPath "fifo_stdout.log"
+    $fifoErr = Join-Path -Path $runRoot -ChildPath "fifo_stderr.log"
+    Remove-Item -LiteralPath $fifoOut,$fifoErr -ErrorAction SilentlyContinue
+
+    # Chặn SyntaxWarning ngay từ CLI
+    $pyArgs = @(
+        "-W","ignore::SyntaxWarning",
+        ".\reconstruct_closed_trades_sqlite.py",
+        "--orders",$merged,"--out",$closed,"--encoding","utf-8-sig"
+    )
+
+    try {
+        $p = Start-Process -FilePath "python" -ArgumentList $pyArgs -NoNewWindow -Wait -PassThru `
+             -RedirectStandardOutput $fifoOut -RedirectStandardError $fifoErr
+
+        if ($p.ExitCode -eq 0 -and (Test-Path -LiteralPath $closed)) {
+            Write-Host "FIFO reconstruction completed: $closed"
+        } else {
+            Write-Warning "FIFO failed (exit=$($p.ExitCode)). See logs: $fifoOut / $fifoErr"
+        }
+    }
+    catch {
+        Write-Warning "FIFO error: $($_.Exception.Message). See logs: $fifoOut / $fifoErr"
+    }
+}
+else {
+    Write-Warning "MISSING: reconstruct_closed_trades_sqlite.py"
+}
+
+Write-Host ""
+Write-Host "=== REPORT ==="
+Write-RunReport -runRoot $runRoot -mergedOut $merged -closedOut $closed
+
+Write-Host ""
+Write-Host "=== SMOKE 60m WRAPPER v2 COMPLETED ==="
+Write-Host "Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Report: $(Join-Path $runRoot 'report_60m.md')"

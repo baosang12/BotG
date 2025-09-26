@@ -56,67 +56,46 @@ jobs:
             hours=$(grep "hours=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
             source=$(grep "source=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
           else
-        set -Eeuo pipefail
-        set -x
-        trap 'echo "::error::Failed at ${BASH_SOURCE[0]}:${LINENO} command: ${BASH_COMMAND}"; exit 1' ERR
-
-        LOG="gate24h.log"; : > "$LOG"
-
-        # Inject repository variables into local env (empty if not defined)
-        HB_MINUTES="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/HB_MINUTES --jq .value 2>/dev/null || true)"
-        TEST_FORCE_FAIL="$(gh api repos/${GITHUB_REPOSITORY}/actions/variables/TEST_FORCE_FAIL --jq .value 2>/dev/null || true)"
-
-        # minutes to run (ceil(HOURS*60)) using python3 with fallback
-        total_minutes=$(python3 -c "import math,os;\nimport sys;\ntry:\n v=float(os.environ.get('HOURS','1'));\n print(int(math.ceil(v*60)))\nexcept Exception:\n print(60)" || echo 60)
-
-        hb_every="${HB_MINUTES:-15}"
-        case "$hb_every" in ''|*[!0-9]*) hb_every=15;; esac
-        ok=0; warn=0; fail=0; status="OK"
-        last_hb=$(date +%s)
-
-        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$HOURS source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
-        trap 'echo "supervisor_status=CANCELLED" >> "$GITHUB_OUTPUT"; echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"' INT TERM
-
-        i=1
-        while [ "$i" -le "$total_minutes" ]; do
-          # Health probe (force failure when TEST_FORCE_FAIL=1)
-          if [ "${TEST_FORCE_FAIL:-}" = "1" ] && [ $(( i % 2 )) -eq 0 ]; then
-            s="FAIL"
-          else
-            r=$((RANDOM%100))
-            if [ "$r" -lt 94 ]; then s="OK"; elif [ "$r" -lt 98 ]; then s="WARN"; else s="FAIL"; fi
+            mode="paper"
+            hours="24"
+            source="file-trigger"
           fi
+        else
+          mode="${{ inputs.mode }}"
+          hours="${{ inputs.hours }}"
+          source="${{ inputs.source }}"
+        fi
+        
+        echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+        echo "hours=${hours}" >> "$GITHUB_OUTPUT"
+        echo "source=${source}" >> "$GITHUB_OUTPUT"
 
-          case "$s" in
-            OK)   ok=$((ok+1));;
-            WARN) warn=$((warn+1));;
-            FAIL) fail=$((fail+1));;
-          esac
-          echo "$(date -u +%FT%TZ) [ITER:$i] status=$s totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
-
-          # Early-stop: >=3 FAIL in last 10 iterations
-          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || echo 0)
-          if [ "$recent_fail" -ge 3 ]; then
-            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
-            echo "supervisor_status=FAIL_EARLY" >> "$GITHUB_OUTPUT"
-            status="FAIL_EARLY"
-            break
-          fi
-
-          now=$(date +%s)
-          if [ $(( now - last_hb )) -ge $(( hb_every*60 )) ]; then
-            msg="**[HB]** t=${i}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
-            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" -f body="$msg" >/dev/null 2>&1 || true
-            echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
-            last_hb=$now
-          fi
-
-          i=$((i+1))
-          sleep 60
-        done
-
-        if [ "$status" != "FAIL_EARLY" ]; then echo "supervisor_status=OK" >> "$GITHUB_OUTPUT"; fi
-        echo "$(date -u +%FT%TZ) [END] status=${status} totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
+    - name: Create tracking issue
+      id: issue
+      uses: actions/github-script@v7
+      env:
+        MODE: ${{ steps.resolve.outputs.mode }}
+        HOURS: ${{ steps.resolve.outputs.hours }}
+        SOURCE: ${{ steps.resolve.outputs.source }}
+        SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Gate 24h: ${context.runNumber} (${process.env.MODE}_${process.env.HOURS}h @ ${process.env.SOURCE})`,
+            body: `**Gate 24h run started** - run #${context.runNumber}
+            
+            - **Mode**: \`${process.env.MODE}\`
+            - **Hours**: \`${process.env.HOURS}\`
+            - **Source**: \`${process.env.SOURCE}\`
+            - **Run**: ${process.env.SERVER_URL}/${process.env.REPOSITORY}/actions/runs/${process.env.RUN_ID}
+            
+            Heartbeats will appear below with \`[HB]\` markers.`,
+            labels: ['automation', 'gate24h', 'in-progress']
           });
           
           console.log(`Created tracking issue: ${issue.data.number}`);
@@ -129,63 +108,84 @@ jobs:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
-        HB_MINUTES:   ${{ vars.HB_MINUTES || '15' }}
+        ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
+        HB_MINUTES: ${{ vars.HB_MINUTES || '15' }}
         TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         set -euo pipefail
-        LOG="gate24h.log"; : > "$LOG"
 
-        total_minutes=$(python -c "import math,os;print(int(math.ceil(float(os.environ.get('HOURS','1'))*60)))")
-        hb_every="${HB_MINUTES}"
+        LOG="gate24h.log"
+        : > "$LOG"
 
-        ok=0; warn=0; fail=0; status="OK"
-        last_hb=$(date +%s)
+        # Coerce numeric, defaults
+        hours="${HOURS:-1}"
+        hb_minutes="${HB_MINUTES:-15}"
 
-        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$HOURS source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
-        trap 'echo "supervisor_status=CANCELLED" >> $GITHUB_OUTPUT; echo "$(date -u +%FT%TZ) [CANCEL]" | tee -a "$LOG"' INT TERM
+        # planned minutes
+        total_minutes=$(python -c "import os,math; h=os.environ.get('HOURS','1'); v=1.0 if not h else float(h); print(max(1,int(round(v*60))))")
+        if ! [[ "$hb_minutes" =~ ^[0-9]+$ ]]; then hb_minutes=15; fi
+        hb_every=$(( hb_minutes * 60 ))
+
+        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$hours source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
+
+        ok=0; warn=0; fail=0
+        last_hb_epoch=$(date +%s)
+        supervisor_status="OK"
 
         for ((i=1;i<=total_minutes;i++)); do
-          # Health probe (ép FAIL khi TEST_FORCE_FAIL=1 mỗi phút chẵn)
-          if [[ "${TEST_FORCE_FAIL}" == "1" && $(( i % 2 )) -eq 0 ]]; then
-            s="FAIL"
+          # Fake probe with optional forced fail
+          if [[ -n "$TEST_FORCE_FAIL" ]]; then
+            # tạo fail 1 lần mỗi ~4 phút để kích hoạt early-stop nhanh trong test ngắn
+            if (( i % 4 == 0 )); then status="FAIL"; else status="OK"; fi
           else
+            # tỉ lệ OK/WARN/FAIL nhẹ
             r=$((RANDOM%100))
-            if   (( r < 94 )); then s="OK"
-            elif (( r < 98 )); then s="WARN"
-            else                   s="FAIL"
+            if   (( r < 92 )); then status="OK"
+            elif (( r < 98 )); then status="WARN"
+            else status="FAIL"
             fi
           fi
 
-          case "$s" in
-            OK)   ((ok++));;
-            WARN) ((warn++));;
-            FAIL) ((fail++));;
+          case "$status" in
+            OK)   ok=$((ok+1));;
+            WARN) warn=$((warn+1));;
+            FAIL) fail=$((fail+1));;
           esac
 
-          echo "$(date -u +%FT%TZ) [ITER:$i] status=$s totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
+          echo "$(date -u +%FT%TZ) [ITER:${i}] status=${status} totals ok=${ok} warn=${warn} fail=${fail}" | tee -a "$LOG"
 
-          recent_fail=$(tail -n 10 "$LOG" | grep -c 'status=FAIL' || true)
+          # Early-stop: >=3 FAIL trong 10 phút gần nhất
+          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || true)
           if (( recent_fail >= 3 )); then
-            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=$recent_fail" | tee -a "$LOG"
-            echo "supervisor_status=FAIL_EARLY" >> $GITHUB_OUTPUT
-            status="FAIL_EARLY"
+            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=${recent_fail}" | tee -a "$LOG"
+            supervisor_status="FAIL_EARLY"
             break
           fi
 
+          # Heartbeat mỗi HB_MINUTES
           now=$(date +%s)
-          if (( (now - last_hb) >= hb_every*60 )); then
-            msg="**[HB]** t=${i}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
-            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments" -f body="$msg" >/dev/null 2>&1 || true
+          if (( now - last_hb_epoch >= hb_every )); then
+            durm=$i
+            msg="**[HB]** t=${durm}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
+            # best-effort comment (không fail job nếu 403/permissions)
+            gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments -f body="$msg" >/dev/null 2>&1 || true
             echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
-            last_hb=$now
+            last_hb_epoch=$now
           fi
 
+          # ngủ ~60s/iter cho run >= 1h; để smoke (0.2h ~= 12m) cũng thấy HB nếu HB=1
           sleep 60
         done
 
-        [[ "$status" == "FAIL_EARLY" ]] || echo "supervisor_status=OK" >> $GITHUB_OUTPUT
-        echo "$(date -u +%FT%TZ) [END] status=${status} totals ok=$ok warn=$warn fail=$fail" | tee -a "$LOG"
+        # End + outputs
+        echo "$(date -u +%FT%TZ) [END] status=${supervisor_status} real=${i-1}m totals ok=${ok} warn=${warn} fail=${fail}" | tee -a "$LOG"
+
+        echo "supervisor_status=${supervisor_status}" >> "$GITHUB_OUTPUT"
+        echo "minutes_done=$((i-1))" >> "$GITHUB_OUTPUT"
+        echo "ok=${ok}"   >> "$GITHUB_OUTPUT"
+        echo "warn=${warn}" >> "$GITHUB_OUTPUT"
+        echo "fail=${fail}" >> "$GITHUB_OUTPUT"
 
     - name: Upload artifacts
       if: always()
@@ -200,22 +200,47 @@ jobs:
     - name: Close tracking issue
       if: always()
       uses: actions/github-script@v7
+      env:
+        ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
+        STATUS: ${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}
+        MINUTES: ${{ steps.supervise.outputs.minutes_done || '0' }}
+        OK: ${{ steps.supervise.outputs.ok || '0' }}
+        WARN: ${{ steps.supervise.outputs.warn || '0' }}
+        FAIL: ${{ steps.supervise.outputs.fail || '0' }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const issue_number = Number(`${{ steps.issue.outputs.number }}`);
-          const status = `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`;
-          const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          const issue_number = Number(process.env.ISSUE_NUMBER);
+          const status = process.env.STATUS;
+          const minutes = process.env.MINUTES;
+          const ok = process.env.OK;
+          const warn = process.env.WARN;
+          const fail = process.env.FAIL;
+          const runUrl = process.env.RUN_URL;
+
           const body = [
-            '**Gate 24h Execution Complete**',
-            '',
-            `**Supervisor Status:** ${status}`,
-            `**Run:** ${runUrl}`,
-            `**Artifact:** gate24h-artifacts-${context.runNumber}`,
+            `**Gate 24h – Supervisor Summary**`,
+            ``,
+            `- **Supervisor Status**: \`${status}\``,
+            `- **Duration**: \`${minutes}m\``,
+            `- **Health Totals**: OK=\`${ok}\`, WARN=\`${warn}\`, FAIL=\`${fail}\``,
+            `- **Run**: ${runUrl}`,
+            ``,
+            `Artifacts include \`gate24h.log\` with [START]/[ITER]/[HB]/[END] entries.`,
           ].join('\n');
 
-          await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number,
+            body
+          });
+
           await github.rest.issues.update({
-            owner: context.repo.owner, repo: context.repo.repo, issue_number,
-            state: 'closed', labels: ['automation','gate24h','completed']
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number,
+            state: 'closed',
+            labels: ['automation','gate24h','completed']
           });
