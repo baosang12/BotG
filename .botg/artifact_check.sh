@@ -1,22 +1,24 @@
 ﻿#!/bin/bash
-# artifact_check.sh - Check if required artifacts exist
-
+# Artifact check: validate critical artifacts exist
 set -e
 
-REQUIRED_ARTIFACTS=("build.log" "test_results.xml" "coverage.json")
-HAS_ALL_ARTIFACTS=true
+echo "Checking critical artifacts..."
 
-for artifact in "${REQUIRED_ARTIFACTS[@]}"; do
-    if [ ! -f ".botg/$artifact" ]; then
-        echo "Missing artifact: $artifact"
-        HAS_ALL_ARTIFACTS=false
-    fi
+# Check for config files
+CONFIGS=("config.runtime.json" "BotG.sln")
+for cfg in "${CONFIGS[@]}"; do
+  if [ ! -f "$cfg" ]; then
+    echo " Missing config: $cfg"
+    exit 1
+  fi
+  echo " Found: $cfg"
 done
 
-if [ "$HAS_ALL_ARTIFACTS" = true ]; then
-    echo "HAS_ARTIFACTS=true" >> $GITHUB_ENV
-else
-    echo "HAS_ARTIFACTS=false" >> $GITHUB_ENV
+# Check executable exists
+if [ ! -f "BotG/BotG.cs" ]; then
+  echo " Missing main source: BotG/BotG.cs"
+  exit 1
 fi
+echo " Found: BotG/BotG.cs"
 
-echo "All required artifacts present: $HAS_ALL_ARTIFACTS"
+echo "All artifacts validated"

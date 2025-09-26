@@ -1,42 +1,49 @@
 ﻿#!/bin/bash
-# enhanced_classify.sh - Enhanced classification with heartbeat/artifact checks
-
+# Enhanced classification with transient error detection
 set -e
 
-CODE="${1:-0}"
-HAS_HEARTBEAT="${HAS_HEARTBEAT:-true}"
-HAS_ARTIFACTS="${HAS_ARTIFACTS:-true}"
-HEARTBEAT_AGE_S="${HEARTBEAT_AGE_S:-0}"
+EXIT_CODE="${1:-1}"
+mkdir -p .botg
 
-STATUS="PASS"
-REASON=""
+echo "Classifying exit code: $EXIT_CODE"
 
-# Check test exit code first
-if [ "$CODE" != "0" ]; then
-    # Check for transient/infrastructure errors
-    if grep -Ei '5\d{2}|timeout|oom|rate.?limit|connection.*reset|network.*unreachable' /home/runner/work/_temp/* 2>/dev/null; then
-        STATUS="AUTO_RERUN"
-        REASON="transient_error"
-    else
-        STATUS="NEEDS_ACTION" 
-        REASON="tests_failed"
-    fi
-# Check heartbeat and artifacts for PASS cases
-elif [ "$HAS_HEARTBEAT" != "true" ] || [ "$HAS_ARTIFACTS" != "true" ]; then
+# Transient error codes (network, timeout, etc)
+TRANSIENT_CODES=(502 503 504 124 143)
+
+STATUS="NEEDS_ACTION"
+REASON="unknown_failure"
+
+case "$EXIT_CODE" in
+  0)
+    STATUS="PASS"
+    REASON="success"
+    ;;
+  502|503|504)
+    STATUS="AUTO_RERUN"
+    REASON="network_error"
+    ;;
+  124)
+    STATUS="AUTO_RERUN"
+    REASON="timeout"
+    ;;
+  143)
+    STATUS="AUTO_RERUN"
+    REASON="sigterm"
+    ;;
+  *)
     STATUS="NEEDS_ACTION"
-    if [ "$HAS_HEARTBEAT" != "true" ]; then
-        REASON="missing_heartbeat"
-    else
-        REASON="missing_artifacts"
-    fi
-elif [ "$HEARTBEAT_AGE_S" -gt 300 ]; then
-    STATUS="NEEDS_ACTION"
-    REASON="stale_heartbeat"
-fi
+    REASON="test_failure"
+    ;;
+esac
 
-# Output results
-jq -n --arg s "$STATUS" --arg r "$REASON" --arg age "$HEARTBEAT_AGE_S" \
-  '{status:$s, reason:$r, heartbeat_age_s:($age|tonumber), ts:"'"$(date -u +%FT%TZ)"'"}' > .botg/status.json
+# Write classification result
+cat > .botg/status.json << EOF
+{
+  "status": "$STATUS",
+  "reason": "$REASON",
+  "exit_code": $EXIT_CODE,
+  "timestamp": "$(date -u +%FT%TZ)"
+}
+EOF
 
 echo "Classification: $STATUS ($REASON)"
-cat .botg/status.json

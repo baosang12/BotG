@@ -24,25 +24,14 @@ jobs:
           mkdir -p .botg
           echo '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'${{ github.run_id }}',"pr":'${{ github.event.pull_request.number }}',"stage":"shadow","level":"info","msg":"start","kv":{"sha":"${{ github.sha }}","actor":"${{ github.actor }}"}}' >> .botg/events.jsonl
 
-      - name: Heartbeat check
-        shell: bash
-        run: |
-          chmod +x .botg/heartbeat_check.sh || true
-          ./.botg/heartbeat_check.sh || true
-
-      - name: Artifact check
-        shell: bash
-        run: |
-          chmod +x .botg/artifact_check.sh || true
-          ./.botg/artifact_check.sh || true
-
       - name: Run shadow tests (fast)
         id: tests
         shell: bash
         run: |
           set -e
+          # TODO: thay bằng test thật của bạn
           echo "running smoke..."
-          # TODO: thay bằng test thật
+          # ví dụ fail ngẫu nhiên 1/10 để kiểm thử
           if [ $((RANDOM % 10)) -eq 0 ]; then
             echo "simulated network 502" >&2
             echo "exit_code=502" >> $GITHUB_OUTPUT
@@ -50,15 +39,24 @@ jobs:
           fi
           echo "exit_code=0" >> $GITHUB_OUTPUT
 
-      - name: Classify (enhanced)
+      - name: Classify result  status.json
         if: always()
         id: classify
         shell: bash
         run: |
           set -e
-          chmod +x .botg/enhanced_classify.sh || true
-          CODE="${{ steps.tests.outputs.exit_code || '1' }}"
-          ./.botg/enhanced_classify.sh "$CODE"
+          CODE="${{ steps.tests.outputs.exit_code }}"
+          STATUS="PASS"; REASON=""
+          # ví dụ hạ tầng/transient
+          if [ "${CODE}" != "0" ]; then
+            if grep -Ei '5\d{2}|timeout|oom|rate.?limit' /home/runner/work/_temp/* 2>/dev/null; then
+              STATUS="AUTO_RERUN"; REASON="transient_error"
+            else
+              STATUS="NEEDS_ACTION"; REASON="tests_failed"
+            fi
+          fi
+          jq -n --arg s "$STATUS" --arg r "$REASON" \
+            '{status:$s, reason:$r, ts:"'"$(date -u +%FT%TZ)"'"}' > .botg/status.json
           cat .botg/status.json
 
       - name: Decide & log
@@ -71,11 +69,10 @@ jobs:
           set -e
           STATUS=$(jq -r .status < .botg/status.json)
           REASON=$(jq -r .reason < .botg/status.json)
-          ATTEMPT=${{ github.run_attempt }}
           RETRY_OK="false"
-          if [ "$STATUS" = "AUTO_RERUN" ] && [ "$ATTEMPT" -lt 3 ]; then
-            RETRY_OK="true"
-          fi
+          # policy cho AUTO_RERUN: tối đa 2 lần cho cùng commit
+          RUNS=$(gh run list --json headSha,status,conclusion -q '[.[] | select(.headSha=="'${{ github.sha }}'") ] | length' || echo 1)
+          if [ "$STATUS" = "AUTO_RERUN" ] && [ "$RUNS" -lt 3 ]; then RETRY_OK="true"; fi
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "reason=$REASON" >> $GITHUB_OUTPUT
           echo "retry_ok=$RETRY_OK" >> $GITHUB_OUTPUT
@@ -85,26 +82,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: botg-events-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          name: botg-events-${{ github.run_id }}
           path: .botg/events.jsonl
-          if-no-files-found: warn
 
   auto-rerun:
     needs: shadow
     if: needs.shadow.outputs.status == 'AUTO_RERUN' && needs.shadow.outputs.retry_ok == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Backoff by attempt and rerun this run
+      - name: Backoff and re-dispatch self
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          ATTEMPT=${{ github.run_attempt }}
-          case "$ATTEMPT" in
-            1) S=300  ;;  # 5m
-            2) S=900  ;;  # 15m
-            *) S=300  ;;
-          esac
-          echo "Backoff ${S}s before rerun..."
-          sleep "$S"
-          gh run rerun $GITHUB_RUN_ID --failed
+          echo "Backoff 300s..."
+          sleep 300
+          gh workflow run "smoke-fast-on-pr" --ref "${{ github.ref }}"
