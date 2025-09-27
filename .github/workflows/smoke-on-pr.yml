@@ -31,12 +31,6 @@ jobs:
         run: |
           set -e
 
-          if [ $((RANDOM % 10)) -eq 0 ]; then
-            echo "simulated network 502" >&2
-            echo "exit_code=502" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-          echo "exit_code=0" >> $GITHUB_OUTPUT
 
 
         if: always()
