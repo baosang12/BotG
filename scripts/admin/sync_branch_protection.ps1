@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿param(
+=======
+param(
+>>>>>>> origin/main
   [string]$Owner = $env:GH_OWNER,
   [string]$Repo  = $env:GH_REPO_NAME,
   [string]$ConfigPath = ".github/branch-protection/required_checks.json",
@@ -44,7 +48,11 @@ if ($Apply) {
   $body | gh api -X PUT "repos/$Owner/$Repo/branches/$branch/protection" `
     -H "Accept: application/vnd.github+json" `
     --input - | Out-Null
+<<<<<<< HEAD
   Write-Host " Branch protection updated."
+=======
+  Write-Host "✅ Branch protection updated."
+>>>>>>> origin/main
 } else {
   if ($current) {
     $currentContexts = (gh api "repos/$Owner/$Repo/branches/$branch/protection" --jq '.required_status_checks.contexts[]?' 2>$null) | Sort-Object
@@ -52,17 +60,32 @@ if ($Apply) {
     $diffA = Compare-Object $desiredContexts $currentContexts | Where-Object {$_.SideIndicator -eq "<="} | Select-Object -ExpandProperty InputObject
     $diffB = Compare-Object $desiredContexts $currentContexts | Where-Object {$_.SideIndicator -eq "=>"} | Select-Object -ExpandProperty InputObject
     if ($diffA -or $diffB) {
+<<<<<<< HEAD
       Write-Host " Drift detected."
+=======
+      Write-Host "❌ Drift detected."
+>>>>>>> origin/main
       if ($diffA) { Write-Host "Missing on server:`n  - $($diffA -join "`n  - ")" }
       if ($diffB) { Write-Host "Extra on server:`n  - $($diffB -join "`n  - ")" }
       exit 2
     } else {
+<<<<<<< HEAD
       Write-Host " No drift."
     }
   } else {
     Write-Host " Cannot read branch protection settings."
+=======
+      Write-Host "✅ No drift."
+    }
+  } else {
+    Write-Host "⚠️ Cannot read branch protection settings."
+>>>>>>> origin/main
     Write-Host "If this is a CI environment, this is expected due to limited token permissions."
     Write-Host "To apply configuration, run locally with admin token: ./scripts/admin/sync_branch_protection.ps1 -Apply"
     exit 3
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/main

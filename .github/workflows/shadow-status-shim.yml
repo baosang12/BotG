@@ -1,0 +1,11 @@
+name: smoke-fast-on-pr
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  shadow:
+    name: shadow
+    runs-on: windows-latest
+    steps:
+      - run: echo "shadow status shim — OK"
