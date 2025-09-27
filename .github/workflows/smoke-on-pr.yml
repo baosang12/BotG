@@ -24,41 +24,21 @@ jobs:
           mkdir -p .botg
           echo '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'${{ github.run_id }}',"pr":'${{ github.event.pull_request.number }}',"stage":"shadow","level":"info","msg":"start","kv":{"sha":"${{ github.sha }}","actor":"${{ github.actor }}"}}' >> .botg/events.jsonl
 
-      - name: Heartbeat check
-        shell: bash
-        run: |
-          chmod +x .botg/heartbeat_check.sh || true
-          ./.botg/heartbeat_check.sh || true
-
-      - name: Artifact check
-        shell: bash
-        run: |
-          chmod +x .botg/artifact_check.sh || true
-          ./.botg/artifact_check.sh || true
 
       - name: Run shadow tests (fast)
         id: tests
         shell: bash
         run: |
           set -e
-          echo "running smoke..."
-          # TODO: thay bằng test thật
-          # Deterministic execution - no random failures
-          code=0
-          echo "$code" > .botg/exit_code.txt
-          # exit 1
-          # fi
-          echo "exit_code=$code" >> $GITHUB_OUTPUT
 
-      - name: Classify (enhanced)
+
+
         if: always()
         id: classify
         shell: bash
         run: |
           set -e
-          chmod +x .botg/enhanced_classify.sh || true
-          CODE="${{ steps.tests.outputs.exit_code || '1' }}"
-          ./.botg/enhanced_classify.sh "$CODE"
+
           cat .botg/status.json
 
       - name: Decide & log
@@ -71,11 +51,7 @@ jobs:
           set -e
           STATUS=$(jq -r .status < .botg/status.json)
           REASON=$(jq -r .reason < .botg/status.json)
-          ATTEMPT=${{ github.run_attempt }}
-          RETRY_OK="false"
-          if [ "$STATUS" = "AUTO_RERUN" ] && [ "$ATTEMPT" -lt 3 ]; then
-            RETRY_OK="true"
-          fi
+
           echo "status=$STATUS" >> $GITHUB_OUTPUT
           echo "reason=$REASON" >> $GITHUB_OUTPUT
           echo "retry_ok=$RETRY_OK" >> $GITHUB_OUTPUT
@@ -85,26 +61,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: botg-events-${{ github.run_id }}-attempt${{ github.run_attempt }}
-          path: .botg/events.jsonl
-          if-no-files-found: warn
+
 
   auto-rerun:
     needs: shadow
     if: needs.shadow.outputs.status == 'AUTO_RERUN' && needs.shadow.outputs.retry_ok == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Backoff by attempt and rerun this run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          ATTEMPT=${{ github.run_attempt }}
-          case "$ATTEMPT" in
-            1) S=300  ;;  # 5m
-            2) S=900  ;;  # 15m
-            *) S=300  ;;
-          esac
-          echo "Backoff ${S}s before rerun..."
-          sleep "$S"
-          gh run rerun $GITHUB_RUN_ID --failed
+

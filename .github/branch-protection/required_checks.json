@@ -1,0 +1,12 @@
+{
+  "branch": "main",
+  "strict": true,
+  "enforce_admins": true,
+  "required_pull_request_reviews": { "required_approving_review_count": 0 },
+  "contexts": [
+    "CI - build & test",
+    "CI - build & test / Build and Test (windows-latest) (pull_request)",
+    "CI - build & test / CI - build & test (aggregated) (pull_request)",
+    "CI - quick smoke (60s) (pull_request)"
+  ]
+}
