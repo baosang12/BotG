@@ -20,7 +20,11 @@ $branch = $cfg.branch
 
 Write-Host "Reading current protection for $Owner/$Repo@$branch..."
 $current = gh api "repos/$Owner/$Repo/branches/$branch/protection" --jq "." 2>$null
-if ($LASTEXITCODE -ne 0) { Write-Host "No protection or no access."; $current = $null }
+if ($LASTEXITCODE -ne 0) { 
+  Write-Host "No protection or insufficient permissions to read branch protection settings."; 
+  Write-Host "This may be expected when running with a limited GITHUB_TOKEN in CI workflows."; 
+  $current = $null 
+}
 
 $desiredContexts = ($cfg.contexts | Sort-Object)
 Write-Host "Desired contexts:`n  - $($desiredContexts -join "`n  - ")"
@@ -56,7 +60,9 @@ if ($Apply) {
       Write-Host "✅ No drift."
     }
   } else {
-    Write-Host "⚠️ Protection not set; run with -Apply to create."
+    Write-Host "⚠️ Cannot read branch protection settings."
+    Write-Host "If this is a CI environment, this is expected due to limited token permissions."
+    Write-Host "To apply configuration, run locally with admin token: ./scripts/admin/sync_branch_protection.ps1 -Apply"
     exit 3
   }
 }
