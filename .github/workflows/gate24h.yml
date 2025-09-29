@@ -35,7 +35,7 @@ on:
 
 jobs:
   gate24h:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, botg]
     timeout-minutes: 1500  # 25 hours
     
     concurrency:
