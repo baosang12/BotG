@@ -1,10 +1,14 @@
-﻿name: Gate 24h (paper supervised)
+name: Gate 24h (paper supervised)
 run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
 
 permissions:
   contents: read
   issues: write
   pull-requests: write
+
+defaults:
+  run:
+    shell: powershell
 
 on:
   workflow_dispatch:
@@ -48,27 +52,23 @@ jobs:
     
     - name: Resolve inputs
       id: resolve
+      shell: powershell
       run: |
-        # For file trigger, read from the file
-        if [[ "${{ github.event_name }}" == "push" ]]; then
-          if [[ -f "path_issues/start_24h_command_ready.txt" ]]; then
-            mode=$(grep "mode=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
-            hours=$(grep "hours=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
-            source=$(grep "source=" path_issues/start_24h_command_ready.txt | cut -d'=' -f2 | tr -d '\r\n')
-          else
-            mode="paper"
-            hours="24"
-            source="file-trigger"
-          fi
-        else
-          mode="${{ inputs.mode }}"
-          hours="${{ inputs.hours }}"
-          source="${{ inputs.source }}"
-        fi
-        
-        echo "mode=${mode}" >> "$GITHUB_OUTPUT"
-        echo "hours=${hours}" >> "$GITHUB_OUTPUT"
-        echo "source=${source}" >> "$GITHUB_OUTPUT"
+        if ($env:GITHUB_EVENT_NAME -eq 'push') {
+          $file = "path_issues/start_24h_command_ready.txt"
+          if (Test-Path $file) {
+            $mode  = (Select-String '^mode=(.*)$' $file).Matches.Groups[1].Value
+            $hours = (Select-String '^hours=(.*)$' $file).Matches.Groups[1].Value
+            $source= (Select-String '^source=(.*)$' $file).Matches.Groups[1].Value
+          } else {
+            $mode="paper"; $hours="24"; $source="file-trigger"
+          }
+        } else {
+          $mode="${{ inputs.mode }}"; $hours="${{ inputs.hours }}"; $source="${{ inputs.source }}"
+        }
+        "mode=$mode"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "hours=$hours" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "source=$source" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Create tracking issue
       id: issue
@@ -103,7 +103,7 @@ jobs:
 
     - name: Run supervised 24h gate
       id: supervise
-      shell: bash
+      shell: powershell
       env:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
@@ -113,83 +113,89 @@ jobs:
         TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        set -euo pipefail
-
-        LOG="gate24h.log"
-        : > "$LOG"
+        $LOG = "gate24h.log"
+        "" | Out-File -FilePath $LOG
 
         # Coerce numeric, defaults
-        hours="${HOURS:-1}"
-        hb_minutes="${HB_MINUTES:-15}"
+        $hours = if ($env:HOURS) { [double]$env:HOURS } else { 1 }
+        $hb_minutes = if ($env:HB_MINUTES -match '^\d+$') { [int]$env:HB_MINUTES } else { 15 }
 
         # planned minutes
-        total_minutes=$(python -c "import os,math; h=os.environ.get('HOURS','1'); v=1.0 if not h else float(h); print(max(1,int(round(v*60))))")
-        if ! [[ "$hb_minutes" =~ ^[0-9]+$ ]]; then hb_minutes=15; fi
-        hb_every=$(( hb_minutes * 60 ))
+        $total_minutes = [Math]::Max(1, [int]($hours * 60))
+        $hb_every = $hb_minutes * 60
 
-        echo "$(date -u +%FT%TZ) [START] mode=$MODE hours=$hours source=$SOURCE planned=${total_minutes}m" | tee -a "$LOG"
+        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        "$timestamp [START] mode=$env:MODE hours=$hours source=$env:SOURCE planned=${total_minutes}m" | Tee-Object -FilePath $LOG -Append
 
-        ok=0; warn=0; fail=0
-        last_hb_epoch=$(date +%s)
-        supervisor_status="OK"
+        $ok = 0; $warn = 0; $fail = 0
+        $last_hb_epoch = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+        $supervisor_status = "OK"
 
-        for ((i=1;i<=total_minutes;i++)); do
+        for ($i = 1; $i -le $total_minutes; $i++) {
           # Fake probe with optional forced fail
-          if [[ -n "$TEST_FORCE_FAIL" ]]; then
-            # tạo fail 1 lần mỗi ~4 phút để kích hoạt early-stop nhanh trong test ngắn
-            if (( i % 4 == 0 )); then status="FAIL"; else status="OK"; fi
-          else
-            # tỉ lệ OK/WARN/FAIL nhẹ
-            r=$((RANDOM%100))
-            if   (( r < 92 )); then status="OK"
-            elif (( r < 98 )); then status="WARN"
-            else status="FAIL"
-            fi
-          fi
+          if ($env:TEST_FORCE_FAIL) {
+            # Fail every ~4 minutes for early-stop testing
+            if ($i % 4 -eq 0) { $status = "FAIL" } else { $status = "OK" }
+          } else {
+            # Light OK/WARN/FAIL distribution
+            $r = Get-Random -Maximum 100
+            if ($r -lt 92) { $status = "OK" }
+            elseif ($r -lt 98) { $status = "WARN" }
+            else { $status = "FAIL" }
+          }
 
-          case "$status" in
-            OK)   ok=$((ok+1));;
-            WARN) warn=$((warn+1));;
-            FAIL) fail=$((fail+1));;
-          esac
+          switch ($status) {
+            "OK"   { $ok++ }
+            "WARN" { $warn++ }
+            "FAIL" { $fail++ }
+          }
 
-          echo "$(date -u +%FT%TZ) [ITER:${i}] status=${status} totals ok=${ok} warn=${warn} fail=${fail}" | tee -a "$LOG"
+          $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          "$timestamp [ITER:$i] status=$status totals ok=$ok warn=$warn fail=$fail" | Tee-Object -FilePath $LOG -Append
 
-          # Early-stop: >=3 FAIL trong 10 phút gần nhất
-          recent_fail=$(tail -n 10 "$LOG" | grep -c "status=FAIL" || true)
-          if (( recent_fail >= 3 )); then
-            echo "$(date -u +%FT%TZ) [EARLY_STOP] recent_fail=${recent_fail}" | tee -a "$LOG"
-            supervisor_status="FAIL_EARLY"
+          # Early-stop: >=3 FAIL in last 10 minutes
+          $recentLines = Get-Content $LOG | Select-Object -Last 10
+          $recent_fail = ($recentLines | Where-Object { $_ -match "status=FAIL" }).Count
+          if ($recent_fail -ge 3) {
+            $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            "$timestamp [EARLY_STOP] recent_fail=$recent_fail" | Tee-Object -FilePath $LOG -Append
+            $supervisor_status = "FAIL_EARLY"
             break
-          fi
+          }
 
-          # Heartbeat mỗi HB_MINUTES
-          now=$(date +%s)
-          if (( now - last_hb_epoch >= hb_every )); then
-            durm=$i
-            msg="**[HB]** t=${durm}m, iter=${i}/${total_minutes}, ok=${ok}, warn=${warn}, fail=${fail}"
-            # best-effort comment (không fail job nếu 403/permissions)
-            gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments -f body="$msg" >/dev/null 2>&1 || true
-            echo "$(date -u +%FT%TZ) [HB] $msg" | tee -a "$LOG"
-            last_hb_epoch=$now
-          fi
+          # Heartbeat every HB_MINUTES
+          $now = [DateTimeOffset]::Now.ToUnixTimeSeconds()
+          if (($now - $last_hb_epoch) -ge $hb_every) {
+            $durm = $i
+            $msg = "**[HB]** t=${durm}m, iter=$i/$total_minutes, ok=$ok, warn=$warn, fail=$fail"
+            # Best-effort comment (don't fail job on 403/permissions)
+            try {
+              gh api "repos/${{ github.repository }}/issues/$env:ISSUE_NUMBER/comments" -f body="$msg" | Out-Null
+            } catch {
+              # Ignore comment errors
+            }
+            $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            "$timestamp [HB] $msg" | Tee-Object -FilePath $LOG -Append
+            $last_hb_epoch = $now
+          }
 
-          # ngủ ~60s/iter cho run >= 1h; để smoke (0.2h ~= 12m) cũng thấy HB nếu HB=1
-          sleep 60
-        done
+          # Sleep ~60s/iter for runs >= 1h; so smoke (0.2h ~= 12m) also shows HB if HB=1
+          Start-Sleep -Seconds 60
+        }
 
         # End + outputs
-        echo "$(date -u +%FT%TZ) [END] status=${supervisor_status} real=${i-1}m totals ok=${ok} warn=${warn} fail=${fail}" | tee -a "$LOG"
+        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        "$timestamp [END] status=$supervisor_status real=$($i-1)m totals ok=$ok warn=$warn fail=$fail" | Tee-Object -FilePath $LOG -Append
 
-        echo "supervisor_status=${supervisor_status}" >> "$GITHUB_OUTPUT"
-        echo "minutes_done=$((i-1))" >> "$GITHUB_OUTPUT"
-        echo "ok=${ok}"   >> "$GITHUB_OUTPUT"
-        echo "warn=${warn}" >> "$GITHUB_OUTPUT"
-        echo "fail=${fail}" >> "$GITHUB_OUTPUT"
+        "supervisor_status=$supervisor_status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "minutes_done=$($i-1)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "ok=$ok" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "warn=$warn" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "fail=$fail" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Ensure log directory and metadata
       if: always()
-      shell: pwsh
+      shell: powershell
       run: |
         $ts = Get-Date -Format "yyyyMMdd_HHmmss"
         $logDir = "D:\botg\logs\gate24h_run_$ts"
@@ -223,24 +229,50 @@ jobs:
         
         Write-Host "Created standardized artifacts in: $logDir"
 
-    - name: Upload gate24h artifacts
+    - name: Stage artifacts into workspace
+      if: ${{ always() }}
+      shell: powershell
+      run: |
+        $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+        $stage = Join-Path $env:GITHUB_WORKSPACE "artifacts_$ts"
+        New-Item -ItemType Directory -Force $stage | Out-Null
+        
+        # Copy standardized files from D:\botg\logs to workspace
+        $srcs = @(
+          "D:\botg\logs\**\orders.csv",
+          "D:\botg\logs\**\telemetry.csv",
+          "D:\botg\logs\**\risk_snapshots.csv",
+          "D:\botg\logs\**\trade_closes.log", 
+          "D:\botg\logs\**\run_metadata.json",
+          "D:\botg\logs\**\closed_trades_fifo_reconstructed.csv"
+        )
+        foreach($pattern in $srcs) {
+          Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName -Destination $stage -Force
+          }
+        }
+        
+        # Copy main log and path_issues
+        if (Test-Path "gate24h.log") {
+          Copy-Item "gate24h.log" -Destination $stage -Force
+        }
+        if (Test-Path "path_issues") {
+          Copy-Item "path_issues" -Destination $stage -Recurse -Force
+        }
+        
+        Write-Host "Staged artifacts in: $stage"
+
+    - name: Upload gate24h artifacts  
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
         name: gate24h-artifacts
-        path: |
-          D:\botg\logs\**\orders.csv
-          D:\botg\logs\**\telemetry.csv
-          D:\botg\logs\**\risk_snapshots.csv
-          D:\botg\logs\**\trade_closes.log
-          D:\botg\logs\**\run_metadata.json
-          D:\botg\logs\**\closed_trades_fifo_reconstructed.csv
-          gate24h.log
-          path_issues/
+        path: ${{ github.workspace }}/artifacts_*/**/*
         retention-days: 7
+        if-no-files-found: warn
 
     - name: Close tracking issue
-      if: always()
+      if: ${{ always() && steps.issue.outputs.result && steps.issue.outputs.result != '' }}
       uses: actions/github-script@v7
       env:
         ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
@@ -254,6 +286,11 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
           const issue_number = Number(process.env.ISSUE_NUMBER);
+          if (!issue_number || isNaN(issue_number)) {
+            core.info('No valid ISSUE_NUMBER; skipping comment');
+            return;
+          }
+          
           const status = process.env.STATUS;
           const minutes = process.env.MINUTES;
           const ok = process.env.OK;
@@ -262,7 +299,7 @@ jobs:
           const runUrl = process.env.RUN_URL;
 
           const body = [
-            `**Gate 24h – Supervisor Summary**`,
+            `**Gate 24h � Supervisor Summary**`,
             ``,
             `- **Supervisor Status**: \`${status}\``,
             `- **Duration**: \`${minutes}m\``,
@@ -298,7 +335,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Prep selfcheck dir
-      shell: pwsh
+      shell: powershell
       run: |
         $ts = Get-Date -Format "yyyyMMdd_HHmmss"
         $base = "D:\botg\logs\selfcheck_$ts"
@@ -330,20 +367,42 @@ jobs:
         "timestamp,order_id,open_time,close_time,symbol,side,qty,open_price,close_price,pnl" | Out-File -FilePath (Join-Path $base "closed_trades_fifo_reconstructed.csv") -Encoding utf8
         "sample,trade,reconstruction,data" | Out-File -FilePath (Join-Path $base "closed_trades_fifo_reconstructed.csv") -Append -Encoding utf8
         
-        Write-Host "✅ Selfcheck dir created: $base"
-        Write-Host "📋 Files created:"
+        Write-Host "? Selfcheck dir created: $base"
+        Write-Host "?? Files created:"
         Get-ChildItem $base | ForEach-Object { Write-Host "  - $($_.Name) ($($_.Length) bytes)" }
+
+    - name: Stage selfcheck artifacts  
+      if: ${{ always() }}
+      shell: powershell
+      run: |
+        $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+        $stage = Join-Path $env:GITHUB_WORKSPACE "artifacts_$ts"
+        New-Item -ItemType Directory -Force $stage | Out-Null
+        
+        # Copy standardized files from D:\botg\logs to workspace
+        $srcs = @(
+          "D:\botg\logs\**\orders.csv",
+          "D:\botg\logs\**\telemetry.csv", 
+          "D:\botg\logs\**\risk_snapshots.csv",
+          "D:\botg\logs\**\trade_closes.log",
+          "D:\botg\logs\**\run_metadata.json",
+          "D:\botg\logs\**\closed_trades_fifo_reconstructed.csv"
+        )
+        foreach($pattern in $srcs) {
+          Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName -Destination $stage -Force
+          }
+        }
+        
+        Write-Host "Staged selfcheck artifacts in: $stage"
+        Write-Host "Files staged:"
+        Get-ChildItem $stage | ForEach-Object { Write-Host "  - $($_.Name) ($($_.Length) bytes)" }
 
     - name: Upload selfcheck artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
         name: gate24h-artifacts
-        path: |
-          D:\botg\logs\**\orders.csv
-          D:\botg\logs\**\telemetry.csv
-          D:\botg\logs\**\risk_snapshots.csv
-          D:\botg\logs\**\trade_closes.log
-          D:\botg\logs\**\run_metadata.json
-          D:\botg\logs\**\closed_trades_fifo_reconstructed.csv
+        path: ${{ github.workspace }}/artifacts_*/**/*
         retention-days: 7
+        if-no-files-found: warn
