@@ -1,4 +1,4 @@
-name: Gate 24h (paper supervised)
+ï»¿name: Gate 24h (paper supervised)
 run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
 
 permissions:
@@ -271,6 +271,20 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
 
+    - name: Emit job status for monitors
+      if: ${{ always() }}
+      run: |
+        $out = @{
+          run_id     = "${{ github.run_id }}"
+          status     = "${{ job.status }}"
+          workflow   = "${{ github.workflow }}"
+          updated_at = (Get-Date).ToString('o')
+        } | ConvertTo-Json
+        $p = Join-Path $env:GITHUB_WORKSPACE "status.json"
+        $out | Out-File $p -Encoding utf8
+        "done" | Out-File (Join-Path $env:GITHUB_WORKSPACE "status.done") -Encoding ascii
+        Write-Host "Emitted job status for monitors: $p"
+
     - name: Close tracking issue
       if: ${{ always() && steps.issue.outputs.result && steps.issue.outputs.result != '' }}
       uses: actions/github-script@v7
@@ -299,7 +313,7 @@ jobs:
           const runUrl = process.env.RUN_URL;
 
           const body = [
-            `**Gate 24h – Supervisor Summary**`,
+            `**Gate 24h ï¿½ Supervisor Summary**`,
             ``,
             `- **Supervisor Status**: \`${status}\``,
             `- **Duration**: \`${minutes}m\``,
