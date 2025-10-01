@@ -19,29 +19,22 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Operating mode'
+        description: "Operating mode"
         required: true
-        default: 'paper'
-        type: choice
-        options:
-        - paper
-        - live
+        default: "paper"
       hours:
-        description: 'Hours to run (1-168)'
+        description: "Hours to run"
         required: true
-        default: '24'
-        type: string
+        default: "24"
       source:
-        description: 'Trigger source'
+        description: "Trigger source"
         required: false
-        default: 'manual'
-        type: string
-  
   push:
     branches: [ main ]
     paths:
-      - 'path_issues/start_24h_command_ready.txt'
-
+      - '.github/workflows/gate24h.yml'
+      - 'path_issues/**'
+      - 'scripts/**'
 jobs:
   gate24h:
     runs-on: [self-hosted, Windows, botg]
@@ -21476,6 +21469,7 @@ jobs:
         compression-level: 6
         overwrite: true
         retention-days: 7
+
 
 
 
