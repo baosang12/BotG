@@ -1,4 +1,3 @@
-﻿mode=paper
-hours=0
-source=final-validation
+mode=paper
+hours=0.25nsource=close-issue-fix
 
