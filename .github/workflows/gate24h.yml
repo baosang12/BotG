@@ -2,9 +2,14 @@
 run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
   issues: write
   pull-requests: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GITHUB_TOKEN: ${{ github.token }}
 
 defaults:
   run:
@@ -70,6 +75,13 @@ jobs:
         "hours=$hours" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "source=$source" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+    - name: Capture start timestamp
+      id: start
+      shell: bash
+      run: |
+        set -euo pipefail
+        START_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        echo "started_at=$START_TS" >> "$GITHUB_OUTPUT"
     - name: Create tracking issue
       id: issue
       uses: actions/github-script@v7
@@ -95,7 +107,7 @@ jobs:
             - **Run**: ${process.env.SERVER_URL}/${process.env.REPOSITORY}/actions/runs/${process.env.RUN_ID}
             
             Heartbeats will appear below with \`[HB]\` markers.`,
-            labels: ['automation', 'gate24h', 'in-progress']
+            labels: ['automation', 'gate24h', 'gate24h-tracking', 'in-progress']
           });
           
           console.log(`Created tracking issue: ${issue.data.number}`);
@@ -229,6 +241,38 @@ jobs:
         
         Write-Host "Created standardized artifacts in: $logDir"
 
+    - name: Emit sentinel files
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p path_issues/gate24h/sentinel
+        START_TS="${{ steps.start.outputs.started_at || '' }}"
+        FINISH_TS="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        export START_TS
+        export FINISH_TS
+        printf 'ok\n' > path_issues/gate24h/sentinel/status.done
+        cat > path_issues/gate24h/sentinel/status.json <<'JSON'
+        {
+          "mode": "${{ steps.resolve.outputs.mode }}",
+          "gate": "Gate2-24h",
+          "run_id": "${{ github.run_id }}",
+          "run_attempt": "${{ github.run_attempt }}",
+          "status": "${{ job.status }}",
+          "started_at": "__STARTED_AT__",
+          "finished_at": "__FINISHED_AT__",
+          "heartbeat_count": "__SET_BY_MONITOR__",
+          "artifact_name": "gate24h-artifacts-${{ github.run_id }}-${{ github.run_attempt }}"
+        }
+JSON
+        python - <<'PY'
+import json, os, pathlib
+status_path = pathlib.Path("path_issues/gate24h/sentinel/status.json")
+data = json.loads(status_path.read_text())
+data["started_at"] = os.environ.get("START_TS", "")
+data["finished_at"] = os.environ.get("FINISH_TS", "")
+status_path.write_text(json.dumps(data, indent=2) + "\n")
+PY
     - name: Stage artifacts into workspace
       if: ${{ always() }}
       shell: powershell
@@ -262,82 +306,47 @@ jobs:
         
         Write-Host "Staged artifacts in: $stage"
 
-    - name: Upload gate24h artifacts  
+    - name: Upload gate24h artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: gate24h-artifacts
-        path: ${{ github.workspace }}/artifacts_*/**/*
-        retention-days: 7
-        if-no-files-found: warn
-
-    - name: Emit job status for monitors
-      if: ${{ always() }}
-      run: |
-        $out = @{
-          run_id     = "${{ github.run_id }}"
-          status     = "${{ job.status }}"
-          workflow   = "${{ github.workflow }}"
-          updated_at = (Get-Date).ToString('o')
-        } | ConvertTo-Json
-        $p = Join-Path $env:GITHUB_WORKSPACE "status.json"
-        $out | Out-File $p -Encoding utf8
-        "done" | Out-File (Join-Path $env:GITHUB_WORKSPACE "status.done") -Encoding ascii
-        Write-Host "Emitted job status for monitors: $p"
-
+        name: gate24h-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          ${{ github.workspace }}/artifacts_*/**/*
+          path_issues/gate24h/sentinel/status.done
+          path_issues/gate24h/sentinel/status.json
+        if-no-files-found: error
+        compression-level: 6
+        overwrite: true
+        retention-days: 30
     - name: Close tracking issue
-      if: ${{ always() && steps.issue.outputs.result && steps.issue.outputs.result != '' }}
-      uses: actions/github-script@v7
+      if: ${{ always() }}
+      shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
-        STATUS: ${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}
-        MINUTES: ${{ steps.supervise.outputs.minutes_done || '0' }}
-        OK: ${{ steps.supervise.outputs.ok || '0' }}
-        WARN: ${{ steps.supervise.outputs.warn || '0' }}
-        FAIL: ${{ steps.supervise.outputs.fail || '0' }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const issue_number = Number(process.env.ISSUE_NUMBER);
-          if (!issue_number || isNaN(issue_number)) {
-            core.info('No valid ISSUE_NUMBER; skipping comment');
-            return;
-          }
-          
-          const status = process.env.STATUS;
-          const minutes = process.env.MINUTES;
-          const ok = process.env.OK;
-          const warn = process.env.WARN;
-          const fail = process.env.FAIL;
-          const runUrl = process.env.RUN_URL;
+      run: |
+        set -euo pipefail
+        issue_number="${ISSUE_NUMBER:-}"
+        if [ -z "$issue_number" ]; then
+          issue_number="$(gh issue list --search 'label:gate24h-tracking state:open' --json number --jq '.[0].number' || true)"
+        fi
+        if [ -z "$issue_number" ]; then
+          echo "No open tracking issue found; skipping."
+          exit 0
+        fi
+        tmp_file="$(mktemp)"
+        cat >"$tmp_file" <<'EOF'
+**Gate 24h Supervisor Summary**
 
-          const body = [
-            `**Gate 24h � Supervisor Summary**`,
-            ``,
-            `- **Supervisor Status**: \`${status}\``,
-            `- **Duration**: \`${minutes}m\``,
-            `- **Health Totals**: OK=\`${ok}\`, WARN=\`${warn}\`, FAIL=\`${fail}\``,
-            `- **Run**: ${runUrl}`,
-            ``,
-            `Artifacts include \`gate24h.log\` with [START]/[ITER]/[HB]/[END] entries.`,
-          ].join('\n');
-
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number,
-            body
-          });
-
-          await github.rest.issues.update({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number,
-            state: 'closed',
-            labels: ['automation','gate24h','completed']
-          });
-
+- **Supervisor Status**: `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`
+- **Duration**: `${{ steps.supervise.outputs.minutes_done || '0' }}m`
+- **Health Totals**: OK=`${{ steps.supervise.outputs.ok || '0' }}`, WARN=`${{ steps.supervise.outputs.warn || '0' }}`, FAIL=`${{ steps.supervise.outputs.fail || '0' }}`
+- **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+EOF
+        gh issue comment "$issue_number" --body-file "$tmp_file"
+        gh issue close "$issue_number" --comment "Gate24h completed successfully (run_id=${{ github.run_id }})"
+        rm -f "$tmp_file"
   # Self-check job to validate artifact paths and always() behavior
   artifact-selfcheck:
     runs-on: [self-hosted, Windows, botg]
@@ -416,7 +425,9 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: gate24h-artifacts
+        name: gate24h-selfcheck-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ github.workspace }}/artifacts_*/**/*
-        retention-days: 7
         if-no-files-found: warn
+        compression-level: 6
+        overwrite: true
+        retention-days: 7
