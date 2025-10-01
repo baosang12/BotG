@@ -1,4 +1,4 @@
-﻿name: Gate 24h (paper supervised)
+name: Gate 24h (paper supervised)
 run-name: Gate 24h ${{ inputs.mode || 'paper' }}_${{ inputs.hours || '24' }}h @ ${{ inputs.source || 'manual' }}
 
 permissions:
