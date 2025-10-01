@@ -264,15 +264,18 @@ jobs:
           "heartbeat_count": "__SET_BY_MONITOR__",
           "artifact_name": "gate24h-artifacts-${{ github.run_id }}-${{ github.run_attempt }}"
         }
-JSON
+        JSON
         python - <<'PY'
-import json, os, pathlib
-status_path = pathlib.Path("path_issues/gate24h/sentinel/status.json")
-data = json.loads(status_path.read_text())
-data["started_at"] = os.environ.get("START_TS", "")
-data["finished_at"] = os.environ.get("FINISH_TS", "")
-status_path.write_text(json.dumps(data, indent=2) + "\n")
-PY
+        import textwrap
+        exec(textwrap.dedent("""
+        import json, os, pathlib
+        status_path = pathlib.Path("path_issues/gate24h/sentinel/status.json")
+        data = json.loads(status_path.read_text())
+        data["started_at"] = os.environ.get("START_TS", "")
+        data["finished_at"] = os.environ.get("FINISH_TS", "")
+        status_path.write_text(json.dumps(data, indent=2) + "\n")
+        """))
+        PY
     - name: Stage artifacts into workspace
       if: ${{ always() }}
       shell: powershell
@@ -337,13 +340,13 @@ PY
         fi
         tmp_file="$(mktemp)"
         cat >"$tmp_file" <<'EOF'
-**Gate 24h Supervisor Summary**
-
-- **Supervisor Status**: `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`
-- **Duration**: `${{ steps.supervise.outputs.minutes_done || '0' }}m`
-- **Health Totals**: OK=`${{ steps.supervise.outputs.ok || '0' }}`, WARN=`${{ steps.supervise.outputs.warn || '0' }}`, FAIL=`${{ steps.supervise.outputs.fail || '0' }}`
-- **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-EOF
+        **Gate 24h Supervisor Summary**
+        
+        - **Supervisor Status**: `${{ steps.supervise.outputs.supervisor_status || 'UNKNOWN' }}`
+        - **Duration**: `${{ steps.supervise.outputs.minutes_done || '0' }}m`
+        - **Health Totals**: OK=`${{ steps.supervise.outputs.ok || '0' }}`, WARN=`${{ steps.supervise.outputs.warn || '0' }}`, FAIL=`${{ steps.supervise.outputs.fail || '0' }}`
+        - **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        EOF
         gh issue comment "$issue_number" --body-file "$tmp_file"
         gh issue close "$issue_number" --comment "Gate24h completed successfully (run_id=${{ github.run_id }})"
         rm -f "$tmp_file"
