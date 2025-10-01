@@ -17,19 +17,6 @@ defaults:
 
 on:
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Operating mode'
-        required: true
-        default: 'paper'
-      hours:
-        description: 'Hours to run'
-        required: true
-        default: '24'
-      source:
-        description: 'Trigger source'
-        required: false
-        default: 'manual'
   push:
     branches: [ main ]
     paths:
