@@ -140,7 +140,7 @@ jobs:
           console.log(`Created tracking issue: ${issue.data.number}`);
           return issue.data.number;
 
-    - name: Capture start timestamp (pwsh)
+    - name: Capture start timestamp
       id: start
       shell: powershell
       run: |
