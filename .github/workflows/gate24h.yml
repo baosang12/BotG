@@ -258,6 +258,7 @@ jobs:
           "gate": "Gate2-24h",
           "run_id": "${{ github.run_id }}",
           "run_attempt": "${{ github.run_attempt }}",
+          "status": "${{ job.status }}",
           "started_at": "__STARTED_AT__",
           "finished_at": "__FINISHED_AT__",
           "heartbeat_count": "__SET_BY_MONITOR__",
