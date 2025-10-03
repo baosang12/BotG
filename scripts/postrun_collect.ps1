@@ -1,217 +1,180 @@
+#Requires -Version 5.1
+
+<#
+.SYNOPSIS
+Post-run artifact collection with UTF-8 enforcement and direct Python calls
+
+.DESCRIPTION
+Executes 4-step pipeline:
+1. Reconstruct FIFO trades from orders.csv (direct Python call)
+2. Validate artifact schema compliance (strict validator)
+3. Analyze reconstruction statistics
+4. Archive validated run
+
+.PARAMETER RunDir
+Path to telemetry run directory (absolute path required)
+
+.EXAMPLE
+.\postrun_collect.ps1 -RunDir "D:\botg\logs\gate24h_run_20251003_120000"
+#>
+
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$RunDir,
-
-    [Parameter(Mandatory = $false)]
-    [string]$Python = "python",
-
-    [Parameter(Mandatory = $false)]
-    [string]$BarsDir = $null
+    [Parameter(Mandatory=$true)]
+    [string]$RunDir
 )
 
 $ErrorActionPreference = "Stop"
 
-function Write-StepHeader {
-    param([string]$Message)
-    Write-Host "`n🔄 $Message" -ForegroundColor Cyan
+# Resolve and validate run directory
+try {
+    $resolvedPath = Resolve-Path -LiteralPath $RunDir -ErrorAction Stop
+    $rd = $resolvedPath.ProviderPath.TrimEnd('\', '/')
+} catch {
+    throw "Failed to resolve run directory: $RunDir"
 }
 
-function Write-Success {
-    param([string]$Message)
-    $checkMark = [char]0x2713
-    Write-Host "$checkMark $Message" -ForegroundColor Green
+# Validate orders.csv exists
+$ordersFile = Join-Path $rd 'orders.csv'
+if (-not (Test-Path $ordersFile)) {
+    throw "orders.csv missing in $rd"
 }
 
-function Write-Warning {
-    param([string]$Message)
-    Write-Host "⚠ $Message" -ForegroundColor Yellow
-}
+Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║         POSTRUN COLLECTION PIPELINE                    ║" -ForegroundColor Cyan
+Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "Run Directory: $rd" -ForegroundColor Gray
+Write-Host ""
 
-function Write-Error {
-    param([string]$Message)
-    Write-Host "❌ $Message" -ForegroundColor Red
-}
-
-$runDir = Resolve-Path -LiteralPath $RunDir -ErrorAction Stop
-$runDir = $runDir.ProviderPath
-
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$artifactZip = Join-Path (Split-Path $runDir -Parent) "artifacts_$timestamp.zip"
-$summaryJson = Join-Path $runDir "analysis_summary_stats.json"
-
-Write-Host "Gate24h Post-Run Collection Pipeline" -ForegroundColor Magenta
-Write-Host "Run Directory: $runDir" -ForegroundColor Gray
-Write-Host "Timestamp: $timestamp" -ForegroundColor Gray
+# CRITICAL: Enforce UTF-8 encoding for Python
+$env:PYTHONIOENCODING = 'utf-8'
+$python = 'python'
 
 # Step 1: FIFO Reconstruction
-Write-StepHeader "Step 1: FIFO Trade Reconstruction"
+Write-Host "[1/4] FIFO Trade Reconstruction" -ForegroundColor Yellow
 
-$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = Split-Path -Parent $scriptRoot
-$reconstructScript = Join-Path $repoRoot "path_issues\reconstruct_fifo.py"
-
-if (-not (Test-Path $reconstructScript)) {
-    throw "reconstruct_fifo.py not found at: $reconstructScript"
-}
-
-$ordersFile = Join-Path $runDir "orders.csv"
-$closesLog = Join-Path $runDir "trade_closes.log"
-$metaFile = Join-Path $runDir "run_metadata.json"
-$outputFile = Join-Path $runDir "closed_trades_fifo_reconstructed.csv"
+$closesLog = Join-Path $rd 'trade_closes.log'
+$metaFile = Join-Path $rd 'run_metadata.json'
+$outputFile = Join-Path $rd 'closed_trades_fifo_reconstructed.csv'
 
 $reconstructArgs = @(
-    $reconstructScript,
-    "--orders", $ordersFile,
-    "--out", $outputFile
+    '-X', 'utf8',
+    '.\path_issues\reconstruct_fifo.py',
+    '--orders', $ordersFile,
+    '--out', $outputFile
 )
 
 if (Test-Path $closesLog) {
-    $reconstructArgs += "--closes", $closesLog
+    $reconstructArgs += '--closes', $closesLog
 }
 
 if (Test-Path $metaFile) {
-    $reconstructArgs += "--meta", $metaFile
-}
-
-if ($BarsDir -and (Test-Path $BarsDir)) {
-    $reconstructArgs += "--bars-dir", $BarsDir
+    $reconstructArgs += '--meta', $metaFile
 }
 
 try {
-    & $Python @reconstructArgs
+    & $python @reconstructArgs
     if ($LASTEXITCODE -ne 0) {
         throw "reconstruct_fifo.py exited with code $LASTEXITCODE"
     }
-    Write-Success "FIFO reconstruction completed"
+    Write-Host "✓ FIFO reconstruction completed" -ForegroundColor Green
 } catch {
-    Write-Error "FIFO reconstruction failed: $($_.Exception.Message)"
+    Write-Host "❌ FIFO reconstruction failed: $_" -ForegroundColor Red
     throw
 }
 
-# Step 2: Artifact Validation
-Write-StepHeader "Step 2: Schema Validation"
+Write-Host ""
 
-$validateScript = Join-Path $repoRoot "path_issues\validate_artifacts.py"
-if (-not (Test-Path $validateScript)) {
-    throw "validate_artifacts.py not found at: $validateScript"
-}
-
-$validationOutput = Join-Path $runDir "validation_results.json"
+# Step 2: Artifact Validation (STRICT)
+Write-Host "[2/4] Schema Validation (STRICT)" -ForegroundColor Yellow
 
 try {
-    & $Python $validateScript --dir $runDir --output $validationOutput
+    & $python -X utf8 .\path_issues\validate_artifacts.py --dir $rd
     $validationExitCode = $LASTEXITCODE
     
     if ($validationExitCode -eq 0) {
-        Write-Success "All artifacts validated successfully"
+        Write-Host "✓ All artifacts validated successfully" -ForegroundColor Green
     } else {
-        Write-Error "Artifact validation failed (exit code: $validationExitCode)"
-        throw "Schema validation failed"
+        Write-Host "❌ Artifact validation failed (exit code: $validationExitCode)" -ForegroundColor Red
+        throw "Schema validation failed - see JSON output above"
     }
 } catch {
-    Write-Error "Validation step failed: $($_.Exception.Message)"
+    Write-Host "❌ Validation step failed: $_" -ForegroundColor Red
     throw
 }
+
+Write-Host ""
 
 # Step 3: Generate Analysis Summary
-Write-StepHeader "Step 3: Analysis Summary Generation"
+Write-Host "[3/4] Analysis Summary Generation" -ForegroundColor Yellow
+
+$summaryFile = Join-Path $rd 'analysis_summary_stats.json'
 
 try {
-    $summary = @{
-        timestamp = $timestamp
-        run_directory = $runDir
-        trades_count = 0
-        total_pnl = 0.0
-        fill_rate = 0.0
-        slippage_stats = @{
-            p50_buy = 0.0
-            p95_buy = 0.0
-            p50_sell = 0.0
-            p95_sell = 0.0
-        }
-    }
-
-    # Extract trade statistics
-    $tradesPath = Join-Path $runDir "closed_trades_fifo_reconstructed.csv"
-    if (Test-Path $tradesPath) {
-        $trades = Import-Csv $tradesPath
-        $summary.trades_count = $trades.Count
+    if (Test-Path $outputFile) {
+        $tradesCount = (Get-Content $outputFile | Measure-Object -Line).Lines - 1  # Exclude header
         
-        if ($trades.Count -gt 0) {
-            $summary.total_pnl = ($trades | Measure-Object -Property pnl_currency -Sum).Sum
+        $summary = @{
+            timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            run_directory = $rd
+            trades_count = $tradesCount
+            validation_status = "PASS"
         }
-    }
-
-    # Extract fill rate from orders
-    $ordersPath = Join-Path $runDir "orders.csv"
-    if (Test-Path $ordersPath) {
-        $orders = Import-Csv $ordersPath
-        $requests = ($orders | Where-Object { $_.phase -eq "REQUEST" }).Count
-        $fills = ($orders | Where-Object { $_.phase -eq "FILL" }).Count
         
-        if ($requests -gt 0) {
-            $summary.fill_rate = [math]::Round(($fills / $requests), 4)
+        $summary | ConvertTo-Json -Depth 5 | Out-File $summaryFile -Encoding utf8
+        
+        Write-Host "✓ Statistics saved: $summaryFile" -ForegroundColor Green
+        Write-Host "  Trades Count: $tradesCount" -ForegroundColor Gray
+    } else {
+        Write-Host "⚠ No reconstructed trades file found, creating minimal summary" -ForegroundColor Yellow
+        
+        $summary = @{
+            timestamp = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            run_directory = $rd
+            trades_count = 0
+            validation_status = "PASS"
         }
-
-        # Calculate slippage percentiles by side
-        $fillsWithSlippage = $orders | Where-Object { $_.phase -eq "FILL" -and $_.slippage }
-        if ($fillsWithSlippage.Count -gt 0) {
-            $buySlippage = $fillsWithSlippage | Where-Object { $_.side -eq "Buy" } | ForEach-Object { [double]$_.slippage }
-            $sellSlippage = $fillsWithSlippage | Where-Object { $_.side -eq "Sell" } | ForEach-Object { [double]$_.slippage }
-            
-            if ($buySlippage.Count -gt 0) {
-                $buySlippageSorted = $buySlippage | Sort-Object
-                $summary.slippage_stats.p50_buy = [math]::Round($buySlippageSorted[[math]::Floor($buySlippageSorted.Count * 0.5)], 6)
-                $summary.slippage_stats.p95_buy = [math]::Round($buySlippageSorted[[math]::Floor($buySlippageSorted.Count * 0.95)], 6)
-            }
-            
-            if ($sellSlippage.Count -gt 0) {
-                $sellSlippageSorted = $sellSlippage | Sort-Object
-                $summary.slippage_stats.p50_sell = [math]::Round($sellSlippageSorted[[math]::Floor($sellSlippageSorted.Count * 0.5)], 6)
-                $summary.slippage_stats.p95_sell = [math]::Round($sellSlippageSorted[[math]::Floor($sellSlippageSorted.Count * 0.95)], 6)
-            }
-        }
+        
+        $summary | ConvertTo-Json -Depth 5 | Out-File $summaryFile -Encoding utf8
     }
-
-    # Write summary JSON
-    $summary | ConvertTo-Json -Depth 3 | Out-File -FilePath $summaryJson -Encoding UTF8
-    Write-Success "Analysis summary generated: $summaryJson"
-    
-    # Display key metrics
-    Write-Host "`nKey Metrics:" -ForegroundColor White
-    Write-Host "  Trades: $($summary.trades_count)" -ForegroundColor Gray
-    Write-Host "  Total P&L: $($summary.total_pnl)" -ForegroundColor Gray
-    Write-Host "  Fill Rate: $($summary.fill_rate * 100)%" -ForegroundColor Gray
-
 } catch {
-    Write-Warning "Failed to generate analysis summary: $($_.Exception.Message)"
-    # Create minimal summary
-    @{
-        timestamp = $timestamp
-        run_directory = $runDir
-        error = $_.Exception.Message
-    } | ConvertTo-Json | Out-File -FilePath $summaryJson -Encoding UTF8
-}
-
-# Step 4: Archive Creation
-Write-StepHeader "Step 4: Archive Creation"
-
-try {
-    if (Test-Path $artifactZip) {
-        Remove-Item $artifactZip -Force
-    }
-    
-    Compress-Archive -Path "$runDir\*" -DestinationPath $artifactZip -CompressionLevel Optimal
-    
-    $zipSize = [math]::Round((Get-Item $artifactZip).Length / 1MB, 2)
-    Write-Success "Archive created: $artifactZip ($zipSize MB)"
-    
-} catch {
-    Write-Error "Archive creation failed: $($_.Exception.Message)"
+    Write-Host "❌ Summary generation failed: $_" -ForegroundColor Red
     throw
 }
 
-# Final Summary
-Write-Host "`n🎉 Post-run collection completed successfully!" -ForegroundColor Green
-Write-Host "Archive: $artifactZip" -ForegroundColor White
-Write-Host "Summary: $summaryJson" -ForegroundColor White
+Write-Host ""
+
+# Step 4: Archive Run
+Write-Host "[4/4] Archive Creation" -ForegroundColor Yellow
+
+try {
+    $runName = Split-Path $rd -Leaf
+    $parentDir = Split-Path $rd -Parent
+    $zipFile = Join-Path $parentDir ("artifacts_" + $runName + ".zip")
+    
+    # Remove existing zip if present
+    if (Test-Path $zipFile) {
+        Remove-Item $zipFile -Force
+    }
+    
+    # Create archive with proper error handling
+    Compress-Archive -Path "$rd\*" -DestinationPath $zipFile -CompressionLevel Optimal -Force
+    
+    if (Test-Path $zipFile) {
+        $zipSize = (Get-Item $zipFile).Length / 1MB
+        Write-Host "✓ Archive created: $zipFile" -ForegroundColor Green
+        Write-Host "  Size: $([math]::Round($zipSize, 2)) MB" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "ARTIFACT_ZIP=$zipFile" -ForegroundColor Cyan
+    } else {
+        throw "Archive file was not created"
+    }
+} catch {
+    Write-Host "❌ Archive creation failed: $_" -ForegroundColor Red
+    throw
+}
+
+Write-Host ""
+Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Green
+Write-Host "║         PIPELINE COMPLETED SUCCESSFULLY                ║" -ForegroundColor Green
+Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Green
