@@ -302,6 +302,30 @@ jobs:
         }
         $payload | ConvertTo-Json -Depth 5 | Out-File (Join-Path $sentinelRoot 'status.json') -Encoding utf8
 
+
+    - name: Postrun FIFO reconstruction
+      if: always()
+      shell: powershell
+      run: |
+        $logDirs = Get-ChildItem -Path "D:\botg\logs\gate24h_run_*" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        if ($logDirs) {
+          $runDir = $logDirs[0].FullName
+          Write-Host "Running postrun collection on: $runDir"
+          & scripts\postrun_collect.ps1 -RunDir $runDir
+        } else {
+          Write-Host "No run directory found in D:\botg\logs\"
+        }
+
+    - name: Validate artifacts schema
+      if: always()
+      shell: powershell
+      run: |
+        $logDirs = Get-ChildItem -Path "D:\botg\logs\gate24h_run_*" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        if ($logDirs) {
+          $runDir = $logDirs[0].FullName
+          Write-Host "Validating artifacts in: $runDir"
+          python .\path_issues\validate_artifacts.py --dir $runDir
+        }
     - name: Stage artifacts into workspace
       if: ${{ always() }}
       shell: powershell
