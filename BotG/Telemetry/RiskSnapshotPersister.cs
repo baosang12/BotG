@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using DataFetcher.Models;
@@ -9,6 +9,7 @@ namespace Telemetry
     {
         private readonly string _filePath;
         private readonly object _lock = new object();
+        private double _equityPeak = 0.0;
 
         public RiskSnapshotPersister(string folder, string fileName)
         {
@@ -21,7 +22,7 @@ namespace Telemetry
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "timestamp_iso,balance,equity,usedMargin,freeMargin,marginUtilPercent" + Environment.NewLine);
+                File.AppendAllText(_filePath, "timestamp,equity,balance,margin,free_margin,drawdown,R_used,exposure" + Environment.NewLine);
             }
         }
 
@@ -35,14 +36,27 @@ namespace Telemetry
                 double usedMargin = info.Margin;
                 double balance = info.Balance;
                 double freeMargin = equity - usedMargin;
-                double marginUtil = equity > 0 ? (usedMargin / equity) * 100.0 : 0.0;
+
+                // Track equity peak for drawdown calculation
+                if (equity > _equityPeak)
+                {
+                    _equityPeak = equity;
+                }
+                double drawdown = _equityPeak - equity;
+
+                // Placeholder for R_used and exposure (0.0 until RiskManager integration)
+                double rUsed = 0.0;
+                double exposure = 0.0;
+
                 var line = string.Join(",",
                     ts.ToString("o", CultureInfo.InvariantCulture),
-                    balance.ToString(CultureInfo.InvariantCulture),
                     equity.ToString(CultureInfo.InvariantCulture),
+                    balance.ToString(CultureInfo.InvariantCulture),
                     usedMargin.ToString(CultureInfo.InvariantCulture),
                     freeMargin.ToString(CultureInfo.InvariantCulture),
-                    marginUtil.ToString(CultureInfo.InvariantCulture)
+                    drawdown.ToString(CultureInfo.InvariantCulture),
+                    rUsed.ToString(CultureInfo.InvariantCulture),
+                    exposure.ToString(CultureInfo.InvariantCulture)
                 );
                 lock (_lock)
                 {
