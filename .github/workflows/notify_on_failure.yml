@@ -8,14 +8,31 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion != 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Telegram notify
+      - name: Telegram notify (if secrets)
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
         uses: appleboy/telegram-action@v0.1.4
         with:
           to:    ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-             Gate24h failed
+            ❌ Gate24h failed
             Repo: ${{ github.repository }}
             RunID: ${{ github.event.workflow_run.id }}
             Conclusion: ${{ github.event.workflow_run.conclusion }}
             URL: ${{ github.event.workflow_run.html_url }}
+
+      - name: Issue alert (fallback)
+        if: ${{ !secrets.TELEGRAM_BOT_TOKEN || !secrets.TELEGRAM_CHAT_ID }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tit = 'Gate24h alerts (auto)';
+            const body = `❌ Gate24h failed
+            Conclusion: ${{ github.event.workflow_run.conclusion }}
+            URL: ${{ github.event.workflow_run.html_url }}`;
+            const {data: issues} = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100});
+            let issue = issues.find(i => i.title === tit);
+            if (!issue) {
+              issue = (await github.rest.issues.create({owner: context.repo.owner, repo: context.repo.repo, title: tit, labels: ['gate-alert']})).data;
+            }
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, body});
