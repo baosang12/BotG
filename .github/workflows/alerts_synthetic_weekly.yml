@@ -1,0 +1,48 @@
+﻿name: Alerts synthetic weekly (Gate24h dispatch + cancel)
+on:
+  schedule:
+    - cron: '5 2 * * 1'  # Thứ Hai 02:05 UTC
+  workflow_dispatch: {}
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Gate24h preflight (0.1h, paper)
+        id: dispatch
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const res = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              workflow_id: "gate24h_main.yml",
+              ref: "main",
+              inputs: { hours: "0.1", mode: "paper", source: "synthetic" }
+            });
+            core.notice("Gate24h dispatched");
+
+      - name: Poll newest Gate24h run and cancel (to trigger notify)
+        id: cancel
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const wf = "gate24h_main.yml";
+            let run;
+            for (let i=0;i<30;i++){
+              const {data} = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner, repo: context.repo.repo, workflow_id: wf, per_page: 1
+              });
+              run = data.workflow_runs[0];
+              if (run && (run.status === "in_progress" || run.status === "queued")) { break; }
+              await new Promise(r=>setTimeout(r, 5000));
+            }
+            if(!run) core.setFailed("No Gate24h run found to cancel");
+            else {
+              await github.rest.actions.cancelWorkflowRun({
+                owner: context.repo.owner, repo: context.repo.repo, run_id: run.id
+              });
+              core.notice(Cancelled Gate24h run ${run.id} to trigger notify.);
+              core.setOutput("gate_run_id", run.id.toString());
+              core.setOutput("gate_run_url", run.html_url);
+            }

@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Telegram notify (if secrets)
         if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
-        id: tgram`r`n        uses: appleboy/telegram-action@4fde07eaa6fb2ab49ca1af1c65b9b9b5fd5ad1ce`r`n        timeout-minutes: 2`r`n        continue-on-error: true
+        uses: appleboy/telegram-action@v0.1.4
         with:
           to:    ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -22,8 +22,8 @@ jobs:
             URL: ${{ github.event.workflow_run.html_url }}
 
       - name: Issue alert (fallback)
-        if: steps.tgram.outcome != 'success'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        if: ${{ !secrets.TELEGRAM_BOT_TOKEN || !secrets.TELEGRAM_CHAT_ID }}
+        uses: actions/github-script@v7
         with:
           script: |
             const tit = 'Gate24h alerts (auto)';
