@@ -32,6 +32,29 @@ function Wait-Until($ScriptBlock, [int]$TimeoutSec = 300, [int]$DelaySec = 5) {
   return $null
 }
 
+# Resilient watcher for a workflow run until it reaches a terminal conclusion
+function Wait-RunTerminal([string]$id, [int]$TimeoutSec = 1200, [int]$DelaySec = 10) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $last = $null
+  do {
+    try {
+      $json = gh run view $id --json status,conclusion,updatedAt,url 2>$null
+      if ($LASTEXITCODE -ne 0 -or -not $json) { Start-Sleep -Seconds 5; continue }
+      $last = $json | ConvertFrom-Json
+    } catch {
+      Start-Sleep -Seconds 5
+      continue
+    }
+    if ($last.status -in @('in_progress','queued','requested','waiting')) {
+      Start-Sleep -Seconds $DelaySec
+    }
+  } while ((Get-Date) -lt $deadline -and ($last -and ($last.status -in @('in_progress','queued','requested','waiting'))))
+  if (-not $last -or ($last.status -in @('in_progress','queued','requested','waiting'))) {
+    throw "Run timeout waiting"
+  }
+  return $last
+}
+
 Assert-GH
 
 if ($FailFast) { $Source = 'notify_test_fail' }
@@ -98,11 +121,11 @@ function Get-NotifyDispatchRun {
     Select-Object -First 1
 }
 
-function Get-NotifyRunById([int]$id) {
+function Get-NotifyRunById([string]$id) {
   $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 50
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
-  $runs | Where-Object { $_.databaseId -eq $id } | Select-Object -First 1
+  $runs | Where-Object { ""+$_.databaseId -eq $id } | Select-Object -First 1
 }
 
 $notifyRun = $null
@@ -121,10 +144,11 @@ if ($dispatchOk) {
 if (-not $notifyRun) { throw 'Notify run not found' }
 
 Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
-$notifyFinal = Wait-Until {
-  Get-NotifyRunById -id $notifyRun.databaseId | Where-Object { $_.status -eq 'completed' }
-} -TimeoutSec $TimeoutNotifySec -DelaySec 3
-if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
+$notifyView = Wait-RunTerminal -id (""+$notifyRun.databaseId) -TimeoutSec $TimeoutNotifySec -DelaySec 10
+if (-not $notifyView) { throw 'Notify run did not complete in time' }
+# Re-fetch full view to include url and databaseId consistently
+$notifyFinalJson = gh run view (""+$notifyRun.databaseId) --json databaseId,status,conclusion,url 2>$null
+$notifyFinal = $notifyFinalJson | ConvertFrom-Json
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
 
 $notifyTrigger = if ($dispatchOk) { 'workflow_dispatch' } else { 'workflow_run' }
@@ -209,7 +233,7 @@ $fallbackUrl = if ($issueRecent) { $issueRecent.url } else { '' }
 
 $proof = [ordered]@{
   scenario = $Source
-  run_id = [int]$notifyFinal.databaseId
+  run_id = ""+$notifyFinal.databaseId
   ref = $NotifyRef
   http_code = $httpCode
   telegram_status = $tgStatus
