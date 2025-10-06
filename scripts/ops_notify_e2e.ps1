@@ -3,7 +3,9 @@ param(
   [string]$Mode = 'paper',
   [switch]$FailFast,
   [int]$WaitTimeoutSec = 600,
-  [string]$NotifyRef = 'ci/notify-dispatch-e2e'
+  [string]$NotifyRef = 'main',
+  [string]$Source = 'notify_test',
+  [int]$TimeoutNotifySec = 600
 )
 
 # E2E notify test driver
@@ -32,7 +34,7 @@ function Wait-Until($ScriptBlock, [int]$TimeoutSec = 300, [int]$DelaySec = 5) {
 
 Assert-GH
 
-$Source = if ($FailFast) { 'notify_test_fail' } else { 'notify_test' }
+if ($FailFast) { $Source = 'notify_test_fail' }
 
 Write-Host "Dispatching Gate24h (hours=$Hours mode=$Mode source=$Source)"
 & gh workflow run ".github/workflows/gate24h_main.yml" -f "hours=$Hours" -f "mode=$Mode" -f "source=$Source" | Write-Host
@@ -51,7 +53,7 @@ if (-not $gateRun) { throw 'No Gate24h run detected' }
 Write-Host "Gate run detected: id=$($gateRun.databaseId) status=$($gateRun.status) url=$($gateRun.url)"
 
 # If not fail-fast, wait until in_progress then cancel
-if (-not $FailFast) {
+if ($Source -eq 'notify_test') {
   Write-Host 'Waiting for gate run to enter in_progress...'
   $inprog = Wait-Until {
     $r = Get-LatestGateRun
@@ -83,7 +85,7 @@ try {
 }
 
 function Get-LatestNotifyRun {
-  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url --limit 30
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,headSha --limit 50
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
   $runs | Where-Object { [datetime]$_.createdAt -ge $notifyStart } | Sort-Object createdAt -Descending | Select-Object -First 1
@@ -99,9 +101,21 @@ Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
 $notifyFinal = Wait-Until {
   $r = Get-LatestNotifyRun
   if ($r -and $r.status -eq 'completed') { $r } else { $null }
-} -TimeoutSec 240 -DelaySec 3
+} -TimeoutSec $TimeoutNotifySec -DelaySec 3
 if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
+
+$notifyTrigger = if ($dispatchOk) { 'dispatch' } else { 'workflow_run' }
+
+# Also attempt to find a workflow_run-triggered notify that is not the dispatch one (best-effort)
+$wrCandidate = $null
+if ($dispatchOk) {
+  $wrCandidate = Wait-Until {
+    $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch --limit 50
+    $runs = $null; try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+    $runs | Where-Object { [datetime]$_.createdAt -ge $startAt } | Sort-Object createdAt -Descending | Select-Object -First 1
+  } -TimeoutSec 60 -DelaySec 3
+}
 
 Write-Host "--- Notify logs (tail 120) ---"
 try {
@@ -110,6 +124,17 @@ try {
     $lines = $log -split "`n"
     $tail = if ($lines.Length -gt 120) { $lines[(-120)..(-1)] } else { $lines }
     $tail | ForEach-Object { Write-Host $_ }
+    # Save to file
+    $outDir = Join-Path $PWD 'path_issues'
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    $tail | Out-File -FilePath (Join-Path $outDir 'notify_e2e_log.txt') -Encoding utf8 -Append
+    # Extract Telegram HTTP code if present
+    $tgLine = ($lines | Where-Object { $_ -match 'Telegram HTTP=' } | Select-Object -Last 1)
+    if ($tgLine) {
+      $m = [regex]::Match($tgLine, 'Telegram HTTP=(\d+)')
+      if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
+    }
+    $script:logCount = $lines.Length
   }
 } catch {
   Write-Warning $_
@@ -120,8 +145,81 @@ try {
   $issuesJson = & gh issue list --label gate-alert --state all --limit 5 --json number,title,url,createdAt,state
   $issues = $issuesJson | ConvertFrom-Json
   if ($issues) { $issues | Format-Table number,title,state,createdAt,url -AutoSize | Out-String | Write-Host }
+  $issueRecent = $null
+  if ($issues) {
+    $tenMinAgo = (Get-Date).AddMinutes(-10)
+    $issueRecent = $issues | Where-Object { [datetime]$_.createdAt -ge $tenMinAgo } | Select-Object -First 1
+  }
 } catch {
   Write-Warning $_
+}
+
+# Persist JSON result per scenario (append to array)
+$result = [ordered]@{
+  scenario = $Source
+  gate_run_id = $final.databaseId
+  gate_url = $final.url
+  gate_conclusion = $final.conclusion
+  notify_runs = @(@{
+    id = $notifyFinal.databaseId
+    url = $notifyFinal.url
+    trigger = $notifyTrigger
+    conclusion = $notifyFinal.conclusion
+  })
+}
+if ($wrCandidate -and $wrCandidate.databaseId -ne $notifyFinal.databaseId) {
+  $result.notify_runs += @(@{
+    id = $wrCandidate.databaseId
+    url = $wrCandidate.url
+    trigger = 'workflow_run'
+    conclusion = $wrCandidate.conclusion
+  })
+}
+
+if ($script:tgHttp) {
+  $result.telegram_status = "HTTP/$script:tgHttp"
+} else {
+  $result.telegram_status = "unknown"
+}
+
+if ($issueRecent) {
+  $result.issue_fallback_number = $issueRecent.number
+  $result.issue_fallback_url = $issueRecent.url
+}
+
+# Infer Telegram OK from job steps when HTTP unknown
+if (-not $script:tgHttp) {
+  try {
+    $stepsJson = & gh run view $notifyFinal.databaseId --job --json jobs
+    $jobs = $stepsJson | ConvertFrom-Json
+    $tgStep = $jobs.jobs.steps | Where-Object { $_.name -like 'Telegram*' } | Select-Object -First 1
+    if ($tgStep -and $tgStep.conclusion) {
+      if ($tgStep.conclusion -eq 'success') { $result.telegram_status = 'OK' } else { $result.telegram_status = 'Fail' }
+    }
+  } catch {}
+}
+
+# Log count and pass criteria
+if ($script:logCount) { $result.log_lines = $script:logCount }
+
+$hasNotify = ($null -ne $notifyFinal)
+$hasLogs = ($script:logCount -ge 80)
+$tgOK = ($result.telegram_status -like 'HTTP/200' -or $result.telegram_status -eq 'OK')
+$issueOK = ($null -ne $result.issue_fallback_number)
+$result.passed = ($hasNotify -and $hasLogs -and ($tgOK -or $issueOK))
+
+$outDir = Join-Path $PWD 'path_issues'
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$jsonPath = Join-Path $outDir 'notify_e2e_result.json'
+if (Test-Path $jsonPath) {
+  try {
+    $existing = Get-Content $jsonPath -Raw | ConvertFrom-Json
+  } catch { $existing = @() }
+  if ($existing -isnot [System.Collections.IEnumerable]) { $existing = @($existing) }
+  $existing += $result
+  $existing | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
+} else {
+  @($result) | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
 }
 
 Write-Host 'E2E notify test complete.'
