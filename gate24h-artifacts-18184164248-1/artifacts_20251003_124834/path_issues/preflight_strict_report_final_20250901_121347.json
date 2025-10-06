@@ -1,0 +1,83 @@
+﻿{
+    "artifact_hashes":  {
+
+                        },
+    "blockers":  [
+
+                 ],
+    "base":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG",
+    "timestamp":  "2025-09-01T05:19:51.5766887Z",
+    "git_sha":  "984f81ef6997bdda949d87dfa53f844bbbc0de84",
+    "warnings":  [
+                     "git.clean_post_archive"
+                 ],
+    "python_version":  "Python 3.13.5",
+    "git_branch":  "ci/recon-validate-smoke",
+    "free_disk_bytes":  235546394624,
+    "verdict":  "ALL_PRECHECKS_PASSED_FOR_24H",
+    "dotnet_sdks":  [
+                        "6.0.100 [C:\\Program Files\\dotnet\\sdk]",
+                        "8.0.411 [C:\\Program Files\\dotnet\\sdk]",
+                        "9.0.304 [C:\\Program Files\\dotnet\\sdk]"
+                    ],
+    "ts":  "20250901_121347",
+    "checks":  [
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+
+                                    ],
+                       "name":  "env.BOTG_ROOT",
+                       "details":  "BOTG_ROOT=D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG"
+                   },
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\file_growth_test_20250901_121347.json"
+                                    ],
+                       "name":  "smoke.file_growth",
+                       "details":  "All files showed expected growth"
+                   },
+                   {
+                       "status":  "WARN",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\git_status_post_archive_20250901_121347.txt"
+                                    ],
+                       "name":  "git.clean_post_archive",
+                       "details":  "Still 124 modified/untracked files"
+                   },
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\scripts\\start_realtime_24h_supervised.ps1"
+                                    ],
+                       "name":  "orchestration.sentinels",
+                       "details":  "Sentinel support detected in supervisor"
+                   },
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+                                        "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\monitor_snapshot_run_20250901_121347.json"
+                                    ],
+                       "name":  "monitor.snapshot",
+                       "details":  "Monitor snapshot capability verified"
+                   },
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+
+                                    ],
+                       "name":  "build.current",
+                       "details":  "Build successful"
+                   },
+                   {
+                       "status":  "PASS",
+                       "evidence":  [
+
+                                    ],
+                       "name":  "tests.current",
+                       "details":  "Tests passed"
+                   }
+               ],
+    "powershell_version":  "5.1.26100.4652"
+}

@@ -1,0 +1,16 @@
+{
+  "slippage_abs": {
+    "p50": NaN,
+    "p75": NaN,
+    "p90": NaN,
+    "p95": NaN,
+    "p99": NaN
+  },
+  "latency_ms": {
+    "p50": NaN,
+    "p75": NaN,
+    "p90": NaN,
+    "p95": NaN,
+    "p99": NaN
+  }
+}

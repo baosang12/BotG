@@ -149,8 +149,13 @@ try {
     # Save full log to file for proofing
     $outDir = Join-Path $PWD 'path_issues'
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    $fullLogPath = Join-Path $outDir 'notify_e2e_log.txt'
-    $lines | Out-File -FilePath $fullLogPath -Encoding utf8
+  $fullLogPath = Join-Path $outDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $fullLogPath -Encoding utf8
+  # Also save under alerts/
+  $alertsDir = Join-Path $outDir 'alerts'
+  New-Item -ItemType Directory -Force -Path $alertsDir | Out-Null
+  $alertsLogPath = Join-Path $alertsDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $alertsLogPath -Encoding utf8
     # Extract fields required for acceptance
     $httpLine = ($lines | Where-Object { $_ -match 'TELEGRAM_HTTP=' } | Select-Object -Last 1)
     if ($httpLine) {
@@ -234,6 +239,11 @@ try {
   if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
   Compress-Archive -Path $proofPath, (Join-Path $outDir 'notify_e2e_log.txt') -DestinationPath $zipPath -Force
 } catch { Write-Warning "Zip failed: $_" }
+
+"status" | Out-Null # keep editor happy
+# Update proof with status and rewrite file
+$proof.status = if ($passed) { 'PASS' } else { 'FAIL' }
+$proof | ConvertTo-Json -Depth 4 | Out-File -FilePath $proofPath -Encoding utf8
 
 if (-not $passed) {
   Write-Error "ACCEPTANCE FAILED: logsOk=$logsOk hasHttpAndStatus=$hasHttpAndStatus hasIssue=$hasIssue"
