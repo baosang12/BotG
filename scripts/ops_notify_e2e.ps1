@@ -73,24 +73,33 @@ Write-Host "Gate final: id=$($final.databaseId) conc=$($final.conclusion) url=$(
 
 # Dispatch notify workflow with explicit inputs
 Write-Host "Dispatching notify_on_failure via workflow_dispatch on ref '$NotifyRef'..."
-& gh workflow run ".github/workflows/notify_on_failure.yml" --ref "$NotifyRef" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
 $notifyStart = Get-Date
+$dispatchOk = $true
+try {
+  & gh workflow run ".github/workflows/notify_on_failure.yml" --ref "$NotifyRef" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
+} catch {
+  Write-Warning "Dispatch failed (likely missing workflow_dispatch on default branch). Falling back to workflow_run listener..."
+  $dispatchOk = $false
+}
 
 function Get-LatestNotifyRun {
-  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url --limit 20
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url --limit 30
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
   $runs | Where-Object { [datetime]$_.createdAt -ge $notifyStart } | Sort-Object createdAt -Descending | Select-Object -First 1
 }
 
-$notifyRun = Wait-Until { Get-LatestNotifyRun } -TimeoutSec 120 -DelaySec 3
+# If dispatch failed, reset notifyStart to gate final time to catch the workflow_run-triggered notify
+if (-not $dispatchOk) { $notifyStart = $startAt }
+
+$notifyRun = Wait-Until { Get-LatestNotifyRun } -TimeoutSec 180 -DelaySec 3
 if (-not $notifyRun) { throw 'Notify run not found' }
 
 Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
 $notifyFinal = Wait-Until {
   $r = Get-LatestNotifyRun
   if ($r -and $r.status -eq 'completed') { $r } else { $null }
-} -TimeoutSec 180 -DelaySec 3
+} -TimeoutSec 240 -DelaySec 3
 if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
 
