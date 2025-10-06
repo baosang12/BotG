@@ -3,36 +3,73 @@ on:
   workflow_run:
     workflows: ["Gate 24h (paper supervised)"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Gate24h run id"
+        required: true
+      conclusion:
+        description: "Gate24h conclusion"
+        required: true
+      url:
+        description: "Gate24h url"
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   notify:
-    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
+      - name: Resolve vars (run info)
+        id: vars
+        shell: bash
+        env:
+          RUN_ID_WR: ${{ github.event.workflow_run.id }}
+          RUN_CONC_WR: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL_WR: ${{ github.event.workflow_run.html_url }}
+          RUN_ID_DISP: ${{ github.event.inputs.run_id }}
+          RUN_CONC_DISP: ${{ github.event.inputs.conclusion }}
+          RUN_URL_DISP: ${{ github.event.inputs.url }}
+        run: |
+          set -euo pipefail
+          RUN_ID="${RUN_ID_WR:-$RUN_ID_DISP}"
+          RUN_CONC="${RUN_CONC_WR:-$RUN_CONC_DISP}"
+          RUN_URL="${RUN_URL_WR:-$RUN_URL_DISP}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_conc=$RUN_CONC" >> "$GITHUB_OUTPUT"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "Resolved: id=$RUN_ID conc=$RUN_CONC url=$RUN_URL"
       - name: Telegram notify (if secrets)
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
-        id: tgram`r`n        uses: appleboy/telegram-action@4fde07eaa6fb2ab49ca1af1c65b9b9b5fd5ad1ce`r`n        timeout-minutes: 2`r`n        continue-on-error: true
-        with:
-          to:    ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
+        id: tgram
+        env:
+          MSG: |
             ❌ Gate24h failed
             Repo: ${{ github.repository }}
-            RunID: ${{ github.event.workflow_run.id }}
-            Conclusion: ${{ github.event.workflow_run.conclusion }}
-            URL: ${{ github.event.workflow_run.html_url }}
+            RunID: ${{ steps.vars.outputs.run_id }}
+            Conclusion: ${{ steps.vars.outputs.run_conc }}
+            URL: ${{ steps.vars.outputs.run_url }}
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            --data-urlencode text="$MSG" \
+            -d parse_mode=HTML >/dev/null
 
       - name: Issue alert (fallback)
-        if: steps.tgram.outcome != 'success'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-        with:
-          script: |
-            const tit = 'Gate24h alerts (auto)';
-            const body = `❌ Gate24h failed
-            Conclusion: ${{ github.event.workflow_run.conclusion }}
-            URL: ${{ github.event.workflow_run.html_url }}`;
-            const {data: issues} = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100});
-            let issue = issues.find(i => i.title === tit);
-            if (!issue) {
-              issue = (await github.rest.issues.create({owner: context.repo.owner, repo: context.repo.repo, title: tit, labels: ['gate-alert']})).data;
-            }
-            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, body});
+        if: ${{ steps.tgram.outcome != 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
+          BODY="${{ steps.vars.outputs.run_url }}"
+          gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l gate-alert
