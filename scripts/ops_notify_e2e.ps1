@@ -73,39 +73,59 @@ $final = Wait-Until {
 if (-not $final) { throw 'Gate run did not reach a terminal conclusion in time' }
 Write-Host "Gate final: id=$($final.databaseId) conc=$($final.conclusion) url=$($final.url)"
 
-# Dispatch notify workflow with explicit inputs
+<#
+ Dispatch notify workflow with explicit inputs and deterministically lock to
+ the workflow_dispatch run on the requested ref.
+#>
 Write-Host "Dispatching notify_on_failure via workflow_dispatch on ref '$NotifyRef'..."
-$notifyStart = Get-Date
+$notifyDispatchAt = Get-Date
 $dispatchOk = $true
 try {
   & gh workflow run ".github/workflows/notify_on_failure.yml" --ref "$NotifyRef" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
 } catch {
-  Write-Warning "Dispatch failed (likely missing workflow_dispatch on default branch). Falling back to workflow_run listener..."
+  Write-Warning "Dispatch failed (likely missing workflow_dispatch on target ref). Falling back to workflow_run listener..."
   $dispatchOk = $false
 }
 
-function Get-LatestNotifyRun {
-  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,headSha --limit 50
+
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
-  $runs | Where-Object { [datetime]$_.createdAt -ge $notifyStart } | Sort-Object createdAt -Descending | Select-Object -First 1
+  $runs |
+    Where-Object { $_.event -eq 'workflow_dispatch' -and $_.headBranch -eq $NotifyRef -and [datetime]$_.createdAt -ge $notifyDispatchAt } |
+    Sort-Object createdAt -Descending |
+    Select-Object -First 1
 }
 
-# If dispatch failed, reset notifyStart to gate final time to catch the workflow_run-triggered notify
-if (-not $dispatchOk) { $notifyStart = $startAt }
+function Get-NotifyRunById([int]$id) {
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 50
+  $runs = $null
+  try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+  $runs | Where-Object { $_.databaseId -eq $id } | Select-Object -First 1
+}
 
-$notifyRun = Wait-Until { Get-LatestNotifyRun } -TimeoutSec 180 -DelaySec 3
+$notifyRun = $null
+if ($dispatchOk) {
+  $notifyRun = Wait-Until { Get-NotifyDispatchRun } -TimeoutSec 180 -DelaySec 3
+} else {
+  # Fallback: pick newest notify run after gate start time (workflow_run path), but this is non-deterministic
+  function Get-AnyRecentNotifyRun {
+    $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 20
+    $runs = $null; try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+    $runs | Where-Object { [datetime]$_.createdAt -ge $startAt } | Sort-Object createdAt -Descending | Select-Object -First 1
+  }
+  $notifyRun = Wait-Until { Get-AnyRecentNotifyRun } -TimeoutSec 180 -DelaySec 3
+}
+
 if (-not $notifyRun) { throw 'Notify run not found' }
 
 Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
 $notifyFinal = Wait-Until {
-  $r = Get-LatestNotifyRun
-  if ($r -and $r.status -eq 'completed') { $r } else { $null }
+
 } -TimeoutSec $TimeoutNotifySec -DelaySec 3
 if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
 
-$notifyTrigger = if ($dispatchOk) { 'dispatch' } else { 'workflow_run' }
+
 
 # Also attempt to find a workflow_run-triggered notify that is not the dispatch one (best-effort)
 $wrCandidate = $null
@@ -124,34 +144,16 @@ try {
     $lines = $log -split "`n"
     $tail = if ($lines.Length -gt 120) { $lines[(-120)..(-1)] } else { $lines }
     $tail | ForEach-Object { Write-Host $_ }
-    # Save to file
-    $outDir = Join-Path $PWD 'path_issues'
-    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    $tail | Out-File -FilePath (Join-Path $outDir 'notify_e2e_log.txt') -Encoding utf8 -Append
-    # Extract Telegram HTTP code if present
-    $tgLine = ($lines | Where-Object { $_ -match 'Telegram HTTP=' } | Select-Object -Last 1)
-    if ($tgLine) {
-      $m = [regex]::Match($tgLine, 'Telegram HTTP=(\d+)')
-      if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
-    }
+
     $script:logCount = $lines.Length
   }
 } catch {
   Write-Warning $_
 }
 
-Write-Host "--- gate-alert issues (latest) ---"
+Write-Host "--- fallback issues (search by run id or source) ---"
 try {
-  $issuesJson = & gh issue list --label gate-alert --state all --limit 5 --json number,title,url,createdAt,state
-  $issues = $issuesJson | ConvertFrom-Json
-  if ($issues) { $issues | Format-Table number,title,state,createdAt,url -AutoSize | Out-String | Write-Host }
-  $issueRecent = $null
-  if ($issues) {
-    $tenMinAgo = (Get-Date).AddMinutes(-10)
-    $issueRecent = $issues | Where-Object { [datetime]$_.createdAt -ge $tenMinAgo } | Select-Object -First 1
-  }
-} catch {
-  Write-Warning $_
+
 }
 
 # Persist JSON result per scenario (append to array)
