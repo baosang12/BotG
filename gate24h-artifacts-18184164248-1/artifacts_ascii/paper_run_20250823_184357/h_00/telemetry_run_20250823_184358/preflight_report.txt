@@ -1,0 +1,5 @@
+SMOKE_ARTIFACT_PATH=.\artifacts_ascii\paper_run_20250823_184357\h_00\telemetry_run_20250823_184358
+git branch: preflight-fix-orphan-20250823_1100 @ 1594c79
+requests=1218, fills=1098, fill_rate=0.9015
+closed_trades_count=547, total_pnl=413.003000000073
+orphans_fills=4

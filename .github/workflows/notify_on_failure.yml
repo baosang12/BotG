@@ -108,3 +108,9 @@ jobs:
           done
           echo "---- NOTIFY SUMMARY END ----"
 
+      - name: Upload notify_e2e_proof.json (if exists)
+        uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('path_issues/notify_e2e_proof.json') != '' }}
+        with:
+          name: notify_e2e_proof
+          path: path_issues/notify_e2e_proof.json

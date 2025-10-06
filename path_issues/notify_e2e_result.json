@@ -32,5 +32,6 @@
         "telegram_status":  "unknown",
         "log_lines":  66,
         "passed":  false
+
     }
 ]

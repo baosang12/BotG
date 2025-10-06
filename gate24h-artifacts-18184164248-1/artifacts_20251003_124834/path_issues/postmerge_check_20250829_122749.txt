@@ -1,0 +1,8 @@
+ts=20250829_122749
+cwd=D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG
+current_branch=ci/recon-validate-smoke
+origin/main=d9d82f56a417ee345b4a6c95fb87b6fa9683c2aa
+found_pr_17_in_log=YES: a23e65c Ci/recon validate smoke (#17)
+recent_merges:
+04e8114 Merge pull request #2 from baosang12/botg/automation/reconcile-streaming-20250821_084334
+c43c5fb Merge pull request #1 from baosang12/copilot/fix-1b1b6f67-0825-4994-a041-0728d53e7ff9

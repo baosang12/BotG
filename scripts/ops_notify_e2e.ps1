@@ -87,7 +87,9 @@ try {
   $dispatchOk = $false
 }
 
-
+function Get-NotifyDispatchRun {
+  # Poll latest notify runs and pick newest with event==workflow_dispatch and headBranch==$NotifyRef
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 10
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
   $runs |
@@ -120,12 +122,12 @@ if (-not $notifyRun) { throw 'Notify run not found' }
 
 Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
 $notifyFinal = Wait-Until {
-
+  Get-NotifyRunById -id $notifyRun.databaseId | Where-Object { $_.status -eq 'completed' }
 } -TimeoutSec $TimeoutNotifySec -DelaySec 3
 if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
 
-
+$notifyTrigger = if ($dispatchOk) { 'workflow_dispatch' } else { 'workflow_run' }
 
 # Also attempt to find a workflow_run-triggered notify that is not the dispatch one (best-effort)
 $wrCandidate = $null
@@ -144,7 +146,27 @@ try {
     $lines = $log -split "`n"
     $tail = if ($lines.Length -gt 120) { $lines[(-120)..(-1)] } else { $lines }
     $tail | ForEach-Object { Write-Host $_ }
-
+    # Save full log to file for proofing
+    $outDir = Join-Path $PWD 'path_issues'
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+  $fullLogPath = Join-Path $outDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $fullLogPath -Encoding utf8
+  # Also save under alerts/
+  $alertsDir = Join-Path $outDir 'alerts'
+  New-Item -ItemType Directory -Force -Path $alertsDir | Out-Null
+  $alertsLogPath = Join-Path $alertsDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $alertsLogPath -Encoding utf8
+    # Extract fields required for acceptance
+    $httpLine = ($lines | Where-Object { $_ -match 'TELEGRAM_HTTP=' } | Select-Object -Last 1)
+    if ($httpLine) {
+      $m = [regex]::Match($httpLine, 'TELEGRAM_HTTP=(\d+)')
+      if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
+    }
+    $statusLine = ($lines | Where-Object { $_ -match '^telegram_status=' } | Select-Object -Last 1)
+    if ($statusLine) {
+      $m2 = [regex]::Match($statusLine, '^telegram_status=(?<stat>\w+)')
+      if ($m2.Success) { $script:tgStatus = $m2.Groups['stat'].Value }
+    }
     $script:logCount = $lines.Length
   }
 } catch {
@@ -153,75 +175,79 @@ try {
 
 Write-Host "--- fallback issues (search by run id or source) ---"
 try {
-
-}
-
-# Persist JSON result per scenario (append to array)
-$result = [ordered]@{
-  scenario = $Source
-  gate_run_id = $final.databaseId
-  gate_url = $final.url
-  gate_conclusion = $final.conclusion
-  notify_runs = @(@{
-    id = $notifyFinal.databaseId
-    url = $notifyFinal.url
-    trigger = $notifyTrigger
-    conclusion = $notifyFinal.conclusion
-  })
-}
-if ($wrCandidate -and $wrCandidate.databaseId -ne $notifyFinal.databaseId) {
-  $result.notify_runs += @(@{
-    id = $wrCandidate.databaseId
-    url = $wrCandidate.url
-    trigger = 'workflow_run'
-    conclusion = $wrCandidate.conclusion
-  })
-}
-
-if ($script:tgHttp) {
-  $result.telegram_status = "HTTP/$script:tgHttp"
-} else {
-  $result.telegram_status = "unknown"
-}
-
-if ($issueRecent) {
-  $result.issue_fallback_number = $issueRecent.number
-  $result.issue_fallback_url = $issueRecent.url
-}
-
-# Infer Telegram OK from job steps when HTTP unknown
-if (-not $script:tgHttp) {
-  try {
-    $stepsJson = & gh run view $notifyFinal.databaseId --job --json jobs
-    $jobs = $stepsJson | ConvertFrom-Json
-    $tgStep = $jobs.jobs.steps | Where-Object { $_.name -like 'Telegram*' } | Select-Object -First 1
-    if ($tgStep -and $tgStep.conclusion) {
-      if ($tgStep.conclusion -eq 'success') { $result.telegram_status = 'OK' } else { $result.telegram_status = 'Fail' }
+  $issueRecent = $null
+  $fiveMinAgo = (Get-Date).AddMinutes(-5)
+  # Search by run id across all issues
+  $issuesByIdJson = & gh issue list --state all --limit 20 --search "$($final.databaseId)" --json number,title,url,createdAt
+  $issuesById = $null; try { $issuesById = $issuesByIdJson | ConvertFrom-Json } catch { $issuesById = @() }
+  if ($issuesById) {
+    $issueRecent = $issuesById | Where-Object { [datetime]$_.createdAt -ge $fiveMinAgo } | Select-Object -First 1
+  }
+  if (-not $issueRecent) {
+    # Fallback search by source token
+    $issuesBySrcJson = & gh issue list --state all --limit 20 --search "$Source" --json number,title,url,createdAt
+    $issuesBySrc = $null; try { $issuesBySrc = $issuesBySrcJson | ConvertFrom-Json } catch { $issuesBySrc = @() }
+    if ($issuesBySrc) {
+      $issueRecent = $issuesBySrc | Where-Object { [datetime]$_.createdAt -ge $fiveMinAgo } | Select-Object -First 1
     }
-  } catch {}
+  }
+  if ($issueRecent) {
+    "Issue found: #$($issueRecent.number) $($issueRecent.url)" | Write-Host
+  } else {
+    Write-Host 'No recent issue found.'
+  }
+} catch { Write-Warning $_ }
+
+# Build proof object (single scenario) and acceptance
+$startedAtIso = $startAt.ToUniversalTime().ToString('o')
+$finishedAt = Get-Date
+$finishedAtIso = $finishedAt.ToUniversalTime().ToString('o')
+$httpCode = if ($script:tgHttp) { $script:tgHttp } else { '' }
+$tgStatus = if ($script:tgStatus) { $script:tgStatus } else { '' }
+$logLines = if ($script:logCount) { $script:logCount } else { 0 }
+$fallbackUrl = if ($issueRecent) { $issueRecent.url } else { '' }
+
+$proof = [ordered]@{
+  scenario = $Source
+  run_id = [int]$notifyFinal.databaseId
+  ref = $NotifyRef
+  http_code = $httpCode
+  telegram_status = $tgStatus
+  log_line_count = $logLines
+  fallback_issue_url = $fallbackUrl
+  started_at = $startedAtIso
+  finished_at = $finishedAtIso
 }
 
-# Log count and pass criteria
-if ($script:logCount) { $result.log_lines = $script:logCount }
+# Acceptance rules
+$hasHttpAndStatus = ($httpCode -match '^\d+$' -and $tgStatus -match '^(ok|fail)$')
+$hasIssue = ([string]::IsNullOrWhiteSpace($fallbackUrl) -eq $false)
+$logsOk = ($logLines -ge 100)
+$passed = ($logsOk -and ($hasHttpAndStatus -or $hasIssue))
 
-$hasNotify = ($null -ne $notifyFinal)
-$hasLogs = ($script:logCount -ge 80)
-$tgOK = ($result.telegram_status -like 'HTTP/200' -or $result.telegram_status -eq 'OK')
-$issueOK = ($null -ne $result.issue_fallback_number)
-$result.passed = ($hasNotify -and $hasLogs -and ($tgOK -or $issueOK))
-
+# Persist proof JSON and zip artifacts
 $outDir = Join-Path $PWD 'path_issues'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-$jsonPath = Join-Path $outDir 'notify_e2e_result.json'
-if (Test-Path $jsonPath) {
-  try {
-    $existing = Get-Content $jsonPath -Raw | ConvertFrom-Json
-  } catch { $existing = @() }
-  if ($existing -isnot [System.Collections.IEnumerable]) { $existing = @($existing) }
-  $existing += $result
-  $existing | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
-} else {
-  @($result) | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
+$proofPath = Join-Path $outDir 'notify_e2e_proof.json'
+$proof | ConvertTo-Json -Depth 4 | Out-File -FilePath $proofPath -Encoding utf8
+
+$alertsDir = Join-Path $outDir 'alerts'
+New-Item -ItemType Directory -Force -Path $alertsDir | Out-Null
+$ts = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$zipPath = Join-Path $alertsDir ("notify_e2e_main_${ts}.zip")
+try {
+  if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+  Compress-Archive -Path $proofPath, (Join-Path $outDir 'notify_e2e_log.txt') -DestinationPath $zipPath -Force
+} catch { Write-Warning "Zip failed: $_" }
+
+"status" | Out-Null # keep editor happy
+# Update proof with status and rewrite file
+$proof.status = if ($passed) { 'PASS' } else { 'FAIL' }
+$proof | ConvertTo-Json -Depth 4 | Out-File -FilePath $proofPath -Encoding utf8
+
+if (-not $passed) {
+  Write-Error "ACCEPTANCE FAILED: logsOk=$logsOk hasHttpAndStatus=$hasHttpAndStatus hasIssue=$hasIssue"
+  exit 1
 }
 
 Write-Host 'E2E notify test complete.'

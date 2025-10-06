@@ -1,0 +1,6 @@
+{
+  "ts": "20250827_143911",
+  "acceptance": "PASS",
+  "notes": "All acceptance gates met (orphan_after==0, unmatched<=1%, PNGs present, percentiles keys exist)",
+  "pnl_sum": null
+}
