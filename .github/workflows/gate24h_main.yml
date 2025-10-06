@@ -30,10 +30,14 @@ on:
         description: 'Hours to run'
         required: true
         default: '24'
-      sim_enabled:
-        description: 'Run with SIM enabled (true/false)'
-        required: false
-        default: 'false'
+      sim_enabled:
+
+        description: 'Run with SIM enabled (true/false)'
+
+        required: false
+
+        default: 'false'
+
       source:
         description: 'Trigger source'
         required: false
@@ -67,8 +71,10 @@ jobs:
             if ($json.mode)   { "MODE=$($json.mode)"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
             if ($json.hours)  { "HOURS=$($json.hours)"  | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
             if ($json.source) { "SOURCE=$($json.source)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
-            if ($json.sim_enabled -ne $null) { "SIM_ENABLED=$($json.sim_enabled)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
-            if ($json.run_dir) { "RUN_DIR=$($json.run_dir)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+            if ($json.sim_enabled -ne $null) { "SIM_ENABLED=$($json.sim_enabled)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+
+            if ($json.run_dir) { "RUN_DIR=$($json.run_dir)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+
             Write-Host "Loaded dispatch config: $($cfg.Name)"
           } else {
             Write-Host 'No dispatch JSON found; fallback to workflow_dispatch inputs.'
@@ -79,71 +85,136 @@ jobs:
 
     
 
-    - name: Resolve inputs
-      id: resolve
-      shell: powershell
-      run: |
-        $ErrorActionPreference = 'Stop'
-        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-
-        $dispatchFile = 'path_issues/start_24h_command_ready.txt'
-        $mode       = $env:MODE
-        $hours      = $env:HOURS
-        $source     = $env:SOURCE
-        $simEnabled = $env:SIM_ENABLED
-        $runDir     = $env:RUN_DIR
-
-        if (-not $mode -or -not $hours -or -not $source -or -not $simEnabled -or -not $runDir) {
-          if ($env:GITHUB_EVENT_NAME -eq 'push' -and (Test-Path $dispatchFile)) {
-            if (-not $mode) {
-              $match = Select-String -Path $dispatchFile -Pattern '^mode=(.*)$'
-              if ($match) { $mode = $match.Matches[0].Groups[1].Value }
-            }
-            if (-not $hours) {
-              $match = Select-String -Path $dispatchFile -Pattern '^hours=(.*)$'
-              if ($match) { $hours = $match.Matches[0].Groups[1].Value }
-            }
-            if (-not $source) {
-              $match = Select-String -Path $dispatchFile -Pattern '^source=(.*)$'
-              if ($match) { $source = $match.Matches[0].Groups[1].Value }
-            }
-            if (-not $simEnabled) {
-              $match = Select-String -Path $dispatchFile -Pattern '^sim_enabled=(.*)$'
-              if ($match) { $simEnabled = $match.Matches[0].Groups[1].Value }
-            }
-            if (-not $runDir) {
-              $match = Select-String -Path $dispatchFile -Pattern '^run_dir=(.*)$'
-              if ($match) { $runDir = $match.Matches[0].Groups[1].Value }
-            }
-          }
-        }
-
-        if (-not $mode)   { $mode   = '${{ inputs.mode }}' }
-        if (-not $hours)  { $hours  = '${{ inputs.hours }}' }
-        if (-not $source) { $source = '${{ inputs.source }}' }
-        if (-not $simEnabled) { $simEnabled = '${{ inputs.sim_enabled }}' }
-
-        if (-not $hours) { $hours = '24' }
-        if (-not $mode) { $mode = 'paper' }
-        if (-not $source) { $source = 'manual' }
-        if (-not $simEnabled) { $simEnabled = 'false' }
-        if (-not $runDir) {
-          $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-          $runDir = "D:\botg\logs\gate24h_run_$timestamp"
-        }
-
-        "MODE=$mode"             | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "HOURS=$hours"           | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SOURCE=$source"         | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "SIM_ENABLED=$simEnabled" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "RUN_DIR=$runDir"         | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-        "mode=$mode"             | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "hours=$hours"           | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "source=$source"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "sim_enabled=$simEnabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "run_dir=$runDir"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
+    - name: Resolve inputs
+
+      id: resolve
+
+      shell: powershell
+
+      run: |
+
+        $ErrorActionPreference = 'Stop'
+
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+
+
+        $dispatchFile = 'path_issues/start_24h_command_ready.txt'
+
+        $mode       = $env:MODE
+
+        $hours      = $env:HOURS
+
+        $source     = $env:SOURCE
+
+        $simEnabled = $env:SIM_ENABLED
+
+        $runDir     = $env:RUN_DIR
+
+
+
+        if (-not $mode -or -not $hours -or -not $source -or -not $simEnabled -or -not $runDir) {
+
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and (Test-Path $dispatchFile)) {
+
+            if (-not $mode) {
+
+              $match = Select-String -Path $dispatchFile -Pattern '^mode=(.*)$'
+
+              if ($match) { $mode = $match.Matches[0].Groups[1].Value }
+
+            }
+
+            if (-not $hours) {
+
+              $match = Select-String -Path $dispatchFile -Pattern '^hours=(.*)$'
+
+              if ($match) { $hours = $match.Matches[0].Groups[1].Value }
+
+            }
+
+            if (-not $source) {
+
+              $match = Select-String -Path $dispatchFile -Pattern '^source=(.*)$'
+
+              if ($match) { $source = $match.Matches[0].Groups[1].Value }
+
+            }
+
+            if (-not $simEnabled) {
+
+              $match = Select-String -Path $dispatchFile -Pattern '^sim_enabled=(.*)$'
+
+              if ($match) { $simEnabled = $match.Matches[0].Groups[1].Value }
+
+            }
+
+            if (-not $runDir) {
+
+              $match = Select-String -Path $dispatchFile -Pattern '^run_dir=(.*)$'
+
+              if ($match) { $runDir = $match.Matches[0].Groups[1].Value }
+
+            }
+
+          }
+
+        }
+
+
+
+        if (-not $mode)   { $mode   = '${{ inputs.mode }}' }
+
+        if (-not $hours)  { $hours  = '${{ inputs.hours }}' }
+
+        if (-not $source) { $source = '${{ inputs.source }}' }
+
+        if (-not $simEnabled) { $simEnabled = '${{ inputs.sim_enabled }}' }
+
+
+
+        if (-not $hours) { $hours = '24' }
+
+        if (-not $mode) { $mode = 'paper' }
+
+        if (-not $source) { $source = 'manual' }
+
+        if (-not $simEnabled) { $simEnabled = 'false' }
+
+        if (-not $runDir) {
+
+          $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+
+          $runDir = "D:\botg\logs\gate24h_run_$timestamp"
+
+        }
+
+
+
+        "MODE=$mode"             | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        "HOURS=$hours"           | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        "SOURCE=$source"         | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        "SIM_ENABLED=$simEnabled" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        "RUN_DIR=$runDir"         | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+
+
+        "mode=$mode"             | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        "hours=$hours"           | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        "source=$source"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        "sim_enabled=$simEnabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        "run_dir=$runDir"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+
+
     - name: Create tracking issue
       id: issue
       uses: actions/github-script@v7
@@ -151,8 +222,10 @@ jobs:
         MODE: ${{ steps.resolve.outputs.mode }}
         HOURS: ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
-        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
+
+        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+
         SERVER_URL: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}
@@ -185,6 +258,20 @@ jobs:
         "STARTED_AT=$started" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         "started_at=$started" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+    - name: E2E notify sleep (notify_test only)
+      if: ${{ steps.resolve.outputs.source == 'notify_test' }}
+      shell: powershell
+      run: |
+        Write-Host "E2E notify: giữ 30s để đảm bảo in_progress cho kịch bản cancel" -ForegroundColor Yellow
+        Start-Sleep -Seconds 30
+
+    - name: E2E notify fail-fast (notify_test_fail only)
+      if: ${{ contains(steps.resolve.outputs.source, 'notify_test_fail') }}
+      shell: powershell
+      run: |
+        Write-Host "E2E notify: fail-fast để kích hoạt notify (source=notify_test_fail)" -ForegroundColor Yellow
+        exit 1
+
     - name: Run supervised 24h gate
       id: supervise
       shell: powershell
@@ -192,8 +279,10 @@ jobs:
         MODE:   ${{ steps.resolve.outputs.mode }}
         HOURS:  ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
-        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
+
+        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+
         ISSUE_NUMBER: ${{ steps.issue.outputs.result }}
         HB_MINUTES: ${{ vars.HB_MINUTES || '15' }}
         TEST_FORCE_FAIL: ${{ vars.TEST_FORCE_FAIL || '' }}
@@ -283,14 +372,22 @@ jobs:
       if: always()
       shell: powershell
       run: |
-        if ($env:RUN_DIR) {
-          $logDir = $env:RUN_DIR
-        } else {
-          $ts = Get-Date -Format "yyyyMMdd_HHmmss"
-          $logDir = "D:\botg\logs\gate24h_run_$ts"
-          "RUN_DIR=$logDir"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "run_dir=$logDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        }
+        if ($env:RUN_DIR) {
+
+          $logDir = $env:RUN_DIR
+
+        } else {
+
+          $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+
+          $logDir = "D:\botg\logs\gate24h_run_$ts"
+
+          "RUN_DIR=$logDir"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          "run_dir=$logDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+        }
+
         New-Item -ItemType Directory -Force -Path $logDir | Out-Null
         
         # Create run metadata
@@ -328,8 +425,10 @@ jobs:
         MODE: ${{ steps.resolve.outputs.mode }}
         HOURS: ${{ steps.resolve.outputs.hours }}
         SOURCE: ${{ steps.resolve.outputs.source }}
-        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
-        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+        SIM_ENABLED: ${{ steps.resolve.outputs.sim_enabled }}
+
+        RUN_DIR: ${{ steps.resolve.outputs.run_dir }}
+
       run: |
         $sentinelRoot = Join-Path $env:GITHUB_WORKSPACE 'path_issues/gate24h/sentinel'
         New-Item -ItemType Directory -Force -Path $sentinelRoot | Out-Null

@@ -59,13 +59,15 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             --data-urlencode text="$MSG" \
-            -d parse_mode=HTML >/dev/null
+            -d parse_mode=HTML)
+          echo "tg_http=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Telegram HTTP=$CODE"
 
       - name: Issue alert (fallback)
-        if: ${{ steps.tgram.outcome != 'success' }}
+        if: ${{ steps.tgram.outcome != 'success' || steps.tgram.outputs.tg_http != '200' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
