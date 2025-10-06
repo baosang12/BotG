@@ -2,7 +2,8 @@ param(
   [string]$Hours = '0.1',
   [string]$Mode = 'paper',
   [switch]$FailFast,
-  [int]$WaitTimeoutSec = 600
+  [int]$WaitTimeoutSec = 600,
+  [string]$NotifyRef = 'ci/notify-dispatch-e2e'
 )
 
 # E2E notify test driver
@@ -71,8 +72,8 @@ if (-not $final) { throw 'Gate run did not reach a terminal conclusion in time' 
 Write-Host "Gate final: id=$($final.databaseId) conc=$($final.conclusion) url=$($final.url)"
 
 # Dispatch notify workflow with explicit inputs
-Write-Host 'Dispatching notify_on_failure via workflow_dispatch...'
-& gh workflow run ".github/workflows/notify_on_failure.yml" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
+Write-Host "Dispatching notify_on_failure via workflow_dispatch on ref '$NotifyRef'..."
+& gh workflow run ".github/workflows/notify_on_failure.yml" --ref "$NotifyRef" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
 $notifyStart = Get-Date
 
 function Get-LatestNotifyRun {
