@@ -141,7 +141,7 @@ jobs:
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
       - name: Postrun collect and validate
-        if: always()
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
           & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR"
