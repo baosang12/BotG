@@ -77,11 +77,20 @@ jobs:
         if: ${{ steps.tgram.outputs.status != 'ok' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        continue-on-error: true
         run: |
           set -euo pipefail
           TITLE="Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
           BODY="${{ steps.vars.outputs.run_url }}"
-          gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l gate-alert
+          LABEL="gate-alert"
+          if gh label list --limit 100 | grep -q "^${LABEL}\\b"; then
+            echo "Label '${LABEL}' found. Creating labeled issue..."
+            gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l "$LABEL" || echo "Issue creation failed (labeled)."
+          else
+            echo "Label '${LABEL}' not found. Creating issue without label..."
+            gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" || echo "Issue creation failed (unlabeled)."
+          fi
 
       - name: Verbose summary (≥100 lines)
         shell: bash
