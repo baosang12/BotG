@@ -56,16 +56,25 @@ jobs:
             Conclusion: ${{ steps.vars.outputs.run_conc }}
             URL: ${{ steps.vars.outputs.run_url }}
         if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        shell: bash
         continue-on-error: true
         run: |
           set -euo pipefail
-          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            --data-urlencode text="$MSG" \
-            -d parse_mode=HTML >/dev/null
+          RESP_FILE="/tmp/tg_resp.json"
+          HTTP=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                 -d "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${MSG}" -d "parse_mode=HTML" || echo "000")
+          echo "http_code=$HTTP" >> "$GITHUB_OUTPUT"
+          if [ "$HTTP" = "200" ] && grep -q '"ok":true' "$RESP_FILE"; then
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+            echo "TELEGRAM_HTTP=200"
+          else
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "TELEGRAM_HTTP=$HTTP"
+            echo "Telegram response:" && sed -e '1,5!d' "$RESP_FILE" || true
+          fi
 
       - name: Issue alert (fallback)
-        if: ${{ steps.tgram.outcome != 'success' }}
+        if: ${{ steps.tgram.outputs.status != 'ok' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -73,3 +82,19 @@ jobs:
           TITLE="Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
           BODY="${{ steps.vars.outputs.run_url }}"
           gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l gate-alert
+
+      - name: Verbose summary (≥100 lines)
+        shell: bash
+        run: |
+          echo "---- NOTIFY SUMMARY BEGIN ----"
+          echo "repo=$GITHUB_REPOSITORY"
+          echo "run_id=${{ steps.vars.outputs.run_id }}"
+          echo "conclusion=${{ steps.vars.outputs.run_conc }}"
+          echo "url=${{ steps.vars.outputs.run_url }}"
+          # Derive telegram status/http with safe fallbacks (empty when step didn't run)
+          TSTAT="${{ steps.tgram.outputs.status }}"; [ -z "$TSTAT" ] && TSTAT="skipped"; echo "telegram_status=$TSTAT"
+          THTTP="${{ steps.tgram.outputs.http_code }}"; [ -z "$THTTP" ] && THTTP="NA"; echo "telegram_http=$THTTP"
+          for i in $(seq 1 90); do
+            echo "keepalive-$i ts=$(date -u +%FT%TZ) run=${{ steps.vars.outputs.run_id }}"
+          done
+          echo "---- NOTIFY SUMMARY END ----"
