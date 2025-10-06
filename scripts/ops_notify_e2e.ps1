@@ -134,6 +134,7 @@ try {
       $m = [regex]::Match($tgLine, 'Telegram HTTP=(\d+)')
       if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
     }
+    $script:logCount = $lines.Length
   }
 } catch {
   Write-Warning $_
@@ -186,7 +187,26 @@ if ($issueRecent) {
   $result.issue_fallback_url = $issueRecent.url
 }
 
-$result.passed = $true
+# Infer Telegram OK from job steps when HTTP unknown
+if (-not $script:tgHttp) {
+  try {
+    $stepsJson = & gh run view $notifyFinal.databaseId --job --json jobs
+    $jobs = $stepsJson | ConvertFrom-Json
+    $tgStep = $jobs.jobs.steps | Where-Object { $_.name -like 'Telegram*' } | Select-Object -First 1
+    if ($tgStep -and $tgStep.conclusion) {
+      if ($tgStep.conclusion -eq 'success') { $result.telegram_status = 'OK' } else { $result.telegram_status = 'Fail' }
+    }
+  } catch {}
+}
+
+# Log count and pass criteria
+if ($script:logCount) { $result.log_lines = $script:logCount }
+
+$hasNotify = ($null -ne $notifyFinal)
+$hasLogs = ($script:logCount -ge 80)
+$tgOK = ($result.telegram_status -like 'HTTP/200' -or $result.telegram_status -eq 'OK')
+$issueOK = ($null -ne $result.issue_fallback_number)
+$result.passed = ($hasNotify -and $hasLogs -and ($tgOK -or $issueOK))
 
 $outDir = Join-Path $PWD 'path_issues'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
