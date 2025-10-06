@@ -128,6 +128,12 @@ try {
     $outDir = Join-Path $PWD 'path_issues'
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     $tail | Out-File -FilePath (Join-Path $outDir 'notify_e2e_log.txt') -Encoding utf8 -Append
+    # Extract Telegram HTTP code if present
+    $tgLine = ($lines | Where-Object { $_ -match 'Telegram HTTP=' } | Select-Object -Last 1)
+    if ($tgLine) {
+      $m = [regex]::Match($tgLine, 'Telegram HTTP=(\d+)')
+      if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
+    }
   }
 } catch {
   Write-Warning $_
@@ -171,16 +177,12 @@ if ($wrCandidate -and $wrCandidate.databaseId -ne $notifyFinal.databaseId) {
   })
 }
 
-# Telegram status
-$tgStatus = $null
-try {
-  $stepsJson = & gh run view $notifyFinal.databaseId --job --json jobs
-  $jobs = $stepsJson | ConvertFrom-Json
-  $tgStep = $jobs.jobs.steps | Where-Object { $_.name -like 'Telegram*' } | Select-Object -First 1
-  if ($tgStep) { $tgStatus = $tgStep.conclusion }
-} catch {}
-
-$result.telegram_status = $tgStatus
+# Telegram status/code
+if ($script:tgHttp) {
+  $result.telegram_status = "HTTP/$script:tgHttp"
+} else {
+  $result.telegram_status = "unknown"
+}
 
 if ($issueRecent) {
   $result.issue_fallback_number = $issueRecent.number
@@ -192,6 +194,15 @@ $result.passed = $true
 $outDir = Join-Path $PWD 'path_issues'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $jsonPath = Join-Path $outDir 'notify_e2e_result.json'
-$result | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8 -Append
+if (Test-Path $jsonPath) {
+  try {
+    $existing = Get-Content $jsonPath -Raw | ConvertFrom-Json
+  } catch { $existing = @() }
+  if ($existing -isnot [System.Collections.IEnumerable]) { $existing = @($existing) }
+  $existing += $result
+  $existing | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
+} else {
+  @($result) | ConvertTo-Json -Depth 6 | Out-File -FilePath $jsonPath -Encoding utf8
+}
 
 Write-Host 'E2E notify test complete.'
