@@ -79,8 +79,19 @@ jobs:
             echo "Telegram response:" && sed -e '1,5!d' "$RESP_FILE" || true
           fi
 
+      - name: Dedupe: check existing alert issue
+        id: dedupe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
+        run: |
+          set -euo pipefail
+          cnt=$(gh issue list --search "in:title \"$TITLE\" state:open" --json number --limit 1 | jq 'length')
+          echo "exists=$cnt" >> "$GITHUB_OUTPUT"
+
       - name: Issue alert (fallback)
-        if: ${{ steps.tgram.outputs.status != 'ok' }}
+        if: ${{ steps.tgram.outputs.status != 'ok' && steps.dedupe.outputs.exists == '0' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ALERT_ASSIGNEES: ${{ steps.oncall.outputs.assignees }}
