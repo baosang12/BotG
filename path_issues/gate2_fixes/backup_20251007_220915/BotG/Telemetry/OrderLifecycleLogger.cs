@@ -159,12 +159,7 @@ namespace Telemetry
                     F(requestedVolume),
                     F(filledSize),
                     Escape(session),
-                    Escape(host),
-                    // Canonical timestamp aliases (now populated)
-                    Escape(orderId), // order_id (duplicate for compatibility)
-                    Escape(state.TsRequest ?? ""),
-                    Escape(state.TsAck ?? ""),
-                    Escape(state.TsFill ?? "")
+                    Escape(host)
                 );
                 lock (_lock)
                 {

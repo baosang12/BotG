@@ -22,7 +22,7 @@ namespace Telemetry
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "timestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure" + Environment.NewLine);
+                File.AppendAllText(_filePath, "timestamp,equity,balance,margin,free_margin,drawdown,R_used,exposure" + Environment.NewLine);
             }
         }
 
@@ -48,15 +48,10 @@ namespace Telemetry
                 double rUsed = 0.0;
                 double exposure = 0.0;
 
-                double openPnl = 0.0;  // TODO: aggregate from open positions
-                double closedPnl = 0.0; // TODO: from ClosedTradesWriter
-
                 var line = string.Join(",",
                     ts.ToString("o", CultureInfo.InvariantCulture),
                     equity.ToString(CultureInfo.InvariantCulture),
                     balance.ToString(CultureInfo.InvariantCulture),
-                    openPnl.ToString(CultureInfo.InvariantCulture),
-                    closedPnl.ToString(CultureInfo.InvariantCulture),
                     usedMargin.ToString(CultureInfo.InvariantCulture),
                     freeMargin.ToString(CultureInfo.InvariantCulture),
                     drawdown.ToString(CultureInfo.InvariantCulture),
