@@ -101,9 +101,6 @@ namespace RiskManager
 
             // Attempt auto-compute from symbol if settings did not provide a value
             TryAutoComputePointValueFromSymbol();
-
-            // Start risk snapshot timer at 60s period
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
         }
 
         /// <summary>
