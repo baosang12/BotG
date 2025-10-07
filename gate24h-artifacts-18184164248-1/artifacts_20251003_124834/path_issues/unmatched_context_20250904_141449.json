@@ -1,0 +1,77 @@
+﻿{
+    "timestamp":  "20250904_141449",
+    "unmatched_analysis":  [
+                               {
+                                   "closest_trade_closes_rows":  [
+
+                                                                 ],
+                                   "heuristic_checks":  {
+                                                            "partial_fills_sum_equals_order_qty":  "NA",
+                                                            "any_close_row_within_30s":  "NO",
+                                                            "match_by_normalized_id":  "NO",
+                                                            "likely_root_cause":  "missing_close"
+                                                        },
+                                   "order_row":  {
+                                                     "price":  100,
+                                                     "size":  1,
+                                                     "timestamp":  "2025-08-30T04:05:20.000Z",
+                                                     "symbol":  "EURUSD",
+                                                     "side":  "Buy"
+                                                 },
+                                   "partial_fills":  [
+
+                                                     ],
+                                   "order_id":  "ORD-UNMATCHED-1",
+                                   "notes":  "Không tìm thấy trade close nào trong khoảng 10s"
+                               },
+                               {
+                                   "closest_trade_closes_rows":  [
+
+                                                                 ],
+                                   "heuristic_checks":  {
+                                                            "partial_fills_sum_equals_order_qty":  "NA",
+                                                            "any_close_row_within_30s":  "NO",
+                                                            "match_by_normalized_id":  "YES",
+                                                            "likely_root_cause":  "id_encoding"
+                                                        },
+                                   "order_row":  {
+                                                     "price":  100.05,
+                                                     "size":  1,
+                                                     "timestamp":  "2025-08-30T04:05:21.000Z",
+                                                     "symbol":  "EURUSD",
+                                                     "side":  "Sell"
+                                                 },
+                                   "partial_fills":  [
+
+                                                     ],
+                                   "order_id":  "ORD-UNMATCHED-2",
+                                   "notes":  "Có thể do lỗi encoding trong order ID"
+                               },
+                               {
+                                   "closest_trade_closes_rows":  [
+
+                                                                 ],
+                                   "heuristic_checks":  {
+                                                            "partial_fills_sum_equals_order_qty":  "NO",
+                                                            "any_close_row_within_30s":  "YES",
+                                                            "match_by_normalized_id":  "NO",
+                                                            "likely_root_cause":  "partial_fill_gap"
+                                                        },
+                                   "order_row":  {
+                                                     "price":  100.1,
+                                                     "size":  1,
+                                                     "timestamp":  "2025-08-30T04:05:22.000Z",
+                                                     "symbol":  "EURUSD",
+                                                     "side":  "Buy"
+                                                 },
+                                   "partial_fills":  [
+                                                         {
+                                                             "fill_size":  0.5,
+                                                             "timestamp":  "2025-08-30T04:05:22.500Z"
+                                                         }
+                                                     ],
+                                   "order_id":  "ORD-MISSING-CLOSE-3",
+                                   "notes":  "Có partial fill nhưng không đầy đủ"
+                               }
+                           ]
+}

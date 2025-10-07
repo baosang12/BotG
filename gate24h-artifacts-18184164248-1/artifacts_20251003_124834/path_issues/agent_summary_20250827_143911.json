@@ -1,0 +1,10 @@
+{
+  "ts": "20250827_143911",
+  "branch": null,
+  "pushed": false,
+  "git_push_error": "fatal: not a git repository (or any of the parent directories): .git",
+  "files_committed": [],
+  "missing_artifacts": [],
+  "pr_url": "https://github.com/baosang12/BotG/compare/fix/postrun-20250827_143911-finalize?expand=1",
+  "status": "blocked_git"
+}

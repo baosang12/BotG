@@ -1,0 +1,37 @@
+﻿[
+    {
+        "scenario":  "notify_test",
+        "gate_run_id":  18271435765,
+        "gate_url":  "https://github.com/baosang12/BotG/actions/runs/18271435765",
+        "gate_conclusion":  "cancelled",
+        "notify_runs":  [
+                            {
+                                "conclusion":  "success",
+                                "url":  "https://github.com/baosang12/BotG/actions/runs/18271445936",
+                                "id":  18271445936,
+                                "trigger":  "dispatch"
+                            }
+                        ],
+        "telegram_status":  "unknown",
+        "log_lines":  66,
+        "passed":  false
+    },
+    {
+        "scenario":  "notify_test_fail",
+        "gate_run_id":  18271456813,
+        "gate_url":  "https://github.com/baosang12/BotG/actions/runs/18271456813",
+        "gate_conclusion":  "failure",
+        "notify_runs":  [
+                            {
+                                "conclusion":  "success",
+                                "url":  "https://github.com/baosang12/BotG/actions/runs/18271583391",
+                                "id":  18271583391,
+                                "trigger":  "dispatch"
+                            }
+                        ],
+        "telegram_status":  "unknown",
+        "log_lines":  66,
+        "passed":  false
+
+    }
+]

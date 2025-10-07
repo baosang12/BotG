@@ -3,7 +3,9 @@ param(
   [string]$Mode = 'paper',
   [switch]$FailFast,
   [int]$WaitTimeoutSec = 600,
-  [string]$NotifyRef = 'ci/notify-dispatch-e2e'
+  [string]$NotifyRef = 'main',
+  [string]$Source = 'notify_test',
+  [int]$TimeoutNotifySec = 600
 )
 
 # E2E notify test driver
@@ -30,9 +32,32 @@ function Wait-Until($ScriptBlock, [int]$TimeoutSec = 300, [int]$DelaySec = 5) {
   return $null
 }
 
+# Resilient watcher for a workflow run until it reaches a terminal conclusion
+function Wait-RunTerminal([string]$id, [int]$TimeoutSec = 1200, [int]$DelaySec = 10) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $last = $null
+  do {
+    try {
+      $json = gh run view $id --json status,conclusion,updatedAt,url 2>$null
+      if ($LASTEXITCODE -ne 0 -or -not $json) { Start-Sleep -Seconds 5; continue }
+      $last = $json | ConvertFrom-Json
+    } catch {
+      Start-Sleep -Seconds 5
+      continue
+    }
+    if ($last.status -in @('in_progress','queued','requested','waiting')) {
+      Start-Sleep -Seconds $DelaySec
+    }
+  } while ((Get-Date) -lt $deadline -and ($last -and ($last.status -in @('in_progress','queued','requested','waiting'))))
+  if (-not $last -or ($last.status -in @('in_progress','queued','requested','waiting'))) {
+    throw "Run timeout waiting"
+  }
+  return $last
+}
+
 Assert-GH
 
-$Source = if ($FailFast) { 'notify_test_fail' } else { 'notify_test' }
+if ($FailFast) { $Source = 'notify_test_fail' }
 
 Write-Host "Dispatching Gate24h (hours=$Hours mode=$Mode source=$Source)"
 & gh workflow run ".github/workflows/gate24h_main.yml" -f "hours=$Hours" -f "mode=$Mode" -f "source=$Source" | Write-Host
@@ -51,7 +76,7 @@ if (-not $gateRun) { throw 'No Gate24h run detected' }
 Write-Host "Gate run detected: id=$($gateRun.databaseId) status=$($gateRun.status) url=$($gateRun.url)"
 
 # If not fail-fast, wait until in_progress then cancel
-if (-not $FailFast) {
+if ($Source -eq 'notify_test') {
   Write-Host 'Waiting for gate run to enter in_progress...'
   $inprog = Wait-Until {
     $r = Get-LatestGateRun
@@ -71,37 +96,72 @@ $final = Wait-Until {
 if (-not $final) { throw 'Gate run did not reach a terminal conclusion in time' }
 Write-Host "Gate final: id=$($final.databaseId) conc=$($final.conclusion) url=$($final.url)"
 
-# Dispatch notify workflow with explicit inputs
+<#
+ Dispatch notify workflow with explicit inputs and deterministically lock to
+ the workflow_dispatch run on the requested ref.
+#>
 Write-Host "Dispatching notify_on_failure via workflow_dispatch on ref '$NotifyRef'..."
-$notifyStart = Get-Date
+$notifyDispatchAt = Get-Date
 $dispatchOk = $true
 try {
   & gh workflow run ".github/workflows/notify_on_failure.yml" --ref "$NotifyRef" -f "run_id=$($final.databaseId)" -f "conclusion=$($final.conclusion)" -f "url=$($final.url)" | Write-Host
 } catch {
-  Write-Warning "Dispatch failed (likely missing workflow_dispatch on default branch). Falling back to workflow_run listener..."
+  Write-Warning "Dispatch failed (likely missing workflow_dispatch on target ref). Falling back to workflow_run listener..."
   $dispatchOk = $false
 }
 
-function Get-LatestNotifyRun {
-  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url --limit 30
+function Get-NotifyDispatchRun {
+  # Poll latest notify runs and pick newest with event==workflow_dispatch and headBranch==$NotifyRef
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 10
   $runs = $null
   try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
-  $runs | Where-Object { [datetime]$_.createdAt -ge $notifyStart } | Sort-Object createdAt -Descending | Select-Object -First 1
+  $runs |
+    Where-Object { $_.event -eq 'workflow_dispatch' -and $_.headBranch -eq $NotifyRef -and [datetime]$_.createdAt -ge $notifyDispatchAt } |
+    Sort-Object createdAt -Descending |
+    Select-Object -First 1
 }
 
-# If dispatch failed, reset notifyStart to gate final time to catch the workflow_run-triggered notify
-if (-not $dispatchOk) { $notifyStart = $startAt }
+function Get-NotifyRunById([string]$id) {
+  $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 50
+  $runs = $null
+  try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+  $runs | Where-Object { ""+$_.databaseId -eq $id } | Select-Object -First 1
+}
 
-$notifyRun = Wait-Until { Get-LatestNotifyRun } -TimeoutSec 180 -DelaySec 3
+$notifyRun = $null
+if ($dispatchOk) {
+  $notifyRun = Wait-Until { Get-NotifyDispatchRun } -TimeoutSec 180 -DelaySec 3
+} else {
+  # Fallback: pick newest notify run after gate start time (workflow_run path), but this is non-deterministic
+  function Get-AnyRecentNotifyRun {
+    $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch,event --limit 20
+    $runs = $null; try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+    $runs | Where-Object { [datetime]$_.createdAt -ge $startAt } | Sort-Object createdAt -Descending | Select-Object -First 1
+  }
+  $notifyRun = Wait-Until { Get-AnyRecentNotifyRun } -TimeoutSec 180 -DelaySec 3
+}
+
 if (-not $notifyRun) { throw 'Notify run not found' }
 
 Write-Host "Waiting for notify run to complete: id=$($notifyRun.databaseId)"
-$notifyFinal = Wait-Until {
-  $r = Get-LatestNotifyRun
-  if ($r -and $r.status -eq 'completed') { $r } else { $null }
-} -TimeoutSec 240 -DelaySec 3
-if (-not $notifyFinal) { throw 'Notify run did not complete in time' }
+$notifyView = Wait-RunTerminal -id (""+$notifyRun.databaseId) -TimeoutSec $TimeoutNotifySec -DelaySec 10
+if (-not $notifyView) { throw 'Notify run did not complete in time' }
+# Re-fetch full view to include url and databaseId consistently
+$notifyFinalJson = gh run view (""+$notifyRun.databaseId) --json databaseId,status,conclusion,url 2>$null
+$notifyFinal = $notifyFinalJson | ConvertFrom-Json
 Write-Host "Notify final: id=$($notifyFinal.databaseId) conc=$($notifyFinal.conclusion) url=$($notifyFinal.url)"
+
+$notifyTrigger = if ($dispatchOk) { 'workflow_dispatch' } else { 'workflow_run' }
+
+# Also attempt to find a workflow_run-triggered notify that is not the dispatch one (best-effort)
+$wrCandidate = $null
+if ($dispatchOk) {
+  $wrCandidate = Wait-Until {
+    $runsJson = & gh run list --workflow ".github/workflows/notify_on_failure.yml" --json databaseId,status,conclusion,createdAt,url,headBranch --limit 50
+    $runs = $null; try { $runs = $runsJson | ConvertFrom-Json } catch { $runs = @() }
+    $runs | Where-Object { [datetime]$_.createdAt -ge $startAt } | Sort-Object createdAt -Descending | Select-Object -First 1
+  } -TimeoutSec 60 -DelaySec 3
+}
 
 Write-Host "--- Notify logs (tail 120) ---"
 try {
@@ -110,18 +170,108 @@ try {
     $lines = $log -split "`n"
     $tail = if ($lines.Length -gt 120) { $lines[(-120)..(-1)] } else { $lines }
     $tail | ForEach-Object { Write-Host $_ }
+    # Save full log to file for proofing
+    $outDir = Join-Path $PWD 'path_issues'
+    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+  $fullLogPath = Join-Path $outDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $fullLogPath -Encoding utf8
+  # Also save under alerts/
+  $alertsDir = Join-Path $outDir 'alerts'
+  New-Item -ItemType Directory -Force -Path $alertsDir | Out-Null
+  $alertsLogPath = Join-Path $alertsDir 'notify_e2e_log.txt'
+  $lines | Out-File -FilePath $alertsLogPath -Encoding utf8
+    # Extract fields required for acceptance
+    $httpLine = ($lines | Where-Object { $_ -match 'TELEGRAM_HTTP=' } | Select-Object -Last 1)
+    if ($httpLine) {
+      $m = [regex]::Match($httpLine, 'TELEGRAM_HTTP=(\d+)')
+      if ($m.Success) { $script:tgHttp = $m.Groups[1].Value }
+    }
+    $statusLine = ($lines | Where-Object { $_ -match '^telegram_status=' } | Select-Object -Last 1)
+    if ($statusLine) {
+      $m2 = [regex]::Match($statusLine, '^telegram_status=(?<stat>\w+)')
+      if ($m2.Success) { $script:tgStatus = $m2.Groups['stat'].Value }
+    }
+    $script:logCount = $lines.Length
   }
 } catch {
   Write-Warning $_
 }
 
-Write-Host "--- gate-alert issues (latest) ---"
+Write-Host "--- fallback issues (search by run id or source) ---"
 try {
-  $issuesJson = & gh issue list --label gate-alert --state all --limit 5 --json number,title,url,createdAt,state
-  $issues = $issuesJson | ConvertFrom-Json
-  if ($issues) { $issues | Format-Table number,title,state,createdAt,url -AutoSize | Out-String | Write-Host }
-} catch {
-  Write-Warning $_
+  $issueRecent = $null
+  $fiveMinAgo = (Get-Date).AddMinutes(-5)
+  # Search by run id across all issues
+  $issuesByIdJson = & gh issue list --state all --limit 20 --search "$($final.databaseId)" --json number,title,url,createdAt
+  $issuesById = $null; try { $issuesById = $issuesByIdJson | ConvertFrom-Json } catch { $issuesById = @() }
+  if ($issuesById) {
+    $issueRecent = $issuesById | Where-Object { [datetime]$_.createdAt -ge $fiveMinAgo } | Select-Object -First 1
+  }
+  if (-not $issueRecent) {
+    # Fallback search by source token
+    $issuesBySrcJson = & gh issue list --state all --limit 20 --search "$Source" --json number,title,url,createdAt
+    $issuesBySrc = $null; try { $issuesBySrc = $issuesBySrcJson | ConvertFrom-Json } catch { $issuesBySrc = @() }
+    if ($issuesBySrc) {
+      $issueRecent = $issuesBySrc | Where-Object { [datetime]$_.createdAt -ge $fiveMinAgo } | Select-Object -First 1
+    }
+  }
+  if ($issueRecent) {
+    "Issue found: #$($issueRecent.number) $($issueRecent.url)" | Write-Host
+  } else {
+    Write-Host 'No recent issue found.'
+  }
+} catch { Write-Warning $_ }
+
+# Build proof object (single scenario) and acceptance
+$startedAtIso = $startAt.ToUniversalTime().ToString('o')
+$finishedAt = Get-Date
+$finishedAtIso = $finishedAt.ToUniversalTime().ToString('o')
+$httpCode = if ($script:tgHttp) { $script:tgHttp } else { '' }
+$tgStatus = if ($script:tgStatus) { $script:tgStatus } else { '' }
+$logLines = if ($script:logCount) { $script:logCount } else { 0 }
+$fallbackUrl = if ($issueRecent) { $issueRecent.url } else { '' }
+
+$proof = [ordered]@{
+  scenario = $Source
+  run_id = ""+$notifyFinal.databaseId
+  ref = $NotifyRef
+  http_code = $httpCode
+  telegram_status = $tgStatus
+  log_line_count = $logLines
+  fallback_issue_url = $fallbackUrl
+  started_at = $startedAtIso
+  finished_at = $finishedAtIso
+}
+
+# Acceptance rules
+$hasHttpAndStatus = ($httpCode -match '^\d+$' -and $tgStatus -match '^(ok|fail)$')
+$hasIssue = ([string]::IsNullOrWhiteSpace($fallbackUrl) -eq $false)
+$logsOk = ($logLines -ge 100)
+$passed = ($logsOk -and ($hasHttpAndStatus -or $hasIssue))
+
+# Persist proof JSON and zip artifacts
+$outDir = Join-Path $PWD 'path_issues'
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$proofPath = Join-Path $outDir 'notify_e2e_proof.json'
+$proof | ConvertTo-Json -Depth 4 | Out-File -FilePath $proofPath -Encoding utf8
+
+$alertsDir = Join-Path $outDir 'alerts'
+New-Item -ItemType Directory -Force -Path $alertsDir | Out-Null
+$ts = (Get-Date).ToString('yyyyMMdd_HHmmss')
+$zipPath = Join-Path $alertsDir ("notify_e2e_main_${ts}.zip")
+try {
+  if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+  Compress-Archive -Path $proofPath, (Join-Path $outDir 'notify_e2e_log.txt') -DestinationPath $zipPath -Force
+} catch { Write-Warning "Zip failed: $_" }
+
+"status" | Out-Null # keep editor happy
+# Update proof with status and rewrite file
+$proof.status = if ($passed) { 'PASS' } else { 'FAIL' }
+$proof | ConvertTo-Json -Depth 4 | Out-File -FilePath $proofPath -Encoding utf8
+
+if (-not $passed) {
+  Write-Error "ACCEPTANCE FAILED: logsOk=$logsOk hasHttpAndStatus=$hasHttpAndStatus hasIssue=$hasIssue"
+  exit 1
 }
 
 Write-Host 'E2E notify test complete.'
