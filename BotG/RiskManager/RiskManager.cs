@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -13,7 +13,7 @@ using Telemetry; // added
 namespace RiskManager
 {
     /// <summary>
-    /// Triển khai IRiskManager để giám sát và kiểm soát rủi ro cho bot.
+    /// Tri?n khai IRiskManager d? gi�m s�t v� ki?m so�t r?i ro cho bot.
     /// </summary>
     public class RiskManager : IRiskManager, IModule
     {
@@ -113,6 +113,12 @@ namespace RiskManager
 
             // Attempt auto-compute from symbol if settings did not provide a value
             TryAutoComputePointValueFromSymbol();
+
+            // Initialize telemetry context (ensure run folder exists)
+            TelemetryContext.InitOnce();
+
+            // KICKOFF: Write immediate snapshot at startup to ensure >= 1 row even for short runs
+            PersistSnapshotIfAvailable();
 
             // Read risk-specific flush interval from environment or use default 60s
             int riskFlushSec = 60;
@@ -520,12 +526,12 @@ namespace RiskManager
 
         public void RunStressTests()
         {
-            // TODO: thực thi backtest/forward simulation offline
+            // TODO: th?c thi backtest/forward simulation offline
         }
 
         public void CheckAlerts()
         {
-            // TODO: email/SMS/Slack thông qua webhook
+            // TODO: email/SMS/Slack th�ng qua webhook
         }
 
         public void GenerateReports()
