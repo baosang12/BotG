@@ -46,8 +46,20 @@ namespace RiskManager
         {
             Initialize(new RiskSettings());
             TelemetryContext.InitOnce();
-            // Snapshot every FlushIntervalSeconds
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(TelemetryContext.Config.FlushIntervalSeconds), TimeSpan.FromSeconds(TelemetryContext.Config.FlushIntervalSeconds));
+            
+            // KICKOFF: Write immediate snapshot at startup
+            PersistSnapshotIfAvailable();
+            
+            // Read risk-specific flush interval from environment or use default 60s
+            int riskFlushSec = 60;
+            var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
+            if (int.TryParse(envRiskFlush, out var sec) && sec > 0)
+            {
+                riskFlushSec = sec;
+            }
+            
+            // Snapshot every riskFlushSec
+            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
         }
         void IModule.OnBar(IReadOnlyList<cAlgo.API.Bar> bars)
         {
@@ -102,8 +114,16 @@ namespace RiskManager
             // Attempt auto-compute from symbol if settings did not provide a value
             TryAutoComputePointValueFromSymbol();
 
-            // Start risk snapshot timer at 60s period
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+            // Read risk-specific flush interval from environment or use default 60s
+            int riskFlushSec = 60;
+            var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
+            if (int.TryParse(envRiskFlush, out var sec) && sec > 0)
+            {
+                riskFlushSec = sec;
+            }
+            
+            // Start risk snapshot timer
+            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
         }
 
         /// <summary>
