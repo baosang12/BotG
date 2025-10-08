@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -101,9 +101,6 @@ namespace RiskManager
 
             // Attempt auto-compute from symbol if settings did not provide a value
             TryAutoComputePointValueFromSymbol();
-
-            // Start risk snapshot timer at 60s period
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
         }
 
         /// <summary>
@@ -455,18 +452,10 @@ namespace RiskManager
         {
             try
             {
-                var info = _lastAccountInfo;
-                if (info == null)
+                if (_lastAccountInfo != null)
                 {
-                    // Stub AccountInfo to ensure 60s heartbeat even without updates
-                    info = new AccountInfo
-                    {
-                        Equity = _equityOverride ?? 10000.0,
-                        Balance = 10000.0,
-                        Margin = 0.0
-                    };
+                    TelemetryContext.RiskPersister?.Persist(_lastAccountInfo);
                 }
-                TelemetryContext.RiskPersister?.Persist(info);
             }
             catch { }
         }

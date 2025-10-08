@@ -1,23 +1,15 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace Telemetry
 {
-    internal class OrderLifecycleState
-    {
-        public long RequestEpochMs { get; set; }
-        public string? TsRequest { get; set; }
-        public string? TsAck { get; set; }
-        public string? TsFill { get; set; }
-    }
-
     public class OrderLifecycleLogger
     {
         private readonly string _filePath;
         private readonly object _lock = new object();
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, OrderLifecycleState> _orderStates = new System.Collections.Concurrent.ConcurrentDictionary<string, OrderLifecycleState>(StringComparer.OrdinalIgnoreCase);
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _requestEpochMs = new System.Collections.Concurrent.ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
         public OrderLifecycleLogger(string folder, string fileName)
         {
@@ -78,39 +70,18 @@ namespace Telemetry
                 var epoch = new DateTimeOffset(ts).ToUnixTimeMilliseconds();
                 double? slippage = (execPrice.HasValue && intendedPrice.HasValue) ? execPrice.Value - intendedPrice.Value : (double?)null;
 
-                // latency tracking + timestamp population
-                var tsIso = ts.ToString("o", CultureInfo.InvariantCulture);
+                // latency tracking based on first REQUEST time
                 long? latencyMs = null;
                 var st = (status ?? phase ?? "").ToUpperInvariant();
-                
-                var state = _orderStates.GetOrAdd(orderId, _ => new OrderLifecycleState());
-                
                 if (string.Equals(st, "REQUEST", StringComparison.OrdinalIgnoreCase))
                 {
-                    state.RequestEpochMs = epoch;
-                    state.TsRequest = tsIso;
+                    _requestEpochMs[orderId] = epoch;
                 }
-                else if (string.Equals(st, "ACK", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(st, "ACK", StringComparison.OrdinalIgnoreCase) || string.Equals(st, "FILL", StringComparison.OrdinalIgnoreCase) || string.Equals(st, "CANCEL", StringComparison.OrdinalIgnoreCase) || string.Equals(st, "REJECT", StringComparison.OrdinalIgnoreCase))
                 {
-                    state.TsAck = tsIso;
-                    if (state.RequestEpochMs > 0)
+                    if (_requestEpochMs.TryGetValue(orderId, out var reqEpoch))
                     {
-                        latencyMs = epoch - state.RequestEpochMs;
-                    }
-                }
-                else if (string.Equals(st, "FILL", StringComparison.OrdinalIgnoreCase))
-                {
-                    state.TsFill = tsIso;
-                    if (state.RequestEpochMs > 0)
-                    {
-                        latencyMs = epoch - state.RequestEpochMs;
-                    }
-                }
-                else if (string.Equals(st, "CANCEL", StringComparison.OrdinalIgnoreCase) || string.Equals(st, "REJECT", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (state.RequestEpochMs > 0)
-                    {
-                        latencyMs = epoch - state.RequestEpochMs;
+                        latencyMs = epoch - reqEpoch;
                     }
                 }
 
@@ -159,12 +130,7 @@ namespace Telemetry
                     F(requestedVolume),
                     F(filledSize),
                     Escape(session),
-                    Escape(host),
-                    // Canonical timestamp aliases (now populated)
-                    Escape(orderId), // order_id (duplicate for compatibility)
-                    Escape(state.TsRequest ?? ""),
-                    Escape(state.TsAck ?? ""),
-                    Escape(state.TsFill ?? "")
+                    Escape(host)
                 );
                 lock (_lock)
                 {
