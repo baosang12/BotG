@@ -34,6 +34,15 @@ namespace Telemetry
                         start_time_iso = DateTime.UtcNow.ToString("o"),
                         host = Environment.MachineName,
                         git_commit = commit,
+                        mode = cfg.Mode,
+                        hours = cfg.Hours,
+                        seconds_per_hour = cfg.SecondsPerHour,
+                        simulation = new
+                        {
+                            enabled = cfg.UseSimulation,
+                            fill_probability = cfg.Simulation?.FillProbability,
+                            simulate_partial_fills = cfg.Simulation?.SimulatePartialFills
+                        },
                         config_snapshot = new
                         {
                             simulation = new

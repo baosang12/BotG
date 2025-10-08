@@ -24,7 +24,7 @@ namespace Telemetry
         // write runtime files inside runDir, but keep RiskSnapshot in base folder for continuity
         OrderLogger = new OrderLifecycleLogger(runDir, "orders.csv");
         ClosedTrades = new ClosedTradesWriter(runDir);
-        RiskPersister = new RiskSnapshotPersister(Config.LogPath, Config.RiskSnapshotFile);
+        RiskPersister = new RiskSnapshotPersister(runDir, Config.RiskSnapshotFile);
         Collector = new TelemetryCollector(runDir, Config.TelemetryFile, Config.FlushIntervalSeconds);
                 _initialized = true;
             }
