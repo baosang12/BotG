@@ -1,0 +1,18 @@
+{
+    "host":  "DESKTOP-584MV4B",
+    "artifact_path":  ".\\artifacts_ascii\\telemetry_run_20250823_093147",
+    "start_time_iso":  "2025-08-23T02:31:47.9799138Z",
+    "config_snapshot":  {
+                            "simulation":  {
+                                               "fill_probability":  1
+                                           },
+                            "config_path":  "",
+                            "execution":  {
+                                              "fee_per_trade":  0,
+                                              "fee_percent":  0,
+                                              "spread_pips":  0
+                                          }
+                        },
+    "git_commit":  "313a97c178c012d63b12240ea72d930b9031224a",
+    "run_id":  "b6932c26-4d66-4f55-87cc-a110c0448f17"
+}

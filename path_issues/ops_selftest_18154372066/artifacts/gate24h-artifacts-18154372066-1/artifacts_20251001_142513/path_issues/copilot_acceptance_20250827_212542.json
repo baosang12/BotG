@@ -1,0 +1,11 @@
+﻿{
+    "build":  "UNKNOWN",
+    "smoke":  "PASS",
+    "reconstruct":  "PASS",
+    "logging":  "PASS",
+    "fill_rate":  100,
+    "orphan_after":  0,
+    "unmatched":  0,
+    "requests":  2,
+    "logging_complete_rate":  100
+}

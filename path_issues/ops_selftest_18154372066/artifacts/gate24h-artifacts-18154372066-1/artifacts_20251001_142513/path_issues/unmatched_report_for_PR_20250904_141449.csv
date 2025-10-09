@@ -1,0 +1,4 @@
+﻿order_id,symbol,order_time,size,price,likely_root_cause,suggested_fix
+ORD-UNMATCHED-1,EURUSD,2025-08-30T04:05:20.000Z,1,100.0000,missing_close,"Enable additional flush on close writes + increase telemetry flush frequency"
+ORD-UNMATCHED-2,EURUSD,2025-08-30T04:05:21.000Z,1,100.0500,id_encoding,"Change logger to write IDs with ASCII-safe normalized encoding"
+ORD-MISSING-CLOSE-3,EURUSD,2025-08-30T04:05:22.000Z,1,100.1000,partial_fill_gap,"Change reconstruct to aggregate partial fills and tolerate small rounding"

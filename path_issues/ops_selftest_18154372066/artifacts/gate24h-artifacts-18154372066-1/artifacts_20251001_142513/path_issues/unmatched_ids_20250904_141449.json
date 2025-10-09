@@ -1,0 +1,13 @@
+﻿{
+    "total_matched":  22,
+    "source_dataset":  "path_issues/orders_ascii.csv + closed_trades_fifo_reconstructed_20250830_110506.csv",
+    "timestamp":  "20250904_141449",
+    "total_unmatched":  3,
+    "analysis_type":  "synthetic_demo",
+    "unmatched_ids":  [
+                          "ORD-UNMATCHED-1",
+                          "ORD-UNMATCHED-2",
+                          "ORD-MISSING-CLOSE-3"
+                      ],
+    "total_orders":  22
+}

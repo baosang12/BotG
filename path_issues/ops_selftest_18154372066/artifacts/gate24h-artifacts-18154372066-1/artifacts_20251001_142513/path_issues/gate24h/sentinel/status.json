@@ -1,0 +1,11 @@
+﻿{
+    "mode":  "paper",
+    "gate":  "Gate2-24h",
+    "run_id":  "18154372066",
+    "run_attempt":  "1",
+    "status":  "success",
+    "started_at":  "2025-10-01T07:09:52Z",
+    "finished_at":  "2025-10-01T07:25:11Z",
+    "heartbeat_count":  "__SET_BY_MONITOR__",
+    "artifact_name":  "gate24h-artifacts-18154372066-1"
+}

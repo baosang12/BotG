@@ -1,0 +1,50 @@
+﻿e98c39329af64d1178a57cc8eda3298b33e0a33a|BotG Dev|botg@example.com|Wed Aug 27 16:42:14 2025 +0700|ci: publish required 'CI - build & test' status for branch protection
+ecff7313d4e569fdc053834371cfe9d111b40b3c|BotG Dev|botg@example.com|Wed Aug 27 15:18:23 2025 +0700|chore(postrun): add PR body + checklist and packaged artifacts for review
+96f5a5a6b75de78a4773d50a19514d4ca723654d|BotG Dev|botg@example.com|Wed Aug 27 14:17:47 2025 +0700|tools: ReconstructClosedTrades header-aware parsing + robust fill detection; postrun artifacts updated (20250827_141746)
+39588d174a55dfc2b4ae4d1405ee882ebad5f3b9|BotG Dev|botg@example.com|Wed Aug 27 14:12:16 2025 +0700|postrun: reconstruct+analyze with richer orders.csv; update artifacts+zip (20250827_141215)
+954006249d0547943c41819b559281416a4a4c74|BotG Dev|botg@example.com|Wed Aug 27 14:03:05 2025 +0700|chore(postrun): make analysis resilient to simple orders.csv; add fallback artifacts
+bc03f2dc370cfece86f7999d0060867118f75d24|BotG Dev|botg@example.com|Wed Aug 27 13:50:15 2025 +0700|fix(postrun): reconcile PnL, slippage/latency analysis + plots, runbook & CI; minor logging patch (if applied)
+a48c07888f214f96debcf01a43918ab47f05f429|BotG Dev|botg@example.com|Wed Aug 27 09:24:32 2025 +0700|chore(smoke): collect artifacts from latest run dir and include run_metadata/trade_closes
+82df4588c5737900ddccdb4ccda7a12fa436e332|BotG Dev|botg@example.com|Mon Aug 25 13:22:52 2025 +0700|gitignore: ignore scripts/artifacts_ascii generated files
+a220bd72c79cb3159783c84f96a6a3cb298d600f|BotG Dev|botg@example.com|Mon Aug 25 13:21:40 2025 +0700|chore: remove generated scripts/artifacts_ascii from git index
+392bcd330fc8aa8ce60b5020efc92378809f186b|BotG Dev|botg@example.com|Mon Aug 25 13:21:37 2025 +0700|scripts: remove hard-coded OneDrive paths; use PSScriptRoot for portability in update_host_config and paper runner
+1f866a17085bac6eb6d9d13aa51668fff6edc1fd|BotG Dev|botg@example.com|Mon Aug 25 12:25:46 2025 +0700|chore: add health_check report for compressed smoke (20250825_122019)
+80cfa5b608ee7a3aa3d9d950de3f9551e339ea9a|BotG Dev|botg@example.com|Mon Aug 25 11:28:17 2025 +0700|ci: harden preflight health check (Join-Path safety, repo-root artifacts_ascii, reconstruct tool detection)
+4ae97c953c0aa193a557793c9fa7a066c901ddc2|BotG Dev|botg@example.com|Mon Aug 25 11:16:17 2025 +0700|chore(tasks,health): VS Code tasks + preflight ProcId optional; realtime hardening helpers
+423c604e58738e2e51fff846108d6d5e4e35d010|BotG Dev|botg@example.com|Sun Aug 24 21:09:27 2025 +0700|ci(smoke-run): use hardened ci_smoke_test wrapper, fix inputs.default and outputs wiring, and robust artifact uploads
+3b9a0f6708eb59457abf027852aa7640bad45ea5|BotG Dev|botg@example.com|Sun Aug 24 20:54:44 2025 +0700|ci(smoke): fix Quick Smoke switch binding by passing -GeneratePlots as a bare switch; use pwsh with explicit arg array
+f08d5be56d737ab41389b0d0110312841f52720e|BotG Dev|botg@example.com|Sun Aug 24 20:40:45 2025 +0700|ci: Quick Smoke uses -UseSimulation for deterministic 60s run
+3a4ab5c9de1f9e8517f1a01a947092ccae54a942|BotG Dev|botg@example.com|Sun Aug 24 20:30:24 2025 +0700|Merge remote-tracking branch 'origin/main' into dev/smoke-hardening-GitHubCopilot-20250824_194048
+b4ea8be194de638a8490e9776c1cc29205cfcd73|BotG Dev|botg@example.com|Sun Aug 24 20:29:40 2025 +0700|ci: harden Quick Smoke to also gate on reconstruct orphan_after==0 and tolerate missing zip; keep artifact_dir output
+9cde2b52fb7c5b31b84d211b01f4787c4c9fbfd6|BotG Dev|botg@example.com|Sun Aug 24 20:08:04 2025 +0700|ci(smoke): run smoke-fast on PRs to main/dev; gate on reconstruct orphan_after == 0; fix PR helper base selection and gh quoting
+8c43d38b725e928dcc0d37ff20dae9bb7f7db1c3|BotG Dev|botg@example.com|Sun Aug 24 19:40:49 2025 +0700|feat(smoke): harden realtime: daemon quoting + atomic copy-back sentinel; recovery sentinel; health_check cleanup
+21937fc1ea4dd5088d7a54a802ee05a637e6485d|BotG Dev|botg@example.com|Sun Aug 24 11:40:56 2025 +0700|Scripts: add run_two_smokes_and_report.ps1 for compressed+realtime runs; CI: add smoke-on-pr workflow to attach artifacts; Docs: add PR checklist template
+8a718431f4b953d0d1dfa6ff7dabe321bcf77b91|BotG Dev|botg@example.com|Sun Aug 24 11:35:16 2025 +0700|Telemetry: merge provided 'extra' fields into existing run_metadata.json to persist sim_seed and other reproducibility data; no functional behavior change to pipeline
+0e7abc013401484559ee9b7eb552b01f56fa4d4b|BotG Dev|botg@example.com|Sun Aug 24 09:58:49 2025 +0700|feat(smoke): enrich run_metadata keys and reconstruct report; add GracefulShutdownWaitSeconds param to smoke script; exit code 2 on reconstruct orphans
+1594c798e6c526820e355a4bdf72a0fcb9a7b98b|BotG Dev|botg@example.com|Sat Aug 23 14:02:03 2025 +0700|chore(pulse): add DrainSeconds param and pwsh->powershell fallback; pass drain to run_smoke
+d51615db80d1e71082abb19d341c8360034b8e8e|BotG Dev|botg@example.com|Sat Aug 23 14:00:27 2025 +0700|feat(wrapper): add 4h simulation paper-run orchestrator with orphan auto-fix and final report
+2e8cd5d87dd0b1864d11c70f3c21171f922511c5|BotG Dev|botg@example.com|Sat Aug 23 13:31:36 2025 +0700|chore(pr): update PR body with quick-smoke results, reconcile summary, acceptance checklist
+c89be750efdb858549e32d1b5b66856c22307729|BotG Dev|botg@example.com|Sat Aug 23 13:23:10 2025 +0700|fix(preflight): add 60s quick smoke in CI, drain wiring in CI wrapper, dedupe paper-pulse
+acd8a27e682b35ff40781074877741156ceb9228|BotG Dev|botg@example.com|Sat Aug 23 10:46:27 2025 +0700|smoke/preflight: fix non-ASCII artifact paths in wrapper; ensure reconcile_report.json and preflight_report.txt; add make_closes --artifact; improve drain; docs/logs
+8c6bbc669578aefdadc994b113d9523d0dfb4645|BotG Dev|botg@example.com|Sat Aug 23 10:22:51 2025 +0700|ci(workflows): add paper-pulse workflow and pass DrainSeconds in smoke
+af676b5eb11a70e414d664ef1947d90269af2abf|BotG Dev|botg@example.com|Sat Aug 23 10:21:08 2025 +0700|fix(preflight): add DrainSeconds to smoke, flush FileStream, harness drain to prevent orphan fills; plots tool
+43d699540d7a3bcd78bfb5c1f9bd519ad96d38ec|BotG Dev|botg@example.com|Sat Aug 23 09:58:46 2025 +0700|fix(preflight): add DrainSeconds to smoke, graceful drain in Harness, flush CSV writes, plots tool, CI updates
+131927052f2cfcc8a5879694f528e312bde409cf|BotG Dev|botg@example.com|Sat Aug 23 09:37:15 2025 +0700|chore(preflight): auto-drain to resolve orphan fills and emit preflight_report.txt
+313a97c178c012d63b12240ea72d930b9031224a|BotG Dev|botg@example.com|Sat Aug 23 09:30:52 2025 +0700|chore: preflight auto-fix bootstrap: add smoke/reconcile/analyzer tooling, telemetry writers, and configs
+966df128b61980c199225199f3bade0dc2744e72|BotG Dev|botg@example.com|Fri Aug 22 16:19:52 2025 +0700|ci(smoke): add 60m smoke workflow (simulate), fix duration passing, add watcher
+87e1af82289f76d0c5dddea197ed7f350b4b1c57|baosang12|baosang.qh@gmail.com|Fri Aug 22 15:03:03 2025 +0700|ci: fix GitHub Actions by installing .NET 6/9 and pin ubuntu-22.04 (#9)
+824b60b3b2f083103bb52a2d7195a7dfaaaf3718|BotG Dev|botg@example.com|Fri Aug 22 14:52:10 2025 +0700|ci: replace corrupted workflow with clean windows-only CI and manual dispatch
+4561936c5ff8d258297ae40e06c442324fce08eb|BotG Dev|botg@example.com|Fri Aug 22 14:32:45 2025 +0700|ci: resolve CI workflow conflict; windows-only, add workflow_dispatch, Debug build/test
+a9c2b5a1461ec180bb34e02b59b70266fc87ed19|BotG Dev|botg@example.com|Fri Aug 22 14:23:42 2025 +0700|chore(ci): nudge to trigger CI rerun
+68daaed6536ed6bcb463ce396fc8f5aef1a2cbd5|BotG Dev|botg@example.com|Fri Aug 22 13:54:02 2025 +0700|ci: run only on windows-latest for now; revisit linux vstest
+6caa5b5ca7eaeb972846a37879c0f094415c0d12|BotG Dev|botg@example.com|Fri Aug 22 13:52:21 2025 +0700|ci: align build/test to Debug and allow test to build
+480552d206987002641b003bc2286e53f9c18d5e|BotG Dev|botg@example.com|Fri Aug 22 13:40:02 2025 +0700|docs(ci): add PR body for CI fix
+cab591f154b31f028fdd18ef52d36b78915c63a5|baosang12|baosang.qh@gmail.com|Fri Aug 22 13:39:05 2025 +0700|ci: install .NET 6 and 9; pin ubuntu-22.04; add diagnostics; fail on test errors (#8)
+badf031b34f3265906035898a1cc9c0f1ec0ebe0|BotG Dev|botg@example.com|Fri Aug 22 13:22:49 2025 +0700|ci: install .NET 6 and 9; pin ubuntu-22.04; add diagnostics; fail on test errors
+65582e56753ce3b30bd658d9cc9e5472dd33c96c|baosang12|baosang.qh@gmail.com|Thu Aug 21 21:26:18 2025 +0700|ci: add GitHub Actions workflow for dotnet build and test (#6)
+fa8394c0c9e132d128c4e17dcf418ce7155c7355|BotG Dev|botg@example.com|Thu Aug 21 20:27:26 2025 +0700|chore(ps1): enforce UTF-8 console + file encoding to prevent mojibake in logs/PR content
+7b9a6664a55bfdc408f03aa5711d7c638b2ac444|baosang12|baosang.qh@gmail.com|Thu Aug 21 20:00:16 2025 +0700|chore(gitignore): ignore artifacts/logs, script reports, and PR NOOP trigger (#5)
+4c5a47c477a496d5c6f92c5ee3bc64a2567a788f|baosang12|baosang.qh@gmail.com|Thu Aug 21 19:40:54 2025 +0700|feat(telemetry): add streaming compute + artifact reconcile wrapper (safe chunking + backup) (#4)
+04e81146f97dca63fc916cf43e4de1b24e28dd2b|baosang12|baosang.qh@gmail.com|Thu Aug 21 18:42:18 2025 +0700|Merge pull request #2 from baosang12/botg/automation/reconcile-streaming-20250821_084334
+c43c5fb3ce63f70847135d836841c1c9801f50a1|baosang12|baosang.qh@gmail.com|Thu Aug 21 16:07:42 2025 +0700|Merge pull request #1 from baosang12/copilot/fix-1b1b6f67-0825-4994-a041-0728d53e7ff9
+9afbe2f2bb83da358c18757d7e898969fd06ac19|copilot-swe-agent[bot]|198982749+Copilot@users.noreply.github.com|Thu Aug 21 08:59:37 2025 +0000|feat: complete PR automation package with documentation and cleanup

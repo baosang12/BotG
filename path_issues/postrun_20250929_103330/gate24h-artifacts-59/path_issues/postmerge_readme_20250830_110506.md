@@ -1,0 +1,44 @@
+﻿# Weekend Full Readiness - 20250830_110506
+
+## Gates
+| Gate | Status |
+|------|--------|
+| Build | PASS |
+| Smoke | PASS |
+| Reconstruct | PASS |
+| Fill rate | N/A |
+| Logging | PASS |
+
+## Artifacts (checksummed)
+| Name | File | Size | mtime (UTC) | SHA256 |
+|------|------|------|-------------|--------|
+| build.log | build.log | 1578 | 2025-08-30T04:05:18.7339858Z | 059F2BEB66661C25258F44B31C0510136FDA3A66632B149A420D7157274D173C |
+| closed_trades_fifo.csv | closed_trades_fifo.csv | 41603 | 2025-08-30T04:07:18.9430300Z | 72E1D0406C7FDAC182D916BF350D7150107B495D916CF5277CF413B62D32A3D7 |
+| fillrate_by_hour.png | fillrate_by_hour.png | 5316 | 2025-08-27T07:04:24.3343173Z | A38B26D2E99EE641B7A1D8F2F2DFD89519BDEE0F038BE6DEE9F71F7026C39A57 |
+| fillrate_hourly.csv | fillrate_hourly.csv | 103 | 2025-08-27T06:48:40.6523286Z | 0BA2358871E1B28D95FE4435EC82ACE8BA42C79B762B20C6ED89943D99FDCA11 |
+| latency_percentiles.png | latency_percentiles.png | 5360 | 2025-08-27T07:04:24.3300403Z | B9BBD55294881EF9D522397ADB9E6AF829B016D575B0F39D77B06C09042CD4DA |
+| orders.csv | orders.csv | 241265 | 2025-08-30T04:07:19.1765828Z | 1DD3D5A3013F7B8EAEE3E3E32518ABBB15E916B948B4273A82ECB67D949C45CD |
+| orders_ascii.csv | orders_ascii.csv | 10927 | 2025-08-25T06:19:11.8005244Z | D68FEA28C52BD0DBE25A048959EE58C8EFE2818EEE1F6FCAB3E48C6EBD9D9EC1 |
+| risk_snapshots.csv | risk_snapshots.csv | 70 | 2025-08-30T04:05:21.6188042Z | C391F20B97B73D30B6E3D88DBBFAF0872C78CE500CD4AFE7AE29C6D76B317C90 |
+| slippage_hist.png | slippage_hist.png | 5176 | 2025-08-27T07:04:24.3097841Z | 649ECC508286137060C2260915394948CFB7B7CBC2E543CE25AB1D8ABAC8629F |
+| summary.json | summary.json | 1323 | 2025-08-30T04:07:20.1914522Z | 51A3CA06AC8CED410CB632C15FDA1E645705533862484837BA0F7F9B0E369B36 |
+| telemetry.csv | telemetry.csv | 3218 | 2025-08-30T04:07:17.6330929Z | 32C13A7FACB133E0CCA76D12D20FF3359BB047A92B41EF32559F7AA12D2F12A3 |
+| telemetry_run_20250827_200336.zip | telemetry_run_20250827_200336.zip | 48901 | 2025-08-27T13:05:39.9629432Z | 3F88D20B0AF48EC6A2FBBFC4C13F5D8FE238E608868E538476BEB52BF29DA6D1 |
+| telemetry_run_20250830_110515.zip | telemetry_run_20250830_110515.zip | 45145 | 2025-08-30T04:07:20.0874469Z | BEBB22B4B8DB632A35D07BE48AD50B7323802167527136ACBCBE1CA578AA3B46 |
+| top_slippage.csv | top_slippage.csv | 116 | 2025-08-27T06:48:40.6523286Z | D02A1184FB37B6301F3BC7EC76F1F307770E47B624C7CFD2832E2A8DB2C79550 |
+| trade_closes.log | trade_closes.log | 21054 | 2025-08-30T04:07:18.9430300Z | 7A247F6819BEA0F31E7E43CA0D2AEF954448DE2B8730852618C42217AC7728BD |
+
+## Copilot Readiness Statement
+Based on the exhaustive checks run at 20250830_110506, all acceptance gates passed. To the maximum testable extent in this environment (short smoke + reconstruct + analyzer + build/tests), the system is READY for a 24h supervised paper run.
+
+## Caveats (not a 100% mathematical guarantee)
+- External broker/live environment not tested
+- Production-scale latency not measured
+- Market halts/outages not simulated
+- Extreme-volatility slippage untested
+
+## Next action
+Run 24h supervised on Monday at operator-chosen time.
+
+## One-line
+KET QUA: weekend full-check: PASS | readiness: READY | Confidence: HIGH | Caveats: External broker/live environment not tested; Production-scale latency not measured; Market halts/outages not simulated; Extreme-volatility slippage untested

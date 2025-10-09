@@ -1,0 +1,10 @@
+{
+    "hours":  1,
+    "seconds_per_hour":  300,
+    "config":  {
+                   "fee_per_trade":  0.02,
+                   "fill_prob":  0.9
+               },
+    "artifact":  ".\\artifacts_ascii\\paper_run_20250823_184327",
+    "start_time_iso":  "2025-08-23T11:43:27.6186290Z"
+}

@@ -1,0 +1,20 @@
+﻿{
+    "snapshot_path":  "path_issues\\operator_snapshot_20250902_143435.json",
+    "uploaded_files":  [
+                           {
+                               "size_bytes":  1157,
+                               "name":  "postrun_artifacts_20250902_135022.zip"
+                           },
+                           {
+                               "name":  "postrun_artifacts_checksums_20250902_134757.json"
+                           },
+                           {
+                               "name":  "postrun_summary_20250902_131029.json"
+                           }
+                       ],
+    "timestamp":  "2025-09-02T14:34:48Z",
+    "CI_status":  "SUCCESS",
+    "workflow_status":  "COMPLETED",
+    "release_tag":  "postrun-20250902_131029",
+    "release_url":  "https://github.com/baosang12/BotG/releases/tag/postrun-20250902_131029"
+}

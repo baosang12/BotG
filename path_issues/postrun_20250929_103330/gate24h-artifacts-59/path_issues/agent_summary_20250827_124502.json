@@ -1,0 +1,29 @@
+﻿{
+    "step":  "analyze",
+    "status":  "ok",
+    "artifacts":  [
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\slip_latency_percentiles.json",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\fillrate_hourly.csv",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\top_slippage.csv",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\fillrate_by_hour.png"
+                  ],
+    "notes":  "Derived from orders.csv (simple). Latency/slippage may be NaN due to missing columns."
+}
+{
+    "step":  "package",
+    "status":  "ok",
+    "artifacts":  [
+                      "D:\\OneDrive\\Ta?i li??u\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\postrun_artifacts_20250827_124502.zip"
+                  ],
+    "notes":  "Artifacts compressed."
+}
+{
+    "step":  "pngs",
+    "status":  "ok",
+    "artifacts":  [
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\slippage_hist.png",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\latency_percentiles.png",
+                      "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\fillrate_by_hour.png"
+                  ],
+    "notes":  "Created placeholders if missing"
+}

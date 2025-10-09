@@ -1,0 +1,118 @@
+﻿{
+    "ts":  "20250901_112841",
+    "weekend_readiness":  "READY",
+    "gates":  {
+                  "logging":  "PASS",
+                  "fill_rate":  "N/A",
+                  "build":  "PASS",
+                  "smoke":  "PASS",
+                  "reconstruct":  "PASS"
+              },
+    "artifacts":  [
+                      {
+                          "name":  "build.log",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\build.log",
+                          "size":  1578,
+                          "mtimeUtc":  "2025-09-01T04:29:03.2822781Z",
+                          "sha256":  "059F2BEB66661C25258F44B31C0510136FDA3A66632B149A420D7157274D173C"
+                      },
+                      {
+                          "name":  "closed_trades_fifo.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\closed_trades_fifo.csv",
+                          "size":  97336,
+                          "mtimeUtc":  "2025-09-01T04:31:03.6097876Z",
+                          "sha256":  "5AE14BFA37348CA1DA2D800067BA6AA59D9B6E11DC686B956A1122E735655F4A"
+                      },
+                      {
+                          "name":  "fillrate_by_hour.png",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\fillrate_by_hour.png",
+                          "size":  5316,
+                          "mtimeUtc":  "2025-08-27T07:04:24.3343173Z",
+                          "sha256":  "A38B26D2E99EE641B7A1D8F2F2DFD89519BDEE0F038BE6DEE9F71F7026C39A57"
+                      },
+                      {
+                          "name":  "fillrate_hourly.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\fillrate_hourly.csv",
+                          "size":  103,
+                          "mtimeUtc":  "2025-08-27T06:48:40.6523286Z",
+                          "sha256":  "0BA2358871E1B28D95FE4435EC82ACE8BA42C79B762B20C6ED89943D99FDCA11"
+                      },
+                      {
+                          "name":  "latency_percentiles.png",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\latency_percentiles.png",
+                          "size":  5360,
+                          "mtimeUtc":  "2025-08-27T07:04:24.3300403Z",
+                          "sha256":  "B9BBD55294881EF9D522397ADB9E6AF829B016D575B0F39D77B06C09042CD4DA"
+                      },
+                      {
+                          "name":  "orders.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\orders.csv",
+                          "size":  567041,
+                          "mtimeUtc":  "2025-09-01T04:31:03.6993241Z",
+                          "sha256":  "CDC69922C797913209989BB9A2EC06D59343A196E1B525AA877FBF5F1153D85F"
+                      },
+                      {
+                          "name":  "orders_ascii.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\orders_ascii.csv",
+                          "size":  10927,
+                          "mtimeUtc":  "2025-08-25T06:19:11.8005244Z",
+                          "sha256":  "D68FEA28C52BD0DBE25A048959EE58C8EFE2818EEE1F6FCAB3E48C6EBD9D9EC1"
+                      },
+                      {
+                          "name":  "risk_snapshots.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\risk_snapshots.csv",
+                          "size":  70,
+                          "mtimeUtc":  "2025-09-01T04:29:07.2786903Z",
+                          "sha256":  "C391F20B97B73D30B6E3D88DBBFAF0872C78CE500CD4AFE7AE29C6D76B317C90"
+                      },
+                      {
+                          "name":  "slippage_hist.png",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\slippage_hist.png",
+                          "size":  5176,
+                          "mtimeUtc":  "2025-08-27T07:04:24.3097841Z",
+                          "sha256":  "649ECC508286137060C2260915394948CFB7B7CBC2E543CE25AB1D8ABAC8629F"
+                      },
+                      {
+                          "name":  "summary.json",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\summary.json",
+                          "size":  1323,
+                          "mtimeUtc":  "2025-09-01T04:31:04.6350967Z",
+                          "sha256":  "F3ED7CC1138BC453866F6CD1C94A5CE617080D3189430DF6935AA3CE2E99CFE6"
+                      },
+                      {
+                          "name":  "telemetry.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\telemetry.csv",
+                          "size":  3243,
+                          "mtimeUtc":  "2025-09-01T04:31:03.2821742Z",
+                          "sha256":  "C9312C149B5238BCA770E5F96D4278F1D784160B3B0066266BA42A0FBF1D2C5E"
+                      },
+                      {
+                          "name":  "telemetry_run_20250827_200336.zip",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\telemetry_run_20250827_200336.zip",
+                          "size":  48901,
+                          "mtimeUtc":  "2025-08-27T13:05:39.9629432Z",
+                          "sha256":  "3F88D20B0AF48EC6A2FBBFC4C13F5D8FE238E608868E538476BEB52BF29DA6D1"
+                      },
+                      {
+                          "name":  "telemetry_run_20250901_112859.zip",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\telemetry_run_20250901_112859.zip",
+                          "size":  96943,
+                          "mtimeUtc":  "2025-09-01T04:31:04.5260674Z",
+                          "sha256":  "0566DF8B90500E0F0A579A061DD1E2BFDEC5C129EB7EFC3061A469BE488FB03E"
+                      },
+                      {
+                          "name":  "top_slippage.csv",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\top_slippage.csv",
+                          "size":  116,
+                          "mtimeUtc":  "2025-08-27T06:48:40.6523286Z",
+                          "sha256":  "D02A1184FB37B6301F3BC7EC76F1F307770E47B624C7CFD2832E2A8DB2C79550"
+                      },
+                      {
+                          "name":  "trade_closes.log",
+                          "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250901_112841\\trade_closes.log",
+                          "size":  48971,
+                          "mtimeUtc":  "2025-09-01T04:31:03.6111247Z",
+                          "sha256":  "0CD96CF9382915C86D0177BE01C5054C063D5429FD1FCDBC6FA533DCD2850037"
+                      }
+                  ]
+}
