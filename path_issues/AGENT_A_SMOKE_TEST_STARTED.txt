@@ -1,0 +1,63 @@
+﻿
+   AGENT A VALIDATION - 15-MINUTE SMOKE TEST TRIGGERED
+
+
+ PR #238 MERGED TO MAIN
+-------------------------
+Branch: chore/fix-risk-ledger-sync  main
+Commits merged:
+  - ab56f17: Agent A implementation (5 files)
+  - b2f2faf: Merge origin/main (conflict resolution)
+  - 7f057a8: Unicode encoding fix
+  - 6165dcc: Test skip fix
+
+Changes in main:
+   RiskSnapshotPersister.cs - open_pnl calculation + closed_pnl tracking
+   ClosedTradesWriter.cs - AddClosedPnl hook
+   ExecutionModule.cs - Fail-fast exceptions
+   config.runtime.json - Explicit Gate2 config
+   start_24h_command_ready.txt - hours=24
+
+ SMOKE TEST RUNNING
+---------------------
+Workflow: gate24h.yml
+Run ID: 18378165951
+URL: https://github.com/baosang12/BotG/actions/runs/18378165951
+
+Parameters:
+  - hours: 0.25 (15 minutes)
+  - source: agent-a-validation-pr238
+  - mode: paper
+
+Expected Duration: ~18-20 minutes (15m run + 3-5m postrun)
+
+Status: IN_PROGRESS
+Started: 2025-10-09 20:35:05
+
+ VALIDATION TARGETS
+---------------------
+Will verify in artifacts:
+
+1. risk_snapshots.csv schema:
+    Has columns: timestamp_utc, equity, balance, open_pnl, closed_pnl
+
+2. open_pnl calculation:
+   Formula: open_pnl = equity - balance
+   Expected: Non-zero when positions open
+
+3. closed_pnl accumulation:
+   Formula: closed_pnl = Σ(pnl_account_ccy) from ClosedTradesWriter
+   Expected: Increases on each trade close
+   Expected final value: 265.67 (based on previous test runs)
+
+4. Thread safety:
+   Expected: No data races in _closedPnl updates
+   Indicator: closed_pnl matches sum of closed_trades_fifo.csv
+
+
+   Đợi ~18-20 phút để test hoàn tất...
+
+
+Monitor tại: https://github.com/baosang12/BotG/actions/runs/18378165951
+
+Tôi sẽ check progress và download artifacts khi xong.
