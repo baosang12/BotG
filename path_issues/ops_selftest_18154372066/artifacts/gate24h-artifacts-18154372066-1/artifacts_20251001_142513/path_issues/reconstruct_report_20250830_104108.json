@@ -1,0 +1,10 @@
+{
+  "fills_total": 492,
+  "closed_trades": 246,
+  "orphan_before": 492,
+  "orphan_after": 0,
+  "estimated_orphan_fills_after_reconstruct": 0,
+  "matched_count": 492,
+  "unmatched_ids": [],
+  "output": "D:\\OneDrive\\Ta\u0300i li\u00EA\u0323u\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\closed_trades_fifo_reconstructed_20250830_104108.csv"
+}

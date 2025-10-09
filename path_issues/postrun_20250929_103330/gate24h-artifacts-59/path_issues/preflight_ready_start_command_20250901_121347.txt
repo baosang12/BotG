@@ -1,0 +1,1 @@
+﻿powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_realtime_24h_supervised.ps1 -Hours 24 -FillProbability 1.0 -UseSimulation -WaitForFinish

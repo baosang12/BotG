@@ -1,0 +1,38 @@
+[
+  {
+    "orderId": "ORD-53475",
+    "entry": 634.75,
+    "stopLoss": null,
+    "stopDistance": 634.75,
+    "equity_used": 10000,
+    "theoretical_lots": 0.01,
+    "theoretical_units": 1,
+    "requestedSize": 1,
+    "filledSize": 1,
+    "slippage": -0.0004999999999881766
+  },
+  {
+    "orderId": "ORD-53490",
+    "entry": 634.9,
+    "stopLoss": 634.85,
+    "stopDistance": 0.049999999999954525,
+    "equity_used": 10000,
+    "theoretical_lots": 10,
+    "theoretical_units": 1000,
+    "requestedSize": 1,
+    "filledSize": 1,
+    "slippage": 0.0004999999999881766
+  },
+  {
+    "orderId": "DRAIN-SELL",
+    "entry": 634.901,
+    "stopLoss": null,
+    "stopDistance": 634.901,
+    "equity_used": 10000,
+    "theoretical_lots": 0.01,
+    "theoretical_units": 1,
+    "requestedSize": 1,
+    "filledSize": 1,
+    "slippage": 0
+  }
+]

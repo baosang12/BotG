@@ -1,0 +1,12 @@
+{
+  "ts": "20250827_153000",
+  "branch": "fix/postrun-20250827_153000-finalize",
+  "pushed": false,
+  "git_push_error": "Git operations not executed in this environment; use Git Bash with git_manual_run.txt",
+  "files_committed": [
+    "path_issues/postrun_pr_body.md",
+    "path_issues/postrun_checklist.md"
+  ],
+  "missing_artifacts": [],
+  "pr_url": ""
+}

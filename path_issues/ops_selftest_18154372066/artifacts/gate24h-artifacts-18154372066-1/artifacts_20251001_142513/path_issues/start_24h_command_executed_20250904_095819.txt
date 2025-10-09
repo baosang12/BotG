@@ -1,0 +1,9 @@
+﻿EXECUTED 24H COMMAND
+====================
+Timestamp: 20250904_095819
+Original file: path_issues\start_24h_command_ready.txt
+Execution time: 2025-09-04 10:00:12
+
+COMMAND CONTENT:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_realtime_24h_supervised.ps1 -PRNumber 13 -SecondsPerHour 300 -Drain 20 -Grace 5 -FillProb 1.0 -UseSimulation $true
+

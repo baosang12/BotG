@@ -1,0 +1,19 @@
+﻿{
+    "branch":  "ci/recon-validate-smoke",
+    "commit":  "984f81ef6997bdda949d87dfa53f844bbbc0de84",
+    "build_status":  "SUCCESS",
+    "build_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515\\build.log",
+    "artifacts":  {
+                      "orders_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515\\orders.csv",
+                      "risk_snapshots_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515\\risk_snapshots.csv",
+                      "telemetry_csv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515\\telemetry.csv",
+                      "datafetcher_log":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515\\datafetcher.log",
+                      "zip":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\artifacts\\telemetry_run_20250830_110515.zip"
+                  },
+    "counts":  {
+                   "orders_rows":  "MISSING",
+                   "risk_snapshots_rows":  1,
+                   "telemetry_rows":  "MISSING"
+               },
+    "timestamp":  "2025-08-30T11:05:15"
+}

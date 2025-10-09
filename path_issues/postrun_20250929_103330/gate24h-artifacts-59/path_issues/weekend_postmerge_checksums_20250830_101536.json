@@ -1,0 +1,79 @@
+﻿[
+    {
+        "name":  "build.log",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\build.log",
+        "size":  1578,
+        "mtimeUtc":  "2025-08-30T03:18:33.6738477Z",
+        "sha256":  "8BF7103C5055759825F6EE89E3396500E443C4EDAED92E2B8F1AE3EDAC0A86D8"
+    },
+    {
+        "name":  "closed_trades_fifo.csv",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\closed_trades_fifo.csv",
+        "size":  42474,
+        "mtimeUtc":  "2025-08-30T03:20:33.9413404Z",
+        "sha256":  "DAF2710312F58A1A6B4C2507FD8D479590BA82DCE7F6F2601EDD6AE331E047C5"
+    },
+    {
+        "name":  "orders.csv",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\orders.csv",
+        "size":  245802,
+        "mtimeUtc":  "2025-08-30T03:20:33.9413404Z",
+        "sha256":  "819C055E2F91CAA499B5AA1756845763B1B6EB16FDADF9804EA7597FC4BAD01C"
+    },
+    {
+        "name":  "reconstruct_report.json",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\reconstruct_report.json",
+        "size":  316,
+        "mtimeUtc":  "2025-08-27T06:51:16.0216001Z",
+        "sha256":  "0759522B82F78883F3CD879C9609315894E50CDAEF6D59EEE89642C15FAA5C16"
+    },
+    {
+        "name":  "risk_snapshots.csv",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\risk_snapshots.csv",
+        "size":  70,
+        "mtimeUtc":  "2025-08-30T03:18:36.8672247Z",
+        "sha256":  "C391F20B97B73D30B6E3D88DBBFAF0872C78CE500CD4AFE7AE29C6D76B317C90"
+    },
+    {
+        "name":  "smoke_summary_20250827_200336.json",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\smoke_summary_20250827_200336.json",
+        "size":  343,
+        "mtimeUtc":  "2025-08-27T13:27:02.2246594Z",
+        "sha256":  "F85369C9DD659A3F5F8E51C4B6C2F4C921146694D67821D84F6FF4912BDED0AB"
+    },
+    {
+        "name":  "summary.json",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\summary.json",
+        "size":  1323,
+        "mtimeUtc":  "2025-08-30T03:20:34.9522252Z",
+        "sha256":  "84FAC98991352407B4A149B70276AEE7429EEB18E701CEF7C31F667708DCEDA1"
+    },
+    {
+        "name":  "telemetry.csv",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\telemetry.csv",
+        "size":  3213,
+        "mtimeUtc":  "2025-08-30T03:20:32.8811581Z",
+        "sha256":  "53AF2A0C460013C85A252BC0B376E4465A549C22A82A9C6333B30BB871C34E09"
+    },
+    {
+        "name":  "telemetry_run_20250830_101830.zip",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\telemetry_run_20250830_101830.zip",
+        "size":  45824,
+        "mtimeUtc":  "2025-08-30T03:20:34.8237689Z",
+        "sha256":  "A03E37D9FA4E2440D3972AA5DCAB2F5BABADD19F8DF2934500C30A47F383F26E"
+    },
+    {
+        "name":  "trade_closes.log",
+        "path":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\collect_20250830_101536\\trade_closes.log",
+        "size":  21492,
+        "mtimeUtc":  "2025-08-30T03:20:33.9448972Z",
+        "sha256":  "2996A8C5181135FE15225D4341F8ED3AD600C39D724E315183E2ABBF1731F4CA"
+    },
+    {
+        "name":  "telemetry_run_20250827_200336.zip",
+        "path":  "D:\\botg\\logs\\artifacts\\telemetry_run_20250827_200336\\telemetry_run_20250827_200336.zip",
+        "size":  48901,
+        "mtimeUtc":  "2025-08-27T13:05:39.9629432Z",
+        "sha256":  "3F88D20B0AF48EC6A2FBBFC4C13F5D8FE238E608868E538476BEB52BF29DA6D1"
+    }
+]

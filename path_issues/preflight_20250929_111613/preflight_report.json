@@ -1,0 +1,81 @@
+﻿{
+    "timestamp_local":  "2025-09-29 11:16:16",
+    "repo_head":  {
+                      "message":  "Gate24h: fix 6h timeout \u0026 reliable artifacts (#153)\n\n* fix(protection): sync JSON config to match actual GitHub branch protection\n\n- Remove legacy contexts from required_checks.json\n- Keep only \u0027CI - build \u0026 test\u0027 to match actual protection\n- Eliminates configuration drift detected by guard system\n- Completes PR #146 objectives\n\n* ops(gate24h): 1500m job timeout + always upload artifacts + canonical paths + selfcheck job\n\n- Ensure job timeout-minutes: 1500 (25h) prevents 6h timeout\n- Add standardized artifact paths: D:\\botg\\logs\\**\\{orders,telemetry,risk_snapshots,trade_closes,run_metadata,closed_trades_fifo_reconstructed}.csv/log/json\n- Make all upload-artifact use if: always() with retention-days: 7\n- Add artifact-selfcheck job for PR validation\n- Create run_metadata.json with required fields: mode,run_id,start_time,end_time,log_path,pvu_used,broker_env\n- Ensure all 6 required files are generated and uploaded consistently\n\n---------\n\nCo-authored-by: BotG Developer \u003cdev@botg.local\u003e",
+                      "author_date":  "2025-09-29T04:06:01Z",
+                      "sha":  "0655ad2cb6c2ed0445707dccdb3b8aca95297088"
+                  },
+    "ci_checks":  [
+                      {
+                          "name":  "CI - build \u0026 test (aggregated)",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "Reconstruct \u0026 Validate (from smoke)",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "Quick Smoke (60s)",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "check",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "selftest",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "selftest",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      },
+                      {
+                          "name":  "Build and Test (windows-latest)",
+                          "status":  "completed",
+                          "conclusion":  "success"
+                      }
+                  ],
+    "workflow":  {
+                     "timeout_1500":  true,
+                     "upload_always":  false,
+                     "has_artifact_selfcheck":  false
+                 },
+    "runners":  {
+                    "total_count":  1,
+                    "details":  {
+                                    "name":  "botg-runner-01",
+                                    "status":  "online",
+                                    "os":  "Windows"
+                                }
+                },
+    "disk_free_gb":  {
+                         "D":  218.4,
+                         "C":  82.74
+                     },
+    "sentinels":  {
+                      "RUN_STOP":  false,
+                      "RUN_PAUSE":  false
+                  },
+    "paths":  {
+                  "logs_root":  "D:\\botg\\logs",
+                  "out_dir":  "path_issues\\preflight_20250929_111613"
+              },
+    "selfcheck":  {
+                      "run_id":  null,
+                      "executed":  false
+                  },
+    "pass_criteria":  {
+                          "disk_ge_10GB":  true,
+                          "no_RUN_STOP":  true,
+                          "timeout_set":  true,
+                          "upload_always":  false,
+                          "runner_online":  true
+                      }
+}

@@ -1,0 +1,6 @@
+timestamp,metric,value
+2025-09-19T16:25:53.7548666+07:00,ticks_processed,5
+2025-09-19T16:25:53.7562724+07:00,signals_generated,0
+2025-09-19T16:25:53.7562779+07:00,orders_requested,0
+2025-09-19T16:25:53.7562784+07:00,orders_filled,0
+2025-09-19T16:25:53.7562788+07:00,smc_engine,active

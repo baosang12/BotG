@@ -1,0 +1,4 @@
+﻿mode=paper
+hours=0
+source=final-validation
+

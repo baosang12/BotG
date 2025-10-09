@@ -1,0 +1,15 @@
+﻿{
+    "run_id":  18085856492,
+    "status":  "completed",
+    "conclusion":  "failure",
+    "artifacts_dir":  "path_issues\\gate2_24h_20250929_113140\\artifacts",
+    "zip":  "path_issues\\gate2_24h_20250929_113140\\postrun_artifacts_20250929_113140.zip",
+    "sha256":  "C22BD8951E89B8667C0712D831B2454FE84CCBAF9A244486E8F260ECDAE083E5",
+    "missing_files":  [
+
+                      ],
+    "analysis_done":  false,
+    "monitor_log":  "path_issues\\gate2_24h_20250929_113140\\run_monitor.log",
+    "kickoff":  "path_issues\\gate2_24h_20250929_113140\\run_kickoff.txt",
+    "out_dir":  "path_issues\\gate2_24h_20250929_113140"
+}

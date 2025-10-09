@@ -1,0 +1,8 @@
+﻿{
+    "badPnlCount":  0,
+    "outCsv":  "D:\\OneDrive\\Tài liệu\\cAlgo\\Sources\\Robots\\BotG\\path_issues\\closed_trades_fifo_reconstructed.csv",
+    "total":  248,
+    "orders":  "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_reconstruct_20250828_091629\\unzipped\\orders.csv",
+    "badTimeCount":  0,
+    "zip":  "D:\\botg\\logs\\artifacts\\telemetry_run_20250827_200336\\telemetry_run_20250827_200336.zip"
+}

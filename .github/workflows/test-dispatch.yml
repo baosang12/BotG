@@ -1,0 +1,12 @@
+name: Test Dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: 'Sample'
+        required: false
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'dispatch ok'

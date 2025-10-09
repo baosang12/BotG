@@ -1,0 +1,23 @@
+﻿# Lệnh Git Manual cho Postrun Finalization
+# Chạy các lệnh này thủ công trong thư mục repository
+
+# 1. Tạo và checkout branch
+git checkout -b postrun-finalization-20250903_155357
+
+# 2. Thêm các file postrun artifacts
+git add "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\postrun_artifacts_20250903_155357.zip"
+git add "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\artifacts_checksums_20250903_155303.json"
+git add "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\postrun_summary_20250903_155422.md"
+git add "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\agent_steps_postrun_20250903_154840.log"
+
+# 3. Commit files
+git commit -m "chore(postrun): finalize postrun artifacts 20250903_155357"
+
+# 4. Push lên origin
+git push origin postrun-finalization-20250903_155357
+
+# 5. Tạo PR (sử dụng GitHub CLI)
+gh pr create --title "chore(postrun): finalize postrun artifacts 20250903_155357" --body-file "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\postrun_summary_20250903_155422.md" --label "postrun,ops"
+
+# 6. Tạo draft release (sử dụng GitHub CLI)
+gh release create "postrun-20250903_155357" --title "Postrun 20250903_155357" --notes-file "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\postrun_summary_20250903_155422.md" --draft "D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\path_issues\postrun_artifacts_20250903_155357.zip"
