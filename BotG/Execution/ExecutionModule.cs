@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Bot3.Core;
 using cAlgo.API;
@@ -182,16 +182,20 @@ namespace Execution
                         lotSize = ReadSymbolLotSizeOrDefault();
                         theoreticalLots = (lotSize > 0) ? (requestedUnits / lotSize) : requestedUnits;
                     }
-                    catch
+                    catch (Exception ex)
+                    {
                         // FAIL-FAST: Risk sizing is mandatory, no fallback
-                        _bot.Print("[ExecutionModule] FATAL: Risk sizing calculation failed");
-                        throw new InvalidOperationException("Risk sizing calculation failed - cannot proceed with order");
+                        _bot.Print($"[ExecutionModule] FATAL: Risk sizing calculation failed: {ex.Message}");
+                        throw new InvalidOperationException("Risk sizing calculation failed - cannot proceed with order", ex);
+                    }
                 }
                 else
                 {
                     // FAIL-FAST: RiskManager must be initialized
-                    _bot.Print("[ExecutionModule] FATAL: RiskManager is null - cannot size order");
+                    _bot.Print("[ExecutionModule] FATAL: RiskManager not initialized");
                     throw new InvalidOperationException("RiskManager not initialized - cannot proceed with order");
+                }
+                // derive stopLoss for logging: prefer signal.StopLoss; else try ATR*multiplier; else blank
                 var act = signal != null ? signal.Action : TradeAction.None;
                 double? stopLossLog = null;
                 try
