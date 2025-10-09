@@ -1,19 +1,119 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Smoke: Self-test (no 60')",
-      "type": "shell",
-      "command": "powershell",
-      "args": ["-NoProfile","-ExecutionPolicy","Bypass","-File","scripts\\ops_selftest.ps1"],
-      "problemMatcher": []
-    },
-    {
-      "label": "Smoke: Merge latest",
-      "type": "shell",
-      "command": "powershell",
-      "args": ["-NoProfile","-ExecutionPolicy","Bypass","-Command",". ./scripts/ops.ps1; Invoke-Smoke60mMergeLatest"],
-      "problemMatcher": []
-    }
-  ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Smoke: Self-test (no 60')",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts\\ops_selftest.ps1"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Smoke: Merge latest",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				". ./scripts/ops.ps1; Invoke-Smoke60mMergeLatest"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Smoke: Notify E2E (dispatch)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts\\ops_notify_e2e.ps1",
+				"-Hours",
+				"0.1",
+				"-Mode",
+				"paper"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "E2E: Notify (cancel, main)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts\\ops_notify_e2e.ps1",
+				"-Hours",
+				"0.1",
+				"-Mode",
+				"paper",
+				"-NotifyRef",
+				"main",
+				"-Source",
+				"notify_test",
+				"-TimeoutNotifySec",
+				"600"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "E2E: Run both scenarios (main)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts\\ops_notify_e2e_both.ps1",
+				"-NotifyRef",
+				"main",
+				"-Hours",
+				"0.1",
+				"-Mode",
+				"paper",
+				"-TimeoutNotifySec",
+				"600"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "notify:e2e:main",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts\\notify_e2e_main.ps1"
+			],
+			"problemMatcher": []
+		}
+		,
+		{
+			"label": "gate2:assert-fail",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"gh workflow run gate24h.yml -F hours=0.1 -F source=assert-fail -F force_misconfig=true"
+			],
+			"problemMatcher": []
+		}
+	]
 }

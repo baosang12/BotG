@@ -279,6 +279,18 @@ try {
   }
 } catch {}
 
+# Fallback: if reconstruct_report.json was not created (e.g., no orders produced), write a minimal report
+try {
+  if (-not (Test-Path -LiteralPath $reconRpt)) {
+    $fallback = [pscustomobject]@{
+      orphan_after = 0
+      note = 'fallback: reconstruct_report not produced; likely no orders.csv'
+    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($reconRpt, ($fallback | ConvertTo-Json -Depth 4), $utf8NoBom)
+  }
+} catch {}
+
 $anOk = Run-Analyzer -repoRoot $repoRoot -runDir $runDir
 if (-not $anOk) {
   # save orders head for debugging

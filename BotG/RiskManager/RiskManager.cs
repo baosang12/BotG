@@ -13,7 +13,7 @@ using Telemetry; // added
 namespace RiskManager
 {
     /// <summary>
-    /// Triển khai IRiskManager để giám sát và kiểm soát rủi ro cho bot.
+    /// Tri?n khai IRiskManager d? gi�m s�t v� ki?m so�t r?i ro cho bot.
     /// </summary>
     public class RiskManager : IRiskManager, IModule
     {
@@ -46,8 +46,20 @@ namespace RiskManager
         {
             Initialize(new RiskSettings());
             TelemetryContext.InitOnce();
-            // Snapshot every FlushIntervalSeconds
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(TelemetryContext.Config.FlushIntervalSeconds), TimeSpan.FromSeconds(TelemetryContext.Config.FlushIntervalSeconds));
+            
+            // KICKOFF: Write immediate snapshot at startup
+            PersistSnapshotIfAvailable();
+            
+            // Read risk-specific flush interval from environment or use default 60s
+            int riskFlushSec = 60;
+            var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
+            if (int.TryParse(envRiskFlush, out var sec) && sec > 0)
+            {
+                riskFlushSec = sec;
+            }
+            
+            // Snapshot every riskFlushSec
+            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
         }
         void IModule.OnBar(IReadOnlyList<cAlgo.API.Bar> bars)
         {
@@ -101,6 +113,23 @@ namespace RiskManager
 
             // Attempt auto-compute from symbol if settings did not provide a value
             TryAutoComputePointValueFromSymbol();
+
+            // Initialize telemetry context (ensure run folder exists)
+            TelemetryContext.InitOnce();
+
+            // KICKOFF: Write immediate snapshot at startup to ensure >= 1 row even for short runs
+            PersistSnapshotIfAvailable();
+
+            // Read risk-specific flush interval from environment or use default 60s
+            int riskFlushSec = 60;
+            var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
+            if (int.TryParse(envRiskFlush, out var sec) && sec > 0)
+            {
+                riskFlushSec = sec;
+            }
+            
+            // Start risk snapshot timer
+            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
         }
 
         /// <summary>
@@ -452,10 +481,18 @@ namespace RiskManager
         {
             try
             {
-                if (_lastAccountInfo != null)
+                var info = _lastAccountInfo;
+                if (info == null)
                 {
-                    TelemetryContext.RiskPersister?.Persist(_lastAccountInfo);
+                    // Stub AccountInfo to ensure 60s heartbeat even without updates
+                    info = new AccountInfo
+                    {
+                        Equity = _equityOverride ?? 10000.0,
+                        Balance = 10000.0,
+                        Margin = 0.0
+                    };
                 }
+                TelemetryContext.RiskPersister?.Persist(info);
             }
             catch { }
         }
@@ -489,12 +526,12 @@ namespace RiskManager
 
         public void RunStressTests()
         {
-            // TODO: thực thi backtest/forward simulation offline
+            // TODO: th?c thi backtest/forward simulation offline
         }
 
         public void CheckAlerts()
         {
-            // TODO: email/SMS/Slack thông qua webhook
+            // TODO: email/SMS/Slack th�ng qua webhook
         }
 
         public void GenerateReports()

@@ -1,0 +1,9 @@
+Collector script failed: At D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\scripts\collect_postrun_artifacts.ps1:117 char:28
++   icacls $LogPath /grant `"$target:(R,WDAC)`" /T | Out-Null
++                            ~~~~~~~~
+Variable reference is not valid. ':' was not followed by a valid variable name character. Consider using ${} to delimit the name.
+
+At D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG\scripts\collect_postrun_artifacts.ps1:117 char:38
++   icacls $LogPath /grant `"$target:(R,WDAC)`" /T | Out-Null
++                                      ~
+Missing argument in parameter list.

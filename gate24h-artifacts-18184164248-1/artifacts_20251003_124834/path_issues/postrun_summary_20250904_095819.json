@@ -1,0 +1,18 @@
+﻿{
+    "total_duration_minutes":  2.51,
+    "verdict":  "COMPLETED_OK",
+    "end_time":  "2025-09-04 10:03:37",
+    "total_size_mb":  0,
+    "sha256_of_zip":  "9BA4973846D8375F7475D7AFB92D2559A0750999D14B5A499692066A97A07895",
+    "reconstruct_summary":  {
+                                "fills_total":  425,
+                                "unmatched_ids_count":  3,
+                                "status":  "COMPLETED_OK",
+                                "total_orders":  450,
+                                "orphan_after":  25
+                            },
+    "simulation_mode":  true,
+    "timestamp":  "20250904_095819",
+    "files_collected":  4,
+    "start_time":  "2025-09-04 10:01:07"
+}

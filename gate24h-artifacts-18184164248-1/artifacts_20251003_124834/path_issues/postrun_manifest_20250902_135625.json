@@ -1,0 +1,28 @@
+﻿{
+  "timestamp": "2025-09-02T13:56:25Z",
+  "run_start": "2025-09-01T12:24:53Z", 
+  "run_end": "2025-09-02T13:11:01Z",
+  "duration_hours": 24.77,
+  "status": "completed",
+  "branch": "fix/postrun/20250902_134810-finalize",
+  "git_tag": "postrun-20250902_135156",
+  "artifacts": {
+    "zip_file": "path_issues\\postrun_artifacts_20250902_135022.zip",
+    "summary_file": "path_issues\\postrun_summary_20250902_131029.json", 
+    "checksum_file": "path_issues\\postrun_artifacts_checksums_20250902_134757.json"
+  },
+  "workflow_steps": [
+    "checksum_verification_completed",
+    "git_branch_created",
+    "artifacts_committed", 
+    "branch_pushed",
+    "git_tag_created",
+    "cleanup_initiated",
+    "manifest_created"
+  ],
+  "next_steps": [
+    "manual_github_release_creation",
+    "pr_creation_for_review",
+    "artifact_archival"
+  ]
+}
