@@ -1,5 +1,0 @@
-# Operator run after PR merged & deployment checks
-$env:BOTG_ROOT = 'D:\OneDrive\Tài liệu\cAlgo\Sources\Robots\BotG'   # adjust if necessary
-$env:BOTG_LOG_PATH = 'D:\botg\logs'
-# Launch 24h supervised paper run (no simulation). Uses ASCII-safe temp paths internally.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_realtime_24h_supervised.ps1 -Hours 24 -SecondsPerHour 3600 -FillProbability 1.0 -UseSimulation:$false
