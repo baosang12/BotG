@@ -512,7 +512,7 @@ def main() -> int:
     
     if not fills:
         write_output(output_path, [])
-        print("⚠ No fills found in orders.csv; wrote empty reconstruction file")
+        print("WARNING: No fills found in orders.csv; wrote empty reconstruction file")
         return 0
 
     matches = reconstruct(fills)
@@ -522,8 +522,8 @@ def main() -> int:
 
     # Summary statistics
     total_pnl = sum(Decimal(row["pnl_currency"]) for row in rows)
-    print(f"✓ Reconstructed {len(rows)} closed trades -> {output_path}")
-    print(f"✓ Total P&L: {quantize(total_pnl, 2)} currency units")
+    print(f"SUCCESS: Reconstructed {len(rows)} closed trades -> {output_path}")
+    print(f"Total P&L: {quantize(total_pnl, 2)} currency units")
     return 0
 
 
