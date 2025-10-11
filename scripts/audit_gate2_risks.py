@@ -376,55 +376,98 @@ class Gate2RiskAuditor:
             # Check for 100% fill rate anomaly
             constant_fill_100 = fill_rate >= 0.9999
             
-            # Calculate slippage with CORRECTED analysis: check for constant AMPLITUDE (not variance)
+            # Calculate slippage with ENHANCED analysis: absolute + relative, p95-p5 amplitude, slip-latency corr
             friction_stats = {}
+            slip_latency_buckets = []
+            
             if 'price_requested' in df.columns and 'price_filled' in df.columns and 'side' in df.columns:
                 filled = df[df['status_upper'].isin(['FILL', 'FILLED'])].copy()
                 
                 if len(filled) > 0:
-                    filled['slippage'] = (filled['price_filled'] - filled['price_requested']) / filled['price_requested']
+                    # Calculate BOTH absolute and relative slippage
+                    filled['slip_abs_price'] = filled['price_filled'] - filled['price_requested']  # absolute (ticks/pips)
+                    filled['slip_rel'] = (filled['price_filled'] - filled['price_requested']) / filled['price_requested']  # relative
                     
-                    # Overall slippage stats
-                    slip = filled['slippage'].dropna()
-                    abs_slip = slip.abs()
+                    # Stats for relative slippage
+                    slip_rel = filled['slip_rel'].dropna()
+                    abs_slip_rel = slip_rel.abs()
                     
-                    # Check for constant amplitude: |min+X| < tol AND |max-X| < tol AND IQR(|slip|) < tol
-                    # where X is the suspected constant amplitude
-                    slip_min = slip.min()
-                    slip_max = slip.max()
-                    slip_iqr = abs_slip.quantile(0.75) - abs_slip.quantile(0.25)
+                    # Stats for absolute slippage (used for amplitude check)
+                    slip_abs = filled['slip_abs_price'].dropna()
+                    abs_slip_abs = slip_abs.abs()
                     
-                    # Detect if amplitude is constant (near-zero in this case, not ±0.0005)
-                    constant_amplitude = (abs(slip_min) < 1e-4 and abs(slip_max) < 1e-4 and slip_iqr < 1e-5)
+                    # ENHANCED: p95-p5 amplitude check (as requested)
+                    slip_abs_p5 = abs_slip_abs.quantile(0.05)
+                    slip_abs_p95 = abs_slip_abs.quantile(0.95)
+                    slip_abs_amplitude_range = slip_abs_p95 - slip_abs_p5
+                    
+                    # Constant amplitude flag: p95(|slip_abs|) - p5(|slip_abs|) < 1e-5
+                    constant_amplitude = slip_abs_amplitude_range < 1e-5
+                    
+                    # ENHANCED: Slip-latency correlation (as requested)
+                    slip_latency_corr = 0.0
+                    weak_latency_correlation = False
+                    
+                    if 'latency_ms' in filled.columns:
+                        latency = filled['latency_ms'].dropna()
+                        if len(latency) > 10 and len(abs_slip_abs) == len(latency):
+                            # Use absolute slippage for correlation with latency
+                            slip_latency_corr = abs_slip_abs.corr(latency)
+                            weak_latency_correlation = abs(slip_latency_corr) < 0.15
+                            
+                            # Create slip-latency buckets for detailed analysis
+                            filled['latency_bucket'] = pd.cut(filled['latency_ms'], 
+                                                             bins=[0, 5, 10, 20, 50, 100, 1000],
+                                                             labels=['0-5ms', '5-10ms', '10-20ms', '20-50ms', '50-100ms', '100ms+'])
+                            
+                            for bucket_name, group in filled.groupby('latency_bucket', observed=True):
+                                if len(group) > 0:
+                                    bucket_slip_abs = group['slip_abs_price'].abs()
+                                    slip_latency_buckets.append({
+                                        'latency_bucket': str(bucket_name),
+                                        'count': len(group),
+                                        'median_abs_slip': bucket_slip_abs.median(),
+                                        'p95_abs_slip': bucket_slip_abs.quantile(0.95),
+                                        'std_abs_slip': bucket_slip_abs.std()
+                                    })
                     
                     # Split by side
-                    buy_slippage = filled[filled['side'].str.upper() == 'BUY']['slippage']
-                    sell_slippage = filled[filled['side'].str.upper() == 'SELL']['slippage']
+                    buy_slip_rel = filled[filled['side'].str.upper() == 'BUY']['slip_rel']
+                    sell_slip_rel = filled[filled['side'].str.upper() == 'SELL']['slip_rel']
                     
                     friction_stats = {
                         'fill_rate': fill_rate,
                         'request_count': request_count,
                         'fill_count': fill_count,
-                        'slippage_min': slip_min,
-                        'slippage_max': slip_max,
-                        'slippage_median': slip.median(),
-                        'slippage_mean': slip.mean(),
-                        'slippage_std': slip.std(),
-                        'slippage_iqr': slip_iqr,
-                        'abs_slippage_median': abs_slip.median(),
-                        'abs_slippage_iqr': slip_iqr,
-                        'buy_slippage_median': buy_slippage.median() if len(buy_slippage) > 0 else 0,
-                        'buy_slippage_p95': buy_slippage.quantile(0.95) if len(buy_slippage) > 0 else 0,
-                        'buy_slippage_std': buy_slippage.std() if len(buy_slippage) > 0 else 0,
-                        'sell_slippage_median': sell_slippage.median() if len(sell_slippage) > 0 else 0,
-                        'sell_slippage_p95': sell_slippage.quantile(0.95) if len(sell_slippage) > 0 else 0,
-                        'sell_slippage_std': sell_slippage.std() if len(sell_slippage) > 0 else 0,
+                        # Absolute slippage (price units: ticks/pips)
+                        'slip_abs_price_min': slip_abs.min(),
+                        'slip_abs_price_max': slip_abs.max(),
+                        'slip_abs_price_median': slip_abs.median(),
+                        'slip_abs_price_p5': slip_abs_p5,
+                        'slip_abs_price_p95': slip_abs_p95,
+                        'slip_abs_price_amplitude_range': slip_abs_amplitude_range,
+                        # Relative slippage (percentage)
+                        'slip_rel_min': slip_rel.min(),
+                        'slip_rel_max': slip_rel.max(),
+                        'slip_rel_median': slip_rel.median(),
+                        'slip_rel_mean': slip_rel.mean(),
+                        'slip_rel_std': slip_rel.std(),
+                        'slip_rel_iqr': abs_slip_rel.quantile(0.75) - abs_slip_rel.quantile(0.25),
+                        # Slip-latency correlation
+                        'slip_latency_correlation': slip_latency_corr,
+                        # Per-side stats (relative slippage)
+                        'buy_slip_rel_median': buy_slip_rel.median() if len(buy_slip_rel) > 0 else 0,
+                        'buy_slip_rel_p95': buy_slip_rel.quantile(0.95) if len(buy_slip_rel) > 0 else 0,
+                        'sell_slip_rel_median': sell_slip_rel.median() if len(sell_slip_rel) > 0 else 0,
+                        'sell_slip_rel_p95': sell_slip_rel.quantile(0.95) if len(sell_slip_rel) > 0 else 0,
+                        # Flags (sanity checks, not hard failures)
                         'constant_amplitude_flag': 'NG' if constant_amplitude else 'OK',
+                        'weak_latency_corr_flag': 'NG' if weak_latency_correlation else 'OK',
                         'fill_100pct_flag': 'NG' if constant_fill_100 else 'OK'
                     }
                     
-                    # Check for issues (corrected: constant near-zero amplitude, not constant ±0.0005)
-                    if constant_amplitude or constant_fill_100:
+                    # Check for issues (sanity flags, not hard failures)
+                    if constant_amplitude or constant_fill_100 or weak_latency_correlation:
                         self.results['R6_friction_anomaly']['status'] = 'NG'
                         if constant_fill_100:
                             self.results['R6_friction_anomaly']['evidence'].append(
@@ -432,15 +475,25 @@ class Gate2RiskAuditor:
                             )
                         if constant_amplitude:
                             self.results['R6_friction_anomaly']['evidence'].append(
-                                f"Constant near-zero slippage: min={slip_min:.2e}, max={slip_max:.2e}, IQR(|slip|)={slip_iqr:.2e}"
+                                f"Constant amplitude: p95-p5(|slip_abs|)={slip_abs_amplitude_range:.2e} < 1e-5"
+                            )
+                        if weak_latency_correlation:
+                            self.results['R6_friction_anomaly']['evidence'].append(
+                                f"Weak slip-latency correlation: corr={slip_latency_corr:.3f} (< 0.15 threshold)"
                             )
             
-            self.results['R6_friction_anomaly']['root_cause'] = 'Paper mode with near-zero slippage (unrealistic market conditions)'
+            self.results['R6_friction_anomaly']['root_cause'] = 'Paper mode with unrealistic friction (expected in supervised paper mode)'
             self.results['R6_friction_anomaly']['patch'] = 'Document friction characteristics in analysis reports; DO NOT modify Harness/PaperTradingEngine (Gate2 = paper supervised, non-simulation)'
             
+            # Save friction stats
             if friction_stats:
                 friction_df = pd.DataFrame([friction_stats])
                 friction_df.to_csv(self.output_dir / 'friction_stats.csv', index=False)
+            
+            # Save slip-latency buckets
+            if slip_latency_buckets:
+                slip_latency_df = pd.DataFrame(slip_latency_buckets)
+                slip_latency_df.to_csv(self.output_dir / 'slip_latency_buckets.csv', index=False)
                 
         except Exception as e:
             print(f"  Error analyzing friction: {e}")
