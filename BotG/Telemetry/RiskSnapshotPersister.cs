@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -12,11 +13,21 @@ namespace Telemetry
         private readonly object _lock = new object();
         private double _equityPeak = 0.0;
         private double _closedPnl = 0.0;
+        
+        // Time-aware closed P&L tracking (A/B-LEDGER-001)
+        private readonly List<(DateTime closeTime, double pnl)> _pendingClosedPnl = new List<(DateTime, double)>();
+        
+        // Paper mode equity model fields
+        private double? _initialBalance = null;
+        private readonly bool _isPaperMode;
+        private readonly Func<double> _getOpenPnlCallback;
 
-        public RiskSnapshotPersister(string folder, string fileName)
+        public RiskSnapshotPersister(string folder, string fileName, bool isPaperMode = false, Func<double> getOpenPnlCallback = null)
         {
             Directory.CreateDirectory(folder);
             _filePath = Path.Combine(folder, fileName);
+            _isPaperMode = isPaperMode;
+            _getOpenPnlCallback = getOpenPnlCallback;
             EnsureHeader();
         }
 
@@ -29,13 +40,26 @@ namespace Telemetry
         }
 
         /// <summary>
-        /// Update cumulative closed P&L when a trade closes
+        /// Update cumulative closed P&L when a trade closes (time-aware)
+        /// Applies P&L to snapshots with timestamp >= closeTimeUtc
+        /// </summary>
+        public void AddClosedPnl(double pnl, DateTime closeTimeUtc)
+        {
+            lock (_lock)
+            {
+                _pendingClosedPnl.Add((closeTimeUtc, pnl));
+            }
+        }
+        
+        /// <summary>
+        /// Legacy method for backward compatibility (immediate application)
+        /// Applies P&L directly without pending queue
         /// </summary>
         public void AddClosedPnl(double pnl)
         {
             lock (_lock)
             {
-                _closedPnl += pnl;
+                _closedPnl += pnl; // Immediate application for backward compatibility
             }
         }
 
@@ -46,21 +70,51 @@ namespace Telemetry
                 if (info == null) return;
                 var ts = DateTime.UtcNow;
                 
-                // Get core account metrics
-                double balance = info.Balance;
-                double equity = info.Equity;
-                double usedMargin = info.Margin;
-                double freeMargin = equity - usedMargin;
+                // Initialize balance on first persist
+                if (!_initialBalance.HasValue)
+                {
+                    _initialBalance = info.Balance;
+                }
 
-                // Calculate open_pnl: equity - balance (unrealized P&L from open positions)
-                double openPnl = equity - balance;
-                
-                // Get closed_pnl from tracking
-                double closedPnl;
+                // Apply pending closed P&L for trades that closed before this snapshot
                 lock (_lock)
                 {
-                    closedPnl = _closedPnl;
+                    var toApply = _pendingClosedPnl.Where(x => x.closeTime <= ts).ToList();
+                    foreach (var (closeTime, pnl) in toApply)
+                    {
+                        _closedPnl += pnl;
+                        _pendingClosedPnl.Remove((closeTime, pnl));
+                    }
                 }
+
+                // Get core account metrics
+                double balance;
+                double equity;
+                double openPnl;
+                double closedPnlSnapshot; // Renamed to avoid conflict
+                
+                lock (_lock)
+                {
+                    closedPnlSnapshot = _closedPnl;
+                }
+                
+                if (_isPaperMode)
+                {
+                    // Paper mode: compute balance_model and equity_model
+                    balance = _initialBalance.Value + closedPnlSnapshot;  // balance_model
+                    openPnl = _getOpenPnlCallback?.Invoke() ?? 0.0;  // from positions
+                    equity = balance + openPnl;  // equity_model
+                }
+                else
+                {
+                    // Live mode: use AccountInfo directly (broker updates)
+                    balance = info.Balance;
+                    equity = info.Equity;
+                    openPnl = equity - balance;
+                }
+                
+                double usedMargin = info.Margin;
+                double freeMargin = equity - usedMargin;
 
                 // Track equity peak for drawdown calculation
                 if (equity > _equityPeak)
@@ -78,14 +132,14 @@ namespace Telemetry
                     equity.ToString(CultureInfo.InvariantCulture),
                     balance.ToString(CultureInfo.InvariantCulture),
                     openPnl.ToString(CultureInfo.InvariantCulture),
-                    closedPnl.ToString(CultureInfo.InvariantCulture),
+                    closedPnlSnapshot.ToString(CultureInfo.InvariantCulture),
                     usedMargin.ToString(CultureInfo.InvariantCulture),
                     freeMargin.ToString(CultureInfo.InvariantCulture),
                     drawdown.ToString(CultureInfo.InvariantCulture),
                     rUsed.ToString(CultureInfo.InvariantCulture),
                     exposure.ToString(CultureInfo.InvariantCulture)
                 );
-                
+
                 lock (_lock)
                 {
                     File.AppendAllText(_filePath, line + Environment.NewLine);

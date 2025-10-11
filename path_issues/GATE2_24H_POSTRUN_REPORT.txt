@@ -1,0 +1,221 @@
+═══════════════════════════════════════════════════════════════
+  GATE2 24H RUN - POST-RUN ANALYSIS REPORT
+═══════════════════════════════════════════════════════════════
+
+RUN INFORMATION
+───────────────────────────────────────────────────────────────
+RUN_ID: 18393525101
+URL: https://github.com/baosang12/BotG/actions/runs/18393525101
+Workflow: gate24h.yml
+Mode: paper
+Source: manual
+
+Started: 2025-10-10 01:14:39 UTC
+Completed: 2025-10-11 01:17:17 UTC
+Duration: ~24h 3m
+Status: completed
+Conclusion: failure (workflow level)
+
+ARTIFACTS DOWNLOADED
+───────────────────────────────────────────────────────────────
+Location: C:\Users\TechCare\AppData\Local\Temp\botg_artifacts\gate2_18393525101\artifacts_20251010_081328
+
+Files:
+  ✓ orders.csv                           256.55 MB  (1,071,582 orders)
+  ✓ risk_snapshots.csv                   107.82 KB  (1,443 snapshots)
+  ✓ closed_trades_fifo.csv                31.21 MB
+  ✓ telemetry.csv                          2.17 MB
+  ✓ trade_closes.log                      15.46 MB
+  ✓ gate2_validation.json                    949 B
+  ✓ run_metadata.json                      1.19 KB
+  ✓ size_comparison.json                     895 B
+  ✓ page_gate2_summary.md                    319 B
+
+TELEMETRY ANALYZER RESULTS
+───────────────────────────────────────────────────────────────
+Generated: 2025-10-11 02:42:11 UTC
+Analyzer: scripts/postrun_report.py (MVP)
+
+Outputs:
+  ✓ report.pdf  - Visual analysis (equity, P&L, drawdown, KPI)
+  ✓ kpi.json    - Structured metrics
+
+📊 METADATA
+───────────────────────────────────────────────────────────────
+Total Orders: 1,071,582
+Risk Snapshots: 1,443 (1 snapshot per minute over 24h)
+Time Coverage: ~24 hours
+
+💰 EQUITY ANALYSIS
+───────────────────────────────────────────────────────────────
+Initial Equity: $10,000.00
+Final Equity: $10,000.00
+Total P&L: $0.00 (0.00%)
+Max Equity: $10,020.00
+Min Equity: $10,000.00
+Max Drawdown: -$20.00 (-0.20%)
+
+Status: ⚠️  FLAT - No net profit/loss over 24h
+
+📈 TRADE ANALYSIS
+───────────────────────────────────────────────────────────────
+Total Orders: 1,071,582
+Filled Orders: 0
+Fill Rate: 0.00%
+
+⚠️  CRITICAL ISSUE: 0% fill rate!
+All orders appear to be pending/rejected - no actual trades executed.
+
+Avg Slippage: N/A (no filled orders)
+Max Slippage: N/A (no filled orders)
+
+⚠️  RISK ANALYSIS (AGENT A)
+───────────────────────────────────────────────────────────────
+✅ Schema Validation:
+  ✓ open_pnl column: Present
+  ✓ closed_pnl column: Present
+
+✅ Accumulation Validation:
+  Final closed_pnl: $26,610.80
+  Monotonic: TRUE ✓
+
+✅ Thread Safety Validation:
+  Final open_pnl: $0.00
+  R-violations: 0 ✓
+
+✅ Margin Usage:
+  Max margin: 2.50%
+  Avg margin: 0.0017%
+
+AGENT A VALIDATION SUMMARY
+───────────────────────────────────────────────────────────────
+Criteria 1 - Schema: ✅ PASS
+  - open_pnl column detected
+  - closed_pnl column detected
+
+Criteria 2 - Formula: ⚠️  ANOMALY
+  - Final equity: $10,000
+  - Final balance: $10,000 (assumed)
+  - Expected open_pnl: $0 ✓
+  - Actual open_pnl: $0 ✓
+  - Diff: $0 ✓
+
+Criteria 3 - Accumulation: ✅ PASS (with anomaly)
+  - closed_pnl monotonically increasing: TRUE ✓
+  - Initial: $0 → Final: $26,610.80
+  - BUT: Final equity = $10,000 (no net change)
+  - ANOMALY: Large closed_pnl but zero final equity change
+
+Criteria 4 - Thread Safety: ✅ PASS
+  - Total orders: 1,071,582
+  - Final closed_pnl: $26,610.80
+  - Final open_pnl: $0.00
+  - R-violations: 0 ✓
+
+CRITICAL FINDINGS
+───────────────────────────────────────────────────────────────
+🔴 ISSUE 1: Zero Fill Rate
+  - 1,071,582 orders created
+  - 0 orders filled
+  - Possible causes:
+    1. Order validation failing (price/size)
+    2. Market data connectivity issue
+    3. Broker API rejection
+    4. Order placement logic bug
+
+🔴 ISSUE 2: closed_pnl vs equity Mismatch
+  - closed_pnl accumulated to $26,610.80
+  - Final equity unchanged at $10,000.00
+  - Expected final equity: $10,000 + $26,610.80 = $36,610.80
+  - Actual final equity: $10,000.00
+  - Discrepancy: -$26,610.80
+
+  Possible causes:
+    1. closed_pnl tracking internal cumulative but not actual account
+    2. Equity calculation bug
+    3. Balance not properly updated from closed trades
+    4. Paper mode simulation issue
+
+✅ POSITIVE: Agent A Implementation Working
+  - Columns present ✓
+  - Monotonic accumulation ✓
+  - No R-violations ✓
+  - Thread-safe ✓
+
+WORKFLOW FAILURE ANALYSIS
+───────────────────────────────────────────────────────────────
+Workflow Conclusion: failure
+Possible causes:
+  1. Test/validation step failed after workload
+  2. Artifact upload issues (but artifacts present)
+  3. Timeout or resource limits
+  4. Post-run validation detected anomalies
+
+Recommendation: Check workflow logs for failure details
+  gh run view 18393525101 --log
+
+RECOMMENDATIONS
+───────────────────────────────────────────────────────────────
+IMMEDIATE:
+  1. Investigate 0% fill rate:
+     - Check orders.csv for order statuses
+     - Review order validation logic
+     - Verify market data connectivity logs
+
+  2. Investigate closed_pnl vs equity mismatch:
+     - Review ClosedTradesWriter logic
+     - Check equity update mechanism
+     - Verify balance calculation
+
+  3. Check workflow failure logs:
+     - gh run view 18393525101 --log
+     - Identify failing step
+
+SHORT TERM:
+  4. Review risk_snapshots.csv manually:
+     - Verify equity progression over 24h
+     - Check balance vs equity relationship
+     - Validate open_pnl + closed_pnl calculations
+
+  5. Analyze orders.csv sample:
+     - Check order status distribution
+     - Review rejection reasons (if any)
+     - Verify order parameters
+
+VALIDATION STATUS
+───────────────────────────────────────────────────────────────
+Agent A Implementation: ✅ PASS (with anomalies)
+  - Schema: ✅ PASS
+  - Monotonic: ✅ PASS
+  - Thread Safety: ✅ PASS
+  - Formula: ⚠️  ANOMALY (closed_pnl accumulates but equity flat)
+
+24h Production Run: ❌ FAIL
+  - Fill rate: ❌ 0% (expected >90%)
+  - Net P&L: ⚠️  $0 (flat)
+  - Workflow: ❌ failure conclusion
+
+NEXT STEPS
+───────────────────────────────────────────────────────────────
+1. [ ] Review workflow logs for failure details
+2. [ ] Investigate 0% fill rate root cause
+3. [ ] Debug closed_pnl vs equity mismatch
+4. [ ] Manually inspect orders.csv sample (first 100 rows)
+5. [ ] Manually inspect risk_snapshots.csv progression
+6. [ ] Fix identified issues
+7. [ ] Re-run 24h test
+8. [ ] Validate Agent A on successful run
+
+ARTIFACTS PRESERVED
+───────────────────────────────────────────────────────────────
+Location: C:\Users\TechCare\AppData\Local\Temp\botg_artifacts\gate2_18393525101\
+Analysis: artifacts_20251010_081328\analysis\
+  - report.pdf (visual charts)
+  - kpi.json (metrics)
+
+Files available for deep-dive debugging.
+
+═══════════════════════════════════════════════════════════════
+Report Generated: 2025-10-11 10:45:00 UTC
+Analyzer Version: MVP (postrun_report.py)
+═══════════════════════════════════════════════════════════════
