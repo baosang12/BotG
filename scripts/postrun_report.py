@@ -51,11 +51,12 @@ class TelemetryAnalyzer:
         """Load CSV files"""
         try:
             print(f"Loading orders from: {self.orders_path}")
-            self.orders_df = pd.read_csv(self.orders_path)
+            # Use python engine for large files
+            self.orders_df = pd.read_csv(self.orders_path, engine='python', on_bad_lines='skip')
             print(f"  → {len(self.orders_df)} orders loaded")
             
             print(f"Loading risk snapshots from: {self.risk_path}")
-            self.risk_df = pd.read_csv(self.risk_path)
+            self.risk_df = pd.read_csv(self.risk_path, engine='python', on_bad_lines='skip')
             print(f"  → {len(self.risk_df)} snapshots loaded")
             
             # Parse timestamps
@@ -102,32 +103,95 @@ class TelemetryAnalyzer:
         if self.orders_df is None or len(self.orders_df) == 0:
             return {'total_trades': 0}
         
-        # Filter filled orders
-        filled = self.orders_df[self.orders_df['status'].str.lower() == 'filled']
+        # Normalize status column (case-insensitive)
+        df = self.orders_df.copy()
+        df['status_upper'] = df['status'].str.upper()
         
-        # Count trades (buy + sell pairs)
-        total_orders = len(filled)
+        # Count by phase (REQUEST/ACK/FILL)
+        phase_counts = df['status_upper'].value_counts().to_dict()
         
-        # Analyze fill rate
-        total_orders_all = len(self.orders_df)
-        fill_rate = (total_orders / total_orders_all * 100) if total_orders_all > 0 else 0
+        # Filter filled orders (case-insensitive: FILL|Filled|fill)
+        filled = df[df['status_upper'].isin(['FILL', 'FILLED'])]
+        
+        # Per-side statistics (if 'side' or 'action' column exists)
+        side_stats = {}
+        side_col = None
+        if 'side' in df.columns:
+            side_col = 'side'
+        elif 'action' in df.columns:
+            side_col = 'action'
+        
+        if side_col:
+            # REQUEST/ACK/FILL per side
+            for side in df[side_col].unique():
+                if pd.isna(side):
+                    continue
+                side_df = df[df[side_col] == side]
+                side_stats[f'{side}_REQUEST'] = int((side_df['status_upper'] == 'REQUEST').sum())
+                side_stats[f'{side}_ACK'] = int((side_df['status_upper'] == 'ACK').sum())
+                side_stats[f'{side}_FILL'] = int(side_df['status_upper'].isin(['FILL', 'FILLED']).sum())
+        
+        # Calculate fill-rate properly:
+        # Fill-rate = (#unique order_id with FILL) / (#unique order_id with REQUEST)
+        order_id_col = None
+        for col in ['order_id', 'orderId', 'client_order_id']:
+            if col in df.columns:
+                order_id_col = col
+                break
+        
+        fill_rate = 0.0
+        unique_fills = 0
+        unique_requests = 0
+        
+        if order_id_col:
+            request_orders = df[df['status_upper'] == 'REQUEST'][order_id_col].nunique()
+            fill_orders = df[df['status_upper'].isin(['FILL', 'FILLED'])][order_id_col].nunique()
+            unique_requests = request_orders
+            unique_fills = fill_orders
+            fill_rate = (fill_orders / request_orders * 100) if request_orders > 0 else 0
+        else:
+            # Fallback: count rows
+            total_requests = (df['status_upper'] == 'REQUEST').sum()
+            total_fills = df['status_upper'].isin(['FILL', 'FILLED']).sum()
+            unique_requests = int(total_requests)
+            unique_fills = int(total_fills)
+            fill_rate = (total_fills / total_requests * 100) if total_requests > 0 else 0
         
         # Slippage analysis (if available)
         slippage_data = {}
-        if 'requested_price' in filled.columns and 'fill_price' in filled.columns:
-            filled_copy = filled.copy()
-            filled_copy['slippage'] = filled_copy['fill_price'] - filled_copy['requested_price']
-            avg_slippage = filled_copy['slippage'].mean()
-            max_slippage = filled_copy['slippage'].abs().max()
-            slippage_data = {
-                'avg_slippage': float(avg_slippage) if pd.notna(avg_slippage) else 0,
-                'max_slippage': float(max_slippage) if pd.notna(max_slippage) else 0,
-            }
+        if len(filled) > 0:
+            # Try different column names for slippage
+            req_price_col = None
+            fill_price_col = None
+            
+            for col in ['requested_price', 'price_requested', 'intendedPrice']:
+                if col in filled.columns:
+                    req_price_col = col
+                    break
+            
+            for col in ['fill_price', 'price_filled', 'execPrice']:
+                if col in filled.columns:
+                    fill_price_col = col
+                    break
+            
+            if req_price_col and fill_price_col:
+                filled_copy = filled.copy()
+                filled_copy['slippage'] = filled_copy[fill_price_col].astype(float) - filled_copy[req_price_col].astype(float)
+                avg_slippage = filled_copy['slippage'].mean()
+                max_slippage = filled_copy['slippage'].abs().max()
+                slippage_data = {
+                    'avg_slippage': float(avg_slippage) if pd.notna(avg_slippage) else 0,
+                    'max_slippage': float(max_slippage) if pd.notna(max_slippage) else 0,
+                }
         
         return {
-            'total_orders': int(total_orders),
-            'total_orders_all': int(total_orders_all),
+            'total_filled_orders': int(len(filled)),
+            'unique_filled_orders': int(unique_fills),
+            'unique_requested_orders': int(unique_requests),
+            'total_rows': int(len(df)),
             'fill_rate_pct': float(fill_rate),
+            'phase_counts': phase_counts,
+            **side_stats,
             **slippage_data
         }
     
