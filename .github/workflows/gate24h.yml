@@ -113,12 +113,57 @@ jobs:
 
       - name: Activate run config (equity 200, fees>0)
         shell: powershell
+        env:
+          # ENV overrides (sẽ ghi vào JSON)
+          ACCOUNT__INITIAL_EQUITY_USD: "200"
+          PAPER__INITIAL_BALANCE: "200"
+          TRADING__STARTING_BALANCE_USD: "200"
+          RISK__R_USD: "10"
+          EXECUTION__SPREAD_PIPS_MIN: "0.6"
+          EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT: "7"
         run: |
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
           if (!(Test-Path $src)) { throw ("Missing config file at " + $src) }
 
-          Write-Output ("=== USING CONFIG: " + $src + " ===")
-          # In ra 120 dòng đầu để nhìn thấy cả equity synonyms
+          Write-Output ("=== ORIGINAL CONFIG: " + $src + " ===")
+          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
+
+          # APPLY ENV OVERRIDES TO JSON
+          $json = Get-Content -Path $src -Raw | ConvertFrom-Json
+          if ($env:ACCOUNT__INITIAL_EQUITY_USD) {
+            Write-Output "Override: account.initial_equity_usd = $env:ACCOUNT__INITIAL_EQUITY_USD"
+            $json.account.initial_equity_usd = [double]$env:ACCOUNT__INITIAL_EQUITY_USD
+          }
+          if ($env:PAPER__INITIAL_BALANCE) {
+            Write-Output "Override: paper.initial_balance = $env:PAPER__INITIAL_BALANCE"
+            $json.paper.initial_balance = [double]$env:PAPER__INITIAL_BALANCE
+          }
+          if ($env:TRADING__STARTING_BALANCE_USD) {
+            Write-Output "Override: trading.starting_balance_usd = $env:TRADING__STARTING_BALANCE_USD"
+            $json.trading.starting_balance_usd = [double]$env:TRADING__STARTING_BALANCE_USD
+          }
+          if ($env:RISK__R_USD) {
+            Write-Output "Override: risk.r_usd = $env:RISK__R_USD"
+            if (-not $json.risk) { $json | Add-Member -NotePropertyName risk -NotePropertyValue @{} }
+            $json.risk.r_usd = [double]$env:RISK__R_USD
+          }
+          if ($env:EXECUTION__SPREAD_PIPS_MIN) {
+            Write-Output "Override: execution.spread_pips_min = $env:EXECUTION__SPREAD_PIPS_MIN"
+            if (-not $json.execution.spread_pips_min) { $json.execution | Add-Member -NotePropertyName spread_pips_min -NotePropertyValue 0 }
+            $json.execution.spread_pips_min = [double]$env:EXECUTION__SPREAD_PIPS_MIN
+          }
+          if ($env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT) {
+            Write-Output "Override: execution.commission_roundtrip_usd_per_lot = $env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT"
+            if (-not $json.execution.commission_roundtrip_usd_per_lot) { $json.execution | Add-Member -NotePropertyName commission_roundtrip_usd_per_lot -NotePropertyValue 0 }
+            $json.execution.commission_roundtrip_usd_per_lot = [double]$env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT
+          }
+
+          # Ghi lại JSON đã sửa
+          $enc = New-Object System.Text.UTF8Encoding $false
+          $modifiedJson = $json | ConvertTo-Json -Depth 10
+          [System.IO.File]::WriteAllText($src, $modifiedJson, $enc)
+
+          Write-Output ("=== MODIFIED CONFIG (sau ENV override) ===")
           Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
           # 1) Copy vào 4 đường dẫn gốc
@@ -148,27 +193,7 @@ jobs:
         id: runbot
         shell: powershell
         env:
-          # thời lượng (đã có), để lại nếu sẵn
           RUN_HOURS: ${{ inputs.hours }}
-
-          # Ép mode giấy & tắt simulation
-          MODE: paper
-          SIMULATION__ENABLED: "false"
-
-          # equity & risk (3 synonyms cho equity)
-          ACCOUNT__INITIAL_EQUITY_USD: "200"
-          PAPER__INITIAL_BALANCE: "200"
-          TRADING__STARTING_BALANCE_USD: "200"
-          RISK__R_USD: "10"
-          RISK__DAILY_STOP_R: "-3"
-          RISK__WEEKLY_STOP_R: "-6"
-
-          # Chi phí thực
-          EXECUTION__SPREAD_PIPS_MIN: "0.6"
-          EXECUTION__SPREAD_PIPS_FALLBACK: "1.0"
-          EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT: "7"
-          EXECUTION__COMMISSION_ROUNDTURN_USD_PER_LOT: "7"
-          EXECUTION__FEE_ROUNDTURN_USD_PER_LOT: "7"
         run: |
           $hours = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
           if ($hours -le 0) { throw "Invalid hours: $hours" }
