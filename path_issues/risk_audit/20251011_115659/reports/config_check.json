@@ -1,0 +1,7 @@
+{
+  "mode": "paper",
+  "simulation_enabled": false,
+  "seconds_per_hour": 3600,
+  "utc_ok": true,
+  "clock_monotonic": true
+}
