@@ -111,20 +111,20 @@ jobs:
         shell: powershell
         run: dotnet build BotG.sln -c Release --no-restore
 
-      - name: Activate run config (equity=$200, fees/spread>0)
-        shell: pwsh
+      - name: Activate run config (equity 200, fees>0)
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
-          if (!(Test-Path $src)) { throw "Missing config.runtime.json at $src" }
-          Write-Host "=== USING CONFIG: $src ==="
-          Get-Content $src -TotalCount 40 | ForEach-Object { Write-Host $_ }
+          if (!(Test-Path $src)) { throw ("Missing config.runtime.json at " + $src) }
+          Write-Output ("=== USING CONFIG: " + $src + " ===")
+          Get-Content -Path $src -TotalCount 40 | ForEach-Object { $_ | Out-Host }
           $targets = @('appsettings.json','appsettings.paper.json','config\trading.json','config\paper.json')
           foreach ($t in $targets) {
             $dst = Join-Path $env:GITHUB_WORKSPACE $t
             $dir = Split-Path $dst
             if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-            Copy-Item -Force $src $dst
+            Copy-Item -Force -Path $src -Destination $dst
           }
 
       - name: Run Gate24h workload
@@ -156,26 +156,19 @@ jobs:
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
-      - name: Setup Python 3.11
-        id: setup_py
+      - name: Install portable Python 3.11 (no registry)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        uses: actions/setup-python@v5
-        continue-on-error: true
-        with:
-          python-version: '3.11'
-
-      - name: Fallback - Install portable Python 3.11 (no registry)
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
-        shell: pwsh
+        shell: powershell
         run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
 
       - name: Verify Python availability
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: pwsh
+        shell: powershell
         run: |
-          $v = (python --version) 2>$null
-          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
-          Write-Host "Using: $v"
+          $exe = & python -c "import sys; print(sys.executable)" 2>$null
+          if (-not $exe) { throw 'Python is NOT available.' }
+          python --version
+          Write-Output "Executable: $exe"
 
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
