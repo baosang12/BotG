@@ -111,6 +111,21 @@ jobs:
         shell: powershell
         run: dotnet build BotG.sln -c Release --no-restore
 
+      - name: Activate run config (equity=$200, fees/spread>0)
+        if: always()
+        shell: powershell
+        run: |
+          $src = Join-Path $env:GITHUB_WORKSPACE "config.runtime.json"
+          Write-Host "=== USING CONFIG: $src ===" -ForegroundColor Cyan
+          Get-Content $src | Select-Object -First 40
+          # Copy sang các tên mà app/loader phổ biến tìm kiếm
+          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "appsettings.json")
+          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "appsettings.paper.json")
+          New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE "config") | Out-Null
+          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "config\trading.json")
+          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "config\paper.json")
+          Write-Host "[✓] Config activated: appsettings.json, appsettings.paper.json, config\trading.json, config\paper.json" -ForegroundColor Green
+
       - name: Run Gate24h workload
         id: runbot
         shell: powershell
