@@ -114,18 +114,36 @@ jobs:
       - name: Activate run config (equity 200, fees>0)
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
-          if (!(Test-Path $src)) { throw ("Missing config.runtime.json at " + $src) }
+          if (!(Test-Path $src)) { throw ("Missing config at " + $src) }
+
           Write-Output ("=== USING CONFIG: " + $src + " ===")
-          Get-Content -Path $src -TotalCount 40 | ForEach-Object { $_ | Out-Host }
-          $targets = @('appsettings.json','appsettings.paper.json','config\trading.json','config\paper.json')
+          Get-Content $src -TotalCount 40 | ForEach-Object { $_ | Out-Host }
+
+          # 1) Rễ repo
+          $targets = @(
+            'appsettings.json',
+            'appsettings.paper.json',
+            'config\trading.json',
+            'config\paper.json'
+          )
           foreach ($t in $targets) {
             $dst = Join-Path $env:GITHUB_WORKSPACE $t
             $dir = Split-Path $dst
-            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
             Copy-Item -Force -Path $src -Destination $dst
           }
+
+          # 2) Toàn bộ output dirs (bin/**/net*)
+          Get-ChildItem -Recurse -Directory -Filter "bin" $env:GITHUB_WORKSPACE |
+            ForEach-Object {
+              Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
+                ForEach-Object {
+                  $d = $_.FullName
+                  Copy-Item -Force -Path $src -Destination (Join-Path $d 'appsettings.json')
+                  Copy-Item -Force -Path $src -Destination (Join-Path $d 'appsettings.paper.json')
+                }
+            }
 
       - name: Run Gate24h workload
         id: runbot
@@ -173,8 +191,11 @@ jobs:
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
+        env:
+          RUN_HOURS: ${{ inputs.hours }}
         run: |
-          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR"
+          $hours = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
+          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
