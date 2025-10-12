@@ -216,7 +216,11 @@ jobs:
         run: |
           $hours  = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
           $smoke  = $hours -le 0.1
-          .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours $(if($smoke){'-SmokeLite'}else{''})
+          if ($smoke) {
+            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours -SmokeLite
+          } else {
+            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours
+          }
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
