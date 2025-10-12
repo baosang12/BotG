@@ -140,6 +140,19 @@ jobs:
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
+      - name: Setup Python 3.11
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify Python installation
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          python --version
+          Write-Host "Python location: $(Get-Command python | Select-Object -ExpandProperty Source)"
+
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
