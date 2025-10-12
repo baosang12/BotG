@@ -61,7 +61,7 @@ jobs:
           if ($mode -ne 'paper') { $reasons += "mode=$mode (expected paper)" }
           if ($sim -ne $false) { $reasons += "simulation.enabled=$sim (expected false)" }
           if ($secondsPerHour -ne 3600) { $reasons += "SecondsPerHour=$secondsPerHour (expected 3600)" }
-          $host = $env:COMPUTERNAME
+          $runnerHost = $env:COMPUTERNAME
           $startedAt = [DateTime]::UtcNow.ToString('o')
           $src = '${{ inputs.source }}'
           $meta = [ordered]@{
@@ -70,7 +70,7 @@ jobs:
             SecondsPerHour = [int]$secondsPerHour
             started_at = $startedAt
             source = $src
-            host = $host
+            host = $runnerHost
             runner = $env:RUNNER_NAME
           }
           $runDir = "D:\\botg\\runs\\meta_" + (Get-Date -Format 'yyyyMMdd_HHmmss')
@@ -158,15 +158,44 @@ jobs:
       - name: Setup Python 3.11
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         uses: actions/setup-python@v5
+        continue-on-error: true
         with:
           python-version: '3.11'
 
-      - name: Verify Python installation
+      - name: Fallback to portable Python 3.11
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
-          python --version
-          Write-Host "Python location: $(Get-Command python | Select-Object -ExpandProperty Source)"
+          # Check if Python already available
+          try {
+            $pythonCmd = Get-Command python -ErrorAction Stop
+            $version = & python --version 2>&1
+            Write-Host "[✓] Python already available: $version" -ForegroundColor Green
+            Write-Host "Location: $($pythonCmd.Source)" -ForegroundColor Gray
+            exit 0
+          }
+          catch {
+            Write-Host "[⚠] Python not found via setup-python, installing portable..." -ForegroundColor Yellow
+          }
+          
+          # Install portable Python
+          & .github\scripts\install_python_portable.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[✗] Portable Python installation failed!" -ForegroundColor Red
+            exit 1
+          }
+
+      - name: Verify Python availability
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          $pythonCmd = Get-Command python -ErrorAction Stop
+          $version = & python --version 2>&1
+          $location = & python -c "import sys; print(sys.executable)" 2>&1
+          Write-Host "=== Python Ready ===" -ForegroundColor Cyan
+          Write-Host "Version: $version" -ForegroundColor Green
+          Write-Host "Executable: $location" -ForegroundColor Green
+          Write-Host "PATH location: $($pythonCmd.Source)" -ForegroundColor Gray
 
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
