@@ -112,19 +112,20 @@ jobs:
         run: dotnet build BotG.sln -c Release --no-restore
 
       - name: Activate run config (equity=$200, fees/spread>0)
-        if: always()
-        shell: powershell
+        shell: pwsh
         run: |
-          $src = Join-Path $env:GITHUB_WORKSPACE "config.runtime.json"
-          Write-Host "=== USING CONFIG: $src ===" -ForegroundColor Cyan
-          Get-Content $src | Select-Object -First 40
-          # Copy sang các tên mà app/loader phổ biến tìm kiếm
-          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "appsettings.json")
-          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "appsettings.paper.json")
-          New-Item -ItemType Directory -Force (Join-Path $env:GITHUB_WORKSPACE "config") | Out-Null
-          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "config\trading.json")
-          Copy-Item -Force $src (Join-Path $env:GITHUB_WORKSPACE "config\paper.json")
-          Write-Host "[✓] Config activated: appsettings.json, appsettings.paper.json, config\trading.json, config\paper.json" -ForegroundColor Green
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
+          if (!(Test-Path $src)) { throw "Missing config.runtime.json at $src" }
+          Write-Host "=== USING CONFIG: $src ==="
+          Get-Content $src -TotalCount 40 | ForEach-Object { Write-Host $_ }
+          $targets = @('appsettings.json','appsettings.paper.json','config\trading.json','config\paper.json')
+          foreach ($t in $targets) {
+            $dst = Join-Path $env:GITHUB_WORKSPACE $t
+            $dir = Split-Path $dst
+            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            Copy-Item -Force $src $dst
+          }
 
       - name: Run Gate24h workload
         id: runbot
@@ -156,46 +157,25 @@ jobs:
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
       - name: Setup Python 3.11
+        id: setup_py
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         uses: actions/setup-python@v5
         continue-on-error: true
         with:
           python-version: '3.11'
 
-      - name: Fallback to portable Python 3.11
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
-        run: |
-          # Check if Python already available
-          try {
-            $pythonCmd = Get-Command python -ErrorAction Stop
-            $version = & python --version 2>&1
-            Write-Host "[✓] Python already available: $version" -ForegroundColor Green
-            Write-Host "Location: $($pythonCmd.Source)" -ForegroundColor Gray
-            exit 0
-          }
-          catch {
-            Write-Host "[⚠] Python not found via setup-python, installing portable..." -ForegroundColor Yellow
-          }
-          
-          # Install portable Python
-          & .github\scripts\install_python_portable.ps1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "[✗] Portable Python installation failed!" -ForegroundColor Red
-            exit 1
-          }
+      - name: Fallback - Install portable Python 3.11 (no registry)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
+        shell: pwsh
+        run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
 
       - name: Verify Python availability
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
+        shell: pwsh
         run: |
-          $pythonCmd = Get-Command python -ErrorAction Stop
-          $version = & python --version 2>&1
-          $location = & python -c "import sys; print(sys.executable)" 2>&1
-          Write-Host "=== Python Ready ===" -ForegroundColor Cyan
-          Write-Host "Version: $version" -ForegroundColor Green
-          Write-Host "Executable: $location" -ForegroundColor Green
-          Write-Host "PATH location: $($pythonCmd.Source)" -ForegroundColor Gray
+          $v = (python --version) 2>$null
+          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
+          Write-Host "Using: $v"
 
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
