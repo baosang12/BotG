@@ -1,4 +1,4 @@
-{
+﻿{
     "Mode":  "paper",
     "LogPath":  "D:/botg/logs",
     "FlushIntervalSeconds":  60,
@@ -33,7 +33,13 @@
                       "min_lot":  0.01,
                       "lot_step":  0.01,
                       "spread_pips_min":  0.6,
+                      "max_orders_per_minute":  60,
+                      "commission_roundturn_usd_per_lot":  7,
                       "commission_roundtrip_usd_per_lot":  7,
-                      "max_orders_per_minute":  60
-                  }
+                      "fee_roundturn_usd_per_lot":  7
+                  },
+    "timing":  {
+                   "seconds_per_hour":  3600,
+                   "hours":  24
+               }
 }
