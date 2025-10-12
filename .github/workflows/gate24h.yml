@@ -115,33 +115,32 @@ jobs:
         shell: powershell
         run: |
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
-          if (!(Test-Path $src)) { throw ("Missing config at " + $src) }
+          if (!(Test-Path $src)) { throw ("Missing config file at " + $src) }
 
           Write-Output ("=== USING CONFIG: " + $src + " ===")
-          Get-Content $src -TotalCount 40 | ForEach-Object { $_ | Out-Host }
+          # In ra 120 dòng đầu để nhìn thấy cả equity synonyms
+          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
-          # 1) Rễ repo
-          $targets = @(
+          # 1) Copy vào 4 đường dẫn gốc
+          $rootTargets = @(
             'appsettings.json',
             'appsettings.paper.json',
             'config\trading.json',
             'config\paper.json'
           )
-          foreach ($t in $targets) {
+          foreach ($t in $rootTargets) {
             $dst = Join-Path $env:GITHUB_WORKSPACE $t
-            $dir = Split-Path $dst
-            if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
             Copy-Item -Force -Path $src -Destination $dst
           }
 
-          # 2) Toàn bộ output dirs (bin/**/net*)
-          Get-ChildItem -Recurse -Directory -Filter "bin" $env:GITHUB_WORKSPACE |
+          # 2) Copy vào mọi output dir (bin/**/net*)
+          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Directory -Filter "bin" |
             ForEach-Object {
               Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
                 ForEach-Object {
-                  $d = $_.FullName
-                  Copy-Item -Force -Path $src -Destination (Join-Path $d 'appsettings.json')
-                  Copy-Item -Force -Path $src -Destination (Join-Path $d 'appsettings.paper.json')
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.json')
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.paper.json')
                 }
             }
 
@@ -149,7 +148,27 @@ jobs:
         id: runbot
         shell: powershell
         env:
+          # thời lượng (đã có), để lại nếu sẵn
           RUN_HOURS: ${{ inputs.hours }}
+
+          # Ép mode giấy & tắt simulation
+          MODE: paper
+          SIMULATION__ENABLED: "false"
+
+          # equity & risk (3 synonyms cho equity)
+          ACCOUNT__INITIAL_EQUITY_USD: "200"
+          PAPER__INITIAL_BALANCE: "200"
+          TRADING__STARTING_BALANCE_USD: "200"
+          RISK__R_USD: "10"
+          RISK__DAILY_STOP_R: "-3"
+          RISK__WEEKLY_STOP_R: "-6"
+
+          # Chi phí thực
+          EXECUTION__SPREAD_PIPS_MIN: "0.6"
+          EXECUTION__SPREAD_PIPS_FALLBACK: "1.0"
+          EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT: "7"
+          EXECUTION__COMMISSION_ROUNDTURN_USD_PER_LOT: "7"
+          EXECUTION__FEE_ROUNDTURN_USD_PER_LOT: "7"
         run: |
           $hours = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
           if ($hours -le 0) { throw "Invalid hours: $hours" }
@@ -192,10 +211,12 @@ jobs:
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         env:
+          RUN_DIR: ${{ github.workspace }}\artifacts\current
           RUN_HOURS: ${{ inputs.hours }}
         run: |
-          $hours = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
-          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours
+          $hours  = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
+          $smoke  = $hours -le 0.1
+          .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours $(if($smoke){'-SmokeLite'}else{''})
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}

@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory=$true)][string]$RunDir,
-  [Parameter(Mandatory=$false)][double]$RunHours = 24
+  [Parameter(Mandatory=$false)][double]$RunHours = 24,
+  [switch]$SmokeLite
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +30,9 @@ Write-Host "[1/4] Reconstruct FIFO..." -ForegroundColor Cyan
   --out    "$rd\closed_trades_fifo_reconstructed.csv"
 
 Write-Host "[2/4] Validate artifacts..." -ForegroundColor Cyan
-& $py -X utf8 .\path_issues\validate_artifacts.py --dir "$rd" --run-hours $RunHours
+$pyArgs = @("-X","utf8",".\path_issues\validate_artifacts.py","--dir",$rd,"--run-hours",$RunHours)
+if ($SmokeLite) { $pyArgs += "--smoke-lite" }
+& python @pyArgs
 if ($LASTEXITCODE -ne 0) { throw "Artifact validation failed (exit $LASTEXITCODE)" }
 
 Write-Host "[3/4] Ensure analysis_summary_stats.json..." -ForegroundColor Cyan
