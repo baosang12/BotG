@@ -211,7 +211,6 @@ jobs:
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         env:
-          RUN_DIR: ${{ github.workspace }}\artifacts\current
           RUN_HOURS: ${{ inputs.hours }}
         run: |
           $hours  = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
