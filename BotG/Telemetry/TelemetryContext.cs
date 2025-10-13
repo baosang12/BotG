@@ -24,7 +24,12 @@ namespace Telemetry
         // write runtime files inside runDir, but keep RiskSnapshot in base folder for continuity
         OrderLogger = new OrderLifecycleLogger(runDir, "orders.csv");
         ClosedTrades = new ClosedTradesWriter(runDir);
-        RiskPersister = new RiskSnapshotPersister(runDir, Config.RiskSnapshotFile);
+        
+        // Detect paper mode from config and setup RiskPersister with appropriate model
+        bool isPaperMode = Config.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
+        Func<double> getOpenPnlCallback = null; // TODO: Implement via RiskManager callback if needed
+        RiskPersister = new RiskSnapshotPersister(runDir, Config.RiskSnapshotFile, isPaperMode, getOpenPnlCallback);
+        
         Collector = new TelemetryCollector(runDir, Config.TelemetryFile, Config.FlushIntervalSeconds);
                 _initialized = true;
             }

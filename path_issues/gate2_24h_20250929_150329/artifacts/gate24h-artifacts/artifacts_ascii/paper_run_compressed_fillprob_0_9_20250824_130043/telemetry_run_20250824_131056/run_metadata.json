@@ -1,0 +1,37 @@
+{
+  "start_time_iso": "2025-08-24T06:10:56.6808976Z",
+  "run_id": "822c0774-6281-4f5d-84a9-f4428e6a420b",
+  "start_time": "2025-08-24T06:10:56.6808976Z",
+  "git_sha": "21937fc1ea4dd5088d7a54a802ee05a637e6485d",
+  "DrainSeconds": 150,
+  "SecondsPerHour": 300,
+  "host": "DESKTOP-584MV4B",
+  "FillProbability": 0.9,
+  "git_commit": "21937fc1ea4dd5088d7a54a802ee05a637e6485d",
+  "sim_seed": 42,
+  "GracefulShutdownWaitSeconds": 15,
+  "artifact_path": "C:\\Users\\TechCare\\AppData\\Local\\Temp\\botg_artifacts_orchestrator_retry_compressed_20250824_131055\\telemetry_run_20250824_131056",
+  "config_snapshot": {
+    "simulation": {
+      "fill_probability": 0.9,
+      "enabled": true
+    },
+    "config_path": "",
+    "drain_seconds": 150,
+    "execution": {
+      "fee_per_trade": 0,
+      "fee_percent": 0,
+      "spread_pips": 0
+    },
+    "seconds_per_hour": 300
+  },
+  "extra": {
+    "sim_seed": 42,
+    "seconds": null,
+    "seconds_per_hour": 300,
+    "drain_seconds": 30,
+    "graceful_shutdown_wait_seconds": 5,
+    "use_simulation": true,
+    "fill_probability": 0.9
+  }
+}

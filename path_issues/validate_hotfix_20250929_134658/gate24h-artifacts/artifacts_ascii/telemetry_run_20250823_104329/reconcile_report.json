@@ -1,0 +1,13 @@
+{
+    "request_count":  24,
+    "fill_count":  24,
+    "closed_trades_count":  12,
+    "orphan_fills_count":  0,
+    "orphan_closes_count":  0,
+    "sample_orphan_fills":  {
+
+                            },
+    "sample_orphan_closes":  {
+
+                             }
+}

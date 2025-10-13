@@ -1,0 +1,41 @@
+﻿# Commands to Reproduce Unmatched Orders Analysis - 20250904_141449
+
+## PowerShell Commands
+# 1. Basic comparison between orders and closed_trades
+$ordersContent = Import-Csv '.\path_issues\orders_ascii.csv'
+$closedTradesContent = Import-Csv '.\path_issues\closed_trades_fifo_reconstructed_20250830_110506.csv'
+$uniqueOrderIds = $ordersContent | Where-Object { $_.orderId -ne "" } | Select-Object -ExpandProperty orderId | Sort-Object -Unique
+$entryOrderIds = $closedTradesContent | Select-Object -ExpandProperty entry_order_id | Sort-Object -Unique
+$exitOrderIds = $closedTradesContent | Select-Object -ExpandProperty exit_order_id | Sort-Object -Unique
+$allMatchedOrderIds = ($entryOrderIds + $exitOrderIds) | Sort-Object -Unique
+$unmatchedOrderIds = $uniqueOrderIds | Where-Object { $_ -notin $allMatchedOrderIds }
+Write-Host "Unmatched orders: $($unmatchedOrderIds.Count)"
+
+# 2. Normalized ID comparison
+$normalizedOrderIds = $uniqueOrderIds | ForEach-Object { $_.Trim().ToLower() }
+$normalizedMatchedIds = $allMatchedOrderIds | ForEach-Object { $_.Trim().ToLower() }
+$normalizedUnmatched = $normalizedOrderIds | Where-Object { $_ -notin $normalizedMatchedIds }
+Write-Host "Normalized unmatched: $($normalizedUnmatched.Count)"
+
+# 3. Quick smoke test to validate fix
+$reconstruct_script = '.\reconstruct_closed_trades_sqlite.py'
+if (Test-Path $reconstruct_script) {
+    python $reconstruct_script --orders '.\path_issues\orders_ascii.csv' --output '.\path_issues\test_reconstruct_output.csv'
+}
+
+## Python Commands
+# Alternative analysis using pandas
+python -c "
+import pandas as pd
+orders = pd.read_csv('./path_issues/orders_ascii.csv')
+closed_trades = pd.read_csv('./path_issues/closed_trades_fifo_reconstructed_20250830_110506.csv')
+unique_orders = set(orders['orderId'].dropna().unique())
+matched_orders = set(closed_trades['entry_order_id'].dropna()) | set(closed_trades['exit_order_id'].dropna())
+unmatched = unique_orders - matched_orders
+print(f'Unmatched orders: {len(unmatched)}')
+print(f'Unmatched list: {list(unmatched)}')
+"
+
+# Validation commands
+Get-Content '.\path_issues\unmatched_ids_20250904_141449.json' | ConvertFrom-Json
+Get-Content '.\path_issues\unmatched_examples_20250904_141449.csv' | Select-Object -First 5

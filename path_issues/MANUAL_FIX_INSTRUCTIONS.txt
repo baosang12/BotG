@@ -1,0 +1,80 @@
+﻿# AGENT A - MANUAL FIX REQUIRED
+
+##  PowerShell Encoding Issue
+
+All automated file modifications via Out-File corrupt C# syntax due to encoding/BOM issues.
+
+##  COMPLETED SUCCESSFULLY
+
+1. **RiskSnapshotPersister.cs** - Already modified correctly (committed in cb2735a)
+2. **config.runtime.json** - Already modified correctly (committed in cb2735a)
+3. **start_24h_command_ready.txt** - Already modified correctly (committed in cb2735a)
+
+##  MANUAL EDITS REQUIRED (2 files)
+
+### BotG/Telemetry/ClosedTradesWriter.cs
+
+**Line ~40** (after SafeAppendCsv for _tradeClosesLog):
+
+INSERT these 3 lines:
+
+                //Update cumulative closed P&L in risk snapshot persister
+                TelemetryContext.RiskPersister?.AddClosedPnl(pnlAccountCcy);
+
+**Context**:
+```csharp
+var human = $"{closeTimeUtc...} CLOSED {tradeId}...";
+CsvUtils.SafeAppendCsv(_tradeClosesLog, "line", human);
+//  INSERT HERE (before closing brace)
+            }
+            catch { /* swallow */ }
+```
+
+### BotG/Execution/ExecutionModule.cs
+
+**Line ~187** - REPLACE:
+```csharp
+requestedUnits = 1000; // fallback to legacy default
+```
+
+WITH:
+```csharp
+throw new InvalidOperationException("Risk sizing calculation failed");
+```
+
+**Line ~192** - REPLACE:
+```csharp
+requestedUnits = 1000; // legacy default
+```
+
+WITH:
+```csharp
+throw new InvalidOperationException("RiskManager not initialized");
+```
+
+##  VERIFICATION STEPS
+
+1. Open files in VS Code (UTF-8, no BOM)
+2. Make edits manually
+3. Save
+4. Run: dotnet build BotG.sln --configuration Release
+5. Expected: Build succeeded (0 errors)
+6. Run: git add -A; git commit --amend --no-edit
+7. Proceed to smoke test
+
+##  STATUS
+
+- **Agent A Audit**:  COMPLETE (agent_a_status.json, agent_a_evidence.txt)
+- **Risk Ledger Logic**:  COMPLETE (3/5 files modified successfully)
+- **Build**:  BLOCKED (2 files need manual edit due to PowerShell encoding)
+- **Smoke Test**:  PENDING (after build pass)
+- **PR Creation**:  PENDING (after smoke test pass)
+
+##  NEXT STEPS
+
+1. **YOU**: Manually edit 2 files in VS Code (5 minutes)
+2. **BUILD**: dotnet build (verify 0 errors)
+3. **COMMIT**: git commit --amend
+4. **SMOKE**: gh workflow run gate24h.yml -f hours=0.25 -f source=smoke-agent-a
+5. **PR**: gh pr create (after smoke test validates risk_snapshots.csv)
+

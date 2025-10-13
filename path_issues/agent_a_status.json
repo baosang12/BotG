@@ -1,0 +1,87 @@
+{
+  "ci_green": true,
+  "workflows": {
+    "gate24h.yml": "ok",
+    "notify_on_failure.yml": "ok",
+    "watch_gate24h.yml": "ok",
+    "smoke.yml": "ok"
+  },
+  "config": {
+    "mode": "paper",
+    "simulation_enabled": null,
+    "seconds_per_hour": null,
+    "note": "config.runtime.json has Mode=paper but simulation.enabled and SecondsPerHour are null/missing - defaults used at runtime"
+  },
+  "telemetry_schema_ok": true,
+  "risk_pnl_flow_ok": true,
+  "market_quality": {
+    "fees": "on",
+    "spread_mode": "raw",
+    "slippage_model": "discrete_env_var",
+    "note": "COMMISSION_PER_LOT=7.0, SPREAD_PIPS=0.1, SLIP_RANGE_PIPS=0.1 configured in gate24h.yml env"
+  },
+  "anti_martingale_grid": true,
+  "issues": [
+    {
+      "id": "A1",
+      "severity": "medium",
+      "evidence": "config.runtime.json:3-7 - simulation.enabled and SecondsPerHour fields are null",
+      "description": "Config file has incomplete values; relying on hardcoded defaults in workflow/code",
+      "fix": "Populate config.runtime.json with explicit simulation.enabled=false, SecondsPerHour=3600"
+    },
+    {
+      "id": "A2",
+      "severity": "low",
+      "evidence": "BotG/Execution/ExecutionModule.cs:187,192 - fallback requestedUnits = 1000",
+      "description": "Legacy hardcoded fallback sizing (1000 units) exists when RiskManager fails",
+      "fix": "Remove fallback or make it fail-fast to ensure RiskManager.CalculateOrderSize is always used"
+    },
+    {
+      "id": "A3",
+      "severity": "low",
+      "evidence": "BotG/Telemetry/RiskSnapshotPersister.cs:51 - open_pnl hardcoded to 0.0",
+      "description": "open_pnl always written as 0.0 (TODO comment present), not aggregated from actual open positions",
+      "fix": "Implement open_pnl aggregation from AccountInfo.Positions or mark field as 'not_tracked' in schema"
+    },
+    {
+      "id": "A4",
+      "severity": "info",
+      "evidence": "path_issues/start_24h_command_ready.txt contains hours=0.25 (not 24)",
+      "description": "Start command file has outdated test value (15 min), not production 24h",
+      "fix": "Update file to hours=24 for gate2 deployment readiness"
+    },
+    {
+      "id": "A5",
+      "severity": "info",
+      "evidence": "Connector/*.cs - no slippage implementation found in codebase",
+      "description": "SLIP_RANGE_PIPS configured in workflow but no Random slippage logic detected in Connector",
+      "fix": "Verify slippage is applied by cAlgo platform natively or implement explicit stochastic slippage in PaperTradingConnector"
+    }
+  ],
+  "recommendation_ab": {
+    "change_id": "A_FIX_001",
+    "goal": "Populate config.runtime.json with explicit paper mode defaults to eliminate runtime ambiguity",
+    "files": [
+      "config.runtime.json"
+    ],
+    "change_detail": "Add simulation: { enabled: false }, SecondsPerHour: 3600, hours: 24 to runtime config",
+    "risk": "low",
+    "rollback": "revert single file commit",
+    "test_plan": "Run smoke test (3 min), verify run_metadata.json has correct values",
+    "expected_outcome": "No behavior change, but explicit config reduces debugging overhead"
+  },
+  "summary": {
+    "system_status": "operational_with_minor_issues",
+    "blocker_count": 0,
+    "high_severity_count": 0,
+    "medium_severity_count": 1,
+    "low_severity_count": 2,
+    "info_count": 2,
+    "next_actions": [
+      "Populate config.runtime.json with explicit defaults (A_FIX_001)",
+      "Implement open_pnl aggregation or document as limitation",
+      "Update start_24h_command_ready.txt to hours=24",
+      "Verify slippage model implementation in paper trading"
+    ]
+  }
+}

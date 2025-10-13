@@ -61,7 +61,7 @@ jobs:
           if ($mode -ne 'paper') { $reasons += "mode=$mode (expected paper)" }
           if ($sim -ne $false) { $reasons += "simulation.enabled=$sim (expected false)" }
           if ($secondsPerHour -ne 3600) { $reasons += "SecondsPerHour=$secondsPerHour (expected 3600)" }
-          $host = $env:COMPUTERNAME
+          $runnerHost = $env:COMPUTERNAME
           $startedAt = [DateTime]::UtcNow.ToString('o')
           $src = '${{ inputs.source }}'
           $meta = [ordered]@{
@@ -70,7 +70,7 @@ jobs:
             SecondsPerHour = [int]$secondsPerHour
             started_at = $startedAt
             source = $src
-            host = $host
+            host = $runnerHost
             runner = $env:RUNNER_NAME
           }
           $runDir = "D:\\botg\\runs\\meta_" + (Get-Date -Format 'yyyyMMdd_HHmmss')
@@ -111,6 +111,22 @@ jobs:
         shell: powershell
         run: dotnet build BotG.sln -c Release --no-restore
 
+      - name: Activate run config (equity=$200, fees/spread>0)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
+          if (!(Test-Path $src)) { throw "Missing config.runtime.json at $src" }
+          Write-Host "=== USING CONFIG: $src ==="
+          Get-Content $src -TotalCount 40 | ForEach-Object { Write-Host $_ }
+          $targets = @('appsettings.json','appsettings.paper.json','config\trading.json','config\paper.json')
+          foreach ($t in $targets) {
+            $dst = Join-Path $env:GITHUB_WORKSPACE $t
+            $dir = Split-Path $dst
+            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            Copy-Item -Force $src $dst
+          }
+
       - name: Run Gate24h workload
         id: runbot
         shell: powershell
@@ -139,6 +155,27 @@ jobs:
           $lineCount = (Get-Content -LiteralPath $orders | Measure-Object -Line).Lines
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
+
+      - name: Setup Python 3.11
+        id: setup_py
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/setup-python@v5
+        continue-on-error: true
+        with:
+          python-version: '3.11'
+
+      - name: Fallback - Install portable Python 3.11 (no registry)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
+        shell: pwsh
+        run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
+
+      - name: Verify Python availability
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: pwsh
+        run: |
+          $v = (python --version) 2>$null
+          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
+          Write-Host "Using: $v"
 
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}

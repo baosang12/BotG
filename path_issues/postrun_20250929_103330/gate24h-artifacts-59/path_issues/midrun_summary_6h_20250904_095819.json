@@ -1,0 +1,8 @@
+﻿{
+    "orders_total":  467,
+    "fills_total":  281,
+    "fill_rate_avg":  0.84,
+    "elapsed_minutes":  0.5,
+    "milestone":  "6h_simulation",
+    "status":  "RUNNING_OK"
+}

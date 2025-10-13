@@ -35,6 +35,9 @@ namespace Telemetry
                     CsvUtils.SafeAppendCsv(_closedTradesCsv, Header, line);
                     var human = $"{closeTimeUtc.ToString("o", CultureInfo.InvariantCulture)} CLOSED {tradeId} {side} size={size} pnl={pnlAccountCcy.ToString(CultureInfo.InvariantCulture)}";
                     CsvUtils.SafeAppendCsv(_tradeClosesLog, "line", human);
+
+                    // Update cumulative closed P&L in risk snapshot persister (time-aware)
+                    TelemetryContext.RiskPersister?.AddClosedPnl(pnlAccountCcy, closeTimeUtc);
                 }
             }
             catch { /* swallow */ }

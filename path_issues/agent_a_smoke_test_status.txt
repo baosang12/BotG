@@ -1,0 +1,81 @@
+﻿# AGENT A - SMOKE TEST IN PROGRESS
+
+**Workflow**: Gate24h paper run #100
+**Started**: 2025-10-09 19:29:48
+**Duration**: 15 minutes (hours=0.25)
+**Source**: smoke-agent-a-ledger-sync
+**Mode**: paper
+
+## Changes Being Validated
+
+### 1. Risk Snapshot Persister (BotG/Telemetry/RiskSnapshotPersister.cs)
+- Added _closedPnl field for cumulative realized P&L tracking
+- Added AddClosedPnl(double pnl) method for thread-safe updates  
+- Implemented open_pnl = equity - balance calculation
+- Updated CSV header: 	imestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure
+
+### 2. Closed Trades Writer (BotG/Telemetry/ClosedTradesWriter.cs)
+- Wired TelemetryContext.RiskPersister?.AddClosedPnl(pnlAccountCcy) on every trade close
+- Ensures cumulative closed_pnl updates in real-time
+
+### 3. Execution Module (BotG/Execution/ExecutionModule.cs)
+- Removed equestedUnits = 1000 fallback (2 occurrences)
+- Replaced with fail-fast exceptions:
+  - 	hrow new InvalidOperationException("Risk sizing calculation failed")
+  - 	hrow new InvalidOperationException("RiskManager not initialized")
+
+### 4. Config Runtime (config.runtime.json)
+- Added simulation.enabled = false
+- Added SecondsPerHour = 3600 (real-time)
+- Added hours = 24 (production duration)
+
+### 5. Start Command (path_issues/start_24h_command_ready.txt)
+- Updated hours from 0.25 to 24
+
+## Expected Results
+
+**risk_snapshots.csv** should show:
+- open_pnl column populated with non-zero values when positions are open
+- open_pnl  equity - balance (within floating point precision)
+- closed_pnl column showing cumulative sum of all closed trade P&L
+- closed_pnl increases monotonically on each trade close
+
+## Verification Commands (After Completion)
+
+```powershell
+# Get latest run directory
+$runDir = (Get-ChildItem "D:\botg\logs\artifacts\" -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+$riskFile = Join-Path $runDir "risk_snapshots.csv"
+
+# Check schema
+Get-Content $riskFile | Select-Object -First 1
+
+# Verify formula: open_pnl = equity - balance
+$csv = Import-Csv $riskFile
+$csv | Select-Object timestamp_utc, equity, balance, open_pnl, closed_pnl, @{N='calc_open_pnl';E={[double]$_.equity - [double]$_.balance}} | Format-Table
+
+# Check closed_pnl progression
+$csv | Select-Object timestamp_utc, closed_pnl | Where-Object { [double]$_.closed_pnl -ne 0 }
+```
+
+## Next Steps After Smoke Test PASS
+
+1. Download artifacts from workflow run #100
+2. Verify risk_snapshots.csv with commands above
+3. Update agent_a_evidence.txt with smoke test results
+4. Create PR with evidence
+5. Merge after review
+
+## Agent A DoD Status
+
+-  Comprehensive audit (5 issues documented in agent_a_status.json)
+-  Single A/B change (riskP&L synchronization)
+-  Build verification (0 errors)
+-  Smoke test (in progress - run #100)
+-  PR creation (pending smoke test pass)
+
+---
+**Note**: Smoke test duration is 15 minutes. Check status with:
+```powershell
+gh run list --workflow=gate24h.yml --limit 1
+```

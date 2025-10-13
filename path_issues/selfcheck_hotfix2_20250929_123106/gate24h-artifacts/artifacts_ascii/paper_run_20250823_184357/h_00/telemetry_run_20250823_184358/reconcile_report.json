@@ -1,0 +1,16 @@
+{
+    "request_count":  1218,
+    "fill_count":  1098,
+    "closed_trades_count":  547,
+    "orphan_fills_count":  4,
+    "orphan_closes_count":  0,
+    "sample_orphan_fills":  [
+                                "ORD-18240",
+                                "ORD-18180",
+                                "ORD-18150",
+                                "ORD-18210"
+                            ],
+    "sample_orphan_closes":  {
+
+                             }
+}

@@ -1,0 +1,28 @@
+﻿{
+    "pass":  false,
+    "reasons":  [
+                    "telemetry_span_hours=0 (\u003c23.75)",
+                    "orders.missing:request_id",
+                    "orders.missing:ts_request",
+                    "orders.missing:ts_ack",
+                    "orders.missing:ts_fill",
+                    "risk.missing:ts"
+                ],
+    "telemetry_span_hours":  0,
+    "files_present":  [
+                          "orders.csv",
+                          "telemetry.csv",
+                          "risk_snapshots.csv",
+                          "trade_closes.log",
+                          "run_metadata.json"
+                      ],
+    "schema_ok":  false,
+    "risk_violations":  {
+                            "weekly":  false,
+                            "daily":  false
+                        },
+    "kpi":  {
+                "fills":  3567,
+                "fill_rate":  33.32
+            }
+}

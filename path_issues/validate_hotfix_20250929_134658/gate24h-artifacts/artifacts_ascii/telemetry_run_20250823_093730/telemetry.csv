@@ -1,0 +1,4 @@
+timestamp_iso,ticksPerSec,signalsLastMinute,ordersRequestedLastMinute,ordersFilledLastMinute,errorsLastMinute
+2025-08-23T02:37:35.0614362Z,2.1,13,9,9,4
+2025-08-23T02:37:37.0365602Z,2.1,13,8,8,3
+2025-08-23T02:37:39.0379101Z,2.1666666666666665,13,9,9,4

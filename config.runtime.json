@@ -1,19 +1,45 @@
-{
-  "Mode": "paper",
-  "LogPath": "D:/botg/logs",
-  "FlushIntervalSeconds": 60,
-  "OrderLogFile": "orders.csv",
-  "RiskSnapshotFile": "risk_snapshots.csv",
-  "TelemetryFile": "telemetry.csv",
- "Risk": {
-  "PointValuePerUnit": 0.0,
-  "PointValuePerLot": 0.0,
-  "RiskPercentPerTrade": 0.01,
-  "MinRiskUsdPerTrade": 3.0,
-  "StopLossAtrMultiplier": 1.8,
-  "MaxLotsPerTrade": 1.0,
-  "LotSizeDefault": 100,
-  "MaxMarginUsagePercent": 10.0
-}
-
+﻿{
+    "Mode":  "paper",
+    "LogPath":  "D:/botg/logs",
+    "FlushIntervalSeconds":  60,
+    "OrderLogFile":  "orders.csv",
+    "RiskSnapshotFile":  "risk_snapshots.csv",
+    "TelemetryFile":  "telemetry.csv",
+    "simulation":  {
+                       "enabled":  false,
+                       "start_date":  "2024-01-01",
+                       "end_date":  "2024-12-31"
+                   },
+    "SecondsPerHour":  3600,
+    "hours":  24,
+    "Risk":  {
+                 "PointValuePerUnit":  0.0,
+                 "PointValuePerLot":  0.0,
+                 "RiskPercentPerTrade":  0.01,
+                 "MinRiskUsdPerTrade":  3.0,
+                 "StopLossAtrMultiplier":  1.8,
+                 "MaxLotsPerTrade":  1.0,
+                 "LotSizeDefault":  100,
+                 "MaxMarginUsagePercent":  10.0,
+                 "R_usd":  10,
+                 "daily_stop_R":  -3,
+                 "weekly_stop_R":  -6
+             },
+    "account":  {
+                    "initial_equity_usd":  200
+                },
+    "execution":  {
+                      "spread_pips_fallback":  1,
+                      "min_lot":  0.01,
+                      "lot_step":  0.01,
+                      "spread_pips_min":  0.6,
+                      "max_orders_per_minute":  60,
+                      "commission_roundturn_usd_per_lot":  7,
+                      "commission_roundtrip_usd_per_lot":  7,
+                      "fee_roundturn_usd_per_lot":  7
+                  },
+    "timing":  {
+                   "seconds_per_hour":  3600,
+                   "hours":  24
+               }
 }
