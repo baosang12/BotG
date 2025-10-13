@@ -1,0 +1,283 @@
+﻿name: Gate24h paper run
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Number of hours to run the gate'
+        required: true
+        default: '24'
+      source:
+        description: 'Trigger source label'
+        required: false
+        default: 'manual'
+      mode:
+        description: 'Execution mode (forced to paper at runtime)'
+        required: false
+        default: 'paper'
+      force_misconfig:
+        description: 'Force a misconfiguration to trip the guard (for proof)'
+        required: false
+        default: 'false'
+
+jobs:
+  gate24h:
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 1500
+    env:
+      BOTG_MODE: paper
+      SIM_ENABLED: false
+      COMMISSION_PER_LOT: 7.0
+      SPREAD_PIPS: 0.1
+      SLIP_RANGE_PIPS: 0.1
+      SLIP_SEED: 42
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert-PaperMode
+        id: assert
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $mode = $env:BOTG_MODE
+          $sim = $env:SIM_ENABLED
+          $secondsPerHour = 3600
+          $cfgPath = Join-Path $PWD 'config.runtime.json'
+          if (Test-Path -LiteralPath $cfgPath) {
+            try {
+              $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
+              if ($cfg.SecondsPerHour) { $secondsPerHour = [int]$cfg.SecondsPerHour }
+              if ($cfg.simulation -and $null -ne $cfg.simulation.enabled) { $sim = [bool]$cfg.simulation.enabled }
+              if ($cfg.mode) { $mode = [string]$cfg.mode }
+            } catch { Write-Warning "config.runtime.json parse error: $_" }
+          }
+          if ('${{ inputs.force_misconfig }}' -eq 'true') {
+            # Simulate misconfiguration: violate SecondsPerHour
+            $secondsPerHour = 3599
+          }
+          $reasons = @()
+          if ($mode -ne 'paper') { $reasons += "mode=$mode (expected paper)" }
+          if ($sim -ne $false) { $reasons += "simulation.enabled=$sim (expected false)" }
+          if ($secondsPerHour -ne 3600) { $reasons += "SecondsPerHour=$secondsPerHour (expected 3600)" }
+          $runnerHost = $env:COMPUTERNAME
+          $startedAt = [DateTime]::UtcNow.ToString('o')
+          $src = '${{ inputs.source }}'
+          $meta = [ordered]@{
+            mode = $mode
+            simulation = @{ enabled = [bool]$sim }
+            SecondsPerHour = [int]$secondsPerHour
+            started_at = $startedAt
+            source = $src
+            host = $runnerHost
+            runner = $env:RUNNER_NAME
+          }
+          $runDir = "D:\\botg\\runs\\meta_" + (Get-Date -Format 'yyyyMMdd_HHmmss')
+          New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+          ($meta | ConvertTo-Json -Depth 4) | Out-File -FilePath (Join-Path $runDir 'run_metadata.json') -Encoding utf8
+          "RUN_META_DIR=$runDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "run_meta_dir=$runDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if ($reasons.Count -gt 0) {
+            Write-Host "NOT_PAPER_MODE: $($reasons -join '; ')"
+            "ASSERT_FAIL=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "ASSERT_REASON=$($reasons -join '; ')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "assert_fail=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "assert_reason=$($reasons -join '; ')" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            Write-Host 'Assert-PaperMode OK'
+            "assert_fail=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "assert_reason=" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Create timestamp
+        id: ts
+        shell: powershell
+        run: |
+          $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+          "ts=$ts" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $runDir = "D:\botg\runs\gate24h_$ts"
+          "RUN_DIR=$runDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "run_dir=$runDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "BOTG_LOG_PATH=$runDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+          Write-Host "Created run directory: $runDir"
+
+      - name: Restore dependencies
+        shell: powershell
+        run: dotnet restore BotG.sln
+
+      - name: Build solution
+        shell: powershell
+        run: dotnet build BotG.sln -c Release --no-restore
+
+      - name: Activate run config (equity 200, fees>0)
+        shell: powershell
+        run: |
+          $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
+          if (!(Test-Path $src)) { throw ("Missing config file at " + $src) }
+
+          Write-Output ("=== ORIGINAL CONFIG (first 120 lines) ===")
+          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
+
+          # --- 1) Nạp, chỉnh JSON tại CHÍNH FILE NGUỒN ---
+          $json = Get-Content $src -Raw | ConvertFrom-Json
+
+          # Bảo đảm các nhánh tồn tại
+          if (-not $json.PSObject.Properties.Name -contains 'account'){ $json | Add-Member -NotePropertyName 'account' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'paper'){   $json | Add-Member -NotePropertyName 'paper'   -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'trading'){ $json | Add-Member -NotePropertyName 'trading' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'Risk'){    $json | Add-Member -NotePropertyName 'Risk'    -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'simulation'){ $json | Add-Member -NotePropertyName 'simulation' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'execution'){ $json | Add-Member -NotePropertyName 'execution' -NotePropertyValue (@{}) }
+          
+          $json.Mode = 'paper'
+          $json.simulation.enabled = $false
+
+          # Ép equity = 200 theo 3 "đường" thường gặp
+          $json.account.initial_equity_usd = 200
+          $json.paper.initial_balance = 200
+          $json.trading.starting_balance_usd = 200
+
+          # Risk giữ đúng chuẩn
+          $json.Risk.R_usd = 10
+          $json.Risk.daily_stop_R = -3
+          $json.Risk.weekly_stop_R = -6
+
+          # Phí & spread thực tế
+          $json.execution.spread_pips_min = 0.6
+          $json.execution.spread_pips_fallback = 1.0
+          $json.execution.commission_roundtrip_usd_per_lot = 7
+          $json.execution.commission_roundturn_usd_per_lot = 7
+          $json.execution.fee_roundturn_usd_per_lot = 7
+
+          # Ghi đè NGAY lên file nguồn (UTF-8, no BOM)
+          $out = $json | ConvertTo-Json -Depth 100
+          [System.IO.File]::WriteAllText($src, $out, (New-Object System.Text.UTF8Encoding($false)))
+
+          Write-Output ("=== MODIFIED CONFIG (first 120 lines) ===")
+          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
+
+          # --- 2) Copy vào 4 đường dẫn gốc ---
+          $rootTargets = @(
+            'appsettings.json',
+            'appsettings.paper.json',
+            'config\trading.json',
+            'config\paper.json'
+          )
+          foreach ($t in $rootTargets) {
+            $dst = Join-Path $env:GITHUB_WORKSPACE $t
+            New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
+            Copy-Item -Force -Path $src -Destination $dst
+          }
+
+          # --- 3) Copy vào TẤT CẢ output dirs (bin/**/net*) ---
+          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Directory -Filter "bin" |
+            ForEach-Object {
+              Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
+                ForEach-Object {
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'config.runtime.json')
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.json')
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.paper.json')
+                }
+            }
+
+      - name: Run Gate24h workload
+        id: runbot
+        shell: powershell
+        env:
+          RUN_HOURS: ${{ inputs.hours }}
+        run: |
+          $hours = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
+          if ($hours -le 0) { throw "Invalid hours: $hours" }
+          $seconds = [int]([Math]::Ceiling($hours * 3600))
+          $runDir = $env:RUN_DIR
+          if (-not $runDir) { throw "RUN_DIR not set" }
+          $args = @('run','--project','Harness/Harness.csproj','--configuration','Release','--','--seconds',"$seconds",'--artifactPath',"$runDir",'--logPath',"$runDir")
+          Write-Host "Invoking: dotnet $($args -join ' ')"
+          dotnet @args
+
+      - name: Verify heartbeat output
+        shell: powershell
+        run: |
+          $runDir = $env:RUN_DIR
+          if (-not (Test-Path -LiteralPath $runDir)) { throw "Run directory missing: $runDir" }
+          $orders = Join-Path $runDir 'orders.csv'
+          if (-not (Test-Path -LiteralPath $orders)) { throw "orders.csv not found" }
+          $file = Get-Item -LiteralPath $orders
+          $ageMinutes = (Get-Date).ToUniversalTime().Subtract($file.LastWriteTimeUtc).TotalMinutes
+          if ($ageMinutes -gt 5) { throw "orders.csv last write ${ageMinutes}m ago (expected ≤5m)" }
+          $lineCount = (Get-Content -LiteralPath $orders | Measure-Object -Line).Lines
+          if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
+          Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
+
+      - name: Install portable Python 3.11 (no registry)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
+
+      - name: Verify Python availability
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          $exe = & python -c "import sys; print(sys.executable)" 2>$null
+          if (-not $exe) { throw 'Python is NOT available.' }
+          python --version
+          Write-Output "Executable: $exe"
+
+      - name: Postrun collect and validate
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        env:
+          RUN_HOURS: ${{ inputs.hours }}
+        run: |
+          $hours  = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
+          $smoke  = $hours -le 0.1
+          if ($smoke) {
+            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours -SmokeLite
+          } else {
+            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours
+          }
+
+      - name: Gate2 postrun validation
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          & scripts\postrun_gate2_validate.ps1 -ArtifactsDir "$env:RUN_DIR"
+
+      - name: Upload Gate24h artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts_${{ steps.ts.outputs.ts }}
+          path: ${{ steps.ts.outputs.run_dir }}/**/*
+          retention-days: 30
+
+      - name: Upload run metadata (early)
+        if: ${{ steps.assert.outputs.assert_fail == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: run_metadata
+          path: ${{ steps.assert.outputs.run_meta_dir }}/run_metadata.json
+          retention-days: 30
+
+      - name: Cancel run (NOT_PAPER_MODE)
+        if: ${{ steps.assert.outputs.assert_fail == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.info(`Cancelling workflow run due to: ${{ steps.assert.outputs.assert_reason }}`)
+            await github.rest.actions.cancelWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            })
+
+      - name: Upload run metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run_metadata
+          path: ${{ steps.assert.outputs.run_meta_dir }}/run_metadata.json
+          retention-days: 30
+
