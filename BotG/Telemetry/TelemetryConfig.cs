@@ -2,6 +2,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Telemetry
 {
@@ -179,16 +180,19 @@ namespace Telemetry
 
     public class AccountConfig
     {
+        [JsonPropertyName("initial_equity_usd")]
         public double? InitialEquityUsd { get; set; }
     }
 
     public class PaperConfig
     {
+        [JsonPropertyName("initial_balance")]
         public double? InitialBalance { get; set; }
     }
 
     public class TradingConfig
     {
+        [JsonPropertyName("starting_balance_usd")]
         public double? StartingBalanceUsd { get; set; }
     }
 }
