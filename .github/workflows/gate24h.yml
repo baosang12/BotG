@@ -1,4 +1,4 @@
-name: Gate24h paper run
+﻿name: Gate24h paper run
 
 on:
   workflow_dispatch:
@@ -120,10 +120,10 @@ jobs:
           Write-Output ("=== ORIGINAL CONFIG (first 120 lines) ===")
           Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
-          # --- 1) Nạp, chỉnh JSON tại CHÍNH FILE NGUỒN ---
+          # --- 1) Náº¡p, chá»‰nh JSON táº¡i CHÃNH FILE NGUá»’N ---
           $json = Get-Content $src -Raw | ConvertFrom-Json
 
-          # Bảo đảm các nhánh tồn tại
+          # Báº£o Ä‘áº£m cÃ¡c nhÃ¡nh tá»“n táº¡i
           if (-not $json.PSObject.Properties.Name -contains 'account'){ $json | Add-Member -NotePropertyName 'account' -NotePropertyValue (@{}) }
           if (-not $json.PSObject.Properties.Name -contains 'paper'){   $json | Add-Member -NotePropertyName 'paper'   -NotePropertyValue (@{}) }
           if (-not $json.PSObject.Properties.Name -contains 'trading'){ $json | Add-Member -NotePropertyName 'trading' -NotePropertyValue (@{}) }
@@ -134,31 +134,31 @@ jobs:
           $json.Mode = 'paper'
           $json.simulation.enabled = $false
 
-          # Ép equity = 200 theo 3 "đường" thường gặp
+          # Ã‰p equity = 200 theo 3 "Ä‘Æ°á»ng" thÆ°á»ng gáº·p
           $json.account.initial_equity_usd = 200
           $json.paper.initial_balance = 200
           $json.trading.starting_balance_usd = 200
 
-          # Risk giữ đúng chuẩn
+          # Risk giá»¯ Ä‘Ãºng chuáº©n
           $json.Risk.R_usd = 10
           $json.Risk.daily_stop_R = -3
           $json.Risk.weekly_stop_R = -6
 
-          # Phí & spread thực tế
+          # PhÃ­ & spread thá»±c táº¿
           $json.execution.spread_pips_min = 0.6
           $json.execution.spread_pips_fallback = 1.0
           $json.execution.commission_roundtrip_usd_per_lot = 7
           $json.execution.commission_roundturn_usd_per_lot = 7
           $json.execution.fee_roundturn_usd_per_lot = 7
 
-          # Ghi đè NGAY lên file nguồn (UTF-8, no BOM)
+          # Ghi Ä‘Ã¨ NGAY lÃªn file nguá»“n (UTF-8, no BOM)
           $out = $json | ConvertTo-Json -Depth 100
           [System.IO.File]::WriteAllText($src, $out, (New-Object System.Text.UTF8Encoding($false)))
 
           Write-Output ("=== MODIFIED CONFIG (first 120 lines) ===")
           Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
-          # --- 2) Copy vào 4 đường dẫn gốc ---
+          # --- 2) Copy vÃ o 4 Ä‘Æ°á»ng dáº«n gá»‘c ---
           $rootTargets = @(
             'appsettings.json',
             'appsettings.paper.json',
@@ -171,7 +171,7 @@ jobs:
             Copy-Item -Force -Path $src -Destination $dst
           }
 
-          # --- 3) Copy vào TẤT CẢ output dirs (bin/**/net*) ---
+          # --- 3) Copy vÃ o Táº¤T Cáº¢ output dirs (bin/**/net*) ---
           Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Directory -Filter "bin" |
             ForEach-Object {
               Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
@@ -206,7 +206,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $orders)) { throw "orders.csv not found" }
           $file = Get-Item -LiteralPath $orders
           $ageMinutes = (Get-Date).ToUniversalTime().Subtract($file.LastWriteTimeUtc).TotalMinutes
-          if ($ageMinutes -gt 5) { throw "orders.csv last write ${ageMinutes}m ago (expected ≤5m)" }
+          if ($ageMinutes -gt 5) { throw "orders.csv last write ${ageMinutes}m ago (expected â‰¤5m)" }
           $lineCount = (Get-Content -LiteralPath $orders | Measure-Object -Line).Lines
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
@@ -255,6 +255,7 @@ jobs:
 
       - name: Upload run metadata (early)
         if: ${{ steps.assert.outputs.assert_fail == 'true' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run_metadata
@@ -280,3 +281,4 @@ jobs:
           name: run_metadata
           path: ${{ steps.assert.outputs.run_meta_dir }}/run_metadata.json
           retention-days: 30
+

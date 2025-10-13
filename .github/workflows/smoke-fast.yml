@@ -1,4 +1,4 @@
-name: smoke-fast
+﻿name: smoke-fast
 
 on:
   pull_request:
@@ -41,6 +41,7 @@ jobs:
           if ([int]$rjson.orphan_after -gt 0) { throw "Reconstruct orphan_after > 0: $($rjson.orphan_after)" }
           "artifact_dir=$($dir.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-fast-telemetry
