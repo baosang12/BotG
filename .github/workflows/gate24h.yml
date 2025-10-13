@@ -113,60 +113,52 @@ jobs:
 
       - name: Activate run config (equity 200, fees>0)
         shell: powershell
-        env:
-          # ENV overrides (sẽ ghi vào JSON)
-          ACCOUNT__INITIAL_EQUITY_USD: "200"
-          PAPER__INITIAL_BALANCE: "200"
-          TRADING__STARTING_BALANCE_USD: "200"
-          RISK__R_USD: "10"
-          EXECUTION__SPREAD_PIPS_MIN: "0.6"
-          EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT: "7"
         run: |
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
           if (!(Test-Path $src)) { throw ("Missing config file at " + $src) }
 
-          Write-Output ("=== ORIGINAL CONFIG: " + $src + " ===")
+          Write-Output ("=== ORIGINAL CONFIG (first 120 lines) ===")
           Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
-          # APPLY ENV OVERRIDES TO JSON
-          $json = Get-Content -Path $src -Raw | ConvertFrom-Json
-          if ($env:ACCOUNT__INITIAL_EQUITY_USD) {
-            Write-Output "Override: account.initial_equity_usd = $env:ACCOUNT__INITIAL_EQUITY_USD"
-            $json.account.initial_equity_usd = [double]$env:ACCOUNT__INITIAL_EQUITY_USD
-          }
-          if ($env:PAPER__INITIAL_BALANCE) {
-            Write-Output "Override: paper.initial_balance = $env:PAPER__INITIAL_BALANCE"
-            $json.paper.initial_balance = [double]$env:PAPER__INITIAL_BALANCE
-          }
-          if ($env:TRADING__STARTING_BALANCE_USD) {
-            Write-Output "Override: trading.starting_balance_usd = $env:TRADING__STARTING_BALANCE_USD"
-            $json.trading.starting_balance_usd = [double]$env:TRADING__STARTING_BALANCE_USD
-          }
-          if ($env:RISK__R_USD) {
-            Write-Output "Override: risk.r_usd = $env:RISK__R_USD"
-            if (-not $json.risk) { $json | Add-Member -NotePropertyName risk -NotePropertyValue @{} }
-            $json.risk.r_usd = [double]$env:RISK__R_USD
-          }
-          if ($env:EXECUTION__SPREAD_PIPS_MIN) {
-            Write-Output "Override: execution.spread_pips_min = $env:EXECUTION__SPREAD_PIPS_MIN"
-            if (-not $json.execution.spread_pips_min) { $json.execution | Add-Member -NotePropertyName spread_pips_min -NotePropertyValue 0 }
-            $json.execution.spread_pips_min = [double]$env:EXECUTION__SPREAD_PIPS_MIN
-          }
-          if ($env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT) {
-            Write-Output "Override: execution.commission_roundtrip_usd_per_lot = $env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT"
-            if (-not $json.execution.commission_roundtrip_usd_per_lot) { $json.execution | Add-Member -NotePropertyName commission_roundtrip_usd_per_lot -NotePropertyValue 0 }
-            $json.execution.commission_roundtrip_usd_per_lot = [double]$env:EXECUTION__COMMISSION_ROUNDTRIP_USD_PER_LOT
-          }
+          # --- 1) Nạp, chỉnh JSON tại CHÍNH FILE NGUỒN ---
+          $json = Get-Content $src -Raw | ConvertFrom-Json
 
-          # Ghi lại JSON đã sửa
-          $enc = New-Object System.Text.UTF8Encoding $false
-          $modifiedJson = $json | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText($src, $modifiedJson, $enc)
+          # Bảo đảm các nhánh tồn tại
+          if (-not $json.PSObject.Properties.Name -contains 'account'){ $json | Add-Member -NotePropertyName 'account' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'paper'){   $json | Add-Member -NotePropertyName 'paper'   -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'trading'){ $json | Add-Member -NotePropertyName 'trading' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'Risk'){    $json | Add-Member -NotePropertyName 'Risk'    -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'simulation'){ $json | Add-Member -NotePropertyName 'simulation' -NotePropertyValue (@{}) }
+          if (-not $json.PSObject.Properties.Name -contains 'execution'){ $json | Add-Member -NotePropertyName 'execution' -NotePropertyValue (@{}) }
+          
+          $json.Mode = 'paper'
+          $json.simulation.enabled = $false
 
-          Write-Output ("=== MODIFIED CONFIG (sau ENV override) ===")
+          # Ép equity = 200 theo 3 "đường" thường gặp
+          $json.account.initial_equity_usd = 200
+          $json.paper.initial_balance = 200
+          $json.trading.starting_balance_usd = 200
+
+          # Risk giữ đúng chuẩn
+          $json.Risk.R_usd = 10
+          $json.Risk.daily_stop_R = -3
+          $json.Risk.weekly_stop_R = -6
+
+          # Phí & spread thực tế
+          $json.execution.spread_pips_min = 0.6
+          $json.execution.spread_pips_fallback = 1.0
+          $json.execution.commission_roundtrip_usd_per_lot = 7
+          $json.execution.commission_roundturn_usd_per_lot = 7
+          $json.execution.fee_roundturn_usd_per_lot = 7
+
+          # Ghi đè NGAY lên file nguồn (UTF-8, no BOM)
+          $out = $json | ConvertTo-Json -Depth 100
+          [System.IO.File]::WriteAllText($src, $out, (New-Object System.Text.UTF8Encoding($false)))
+
+          Write-Output ("=== MODIFIED CONFIG (first 120 lines) ===")
           Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
 
-          # 1) Copy vào 4 đường dẫn gốc
+          # --- 2) Copy vào 4 đường dẫn gốc ---
           $rootTargets = @(
             'appsettings.json',
             'appsettings.paper.json',
@@ -179,7 +171,7 @@ jobs:
             Copy-Item -Force -Path $src -Destination $dst
           }
 
-          # 2) Copy vào mọi output dir (bin/**/net*)
+          # --- 3) Copy vào TẤT CẢ output dirs (bin/**/net*) ---
           Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Directory -Filter "bin" |
             ForEach-Object {
               Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
