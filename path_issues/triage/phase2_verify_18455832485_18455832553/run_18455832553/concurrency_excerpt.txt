@@ -1,0 +1,7 @@
+﻿D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:43:shadow	Runner & concurrency guard	∩╗┐2025-10-13T05:13:01.2723115Z ##[group]Run echo "=== Runner & Concurrency Diagnostics ==="
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:44:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2723958Z [36;1mecho "=== Runner & Concurrency Diagnostics ==="[0m
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:62:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2734473Z [36;1mecho "Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2-actions-upload-concurrency"[0m
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:63:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2735377Z [36;1mecho "Cancel-in-progress: true"[0m
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:70:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2904432Z === Runner & Concurrency Diagnostics ===
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:88:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2914333Z Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2-actions-upload-concurrency
+D:\tmp\phase2_verify\PR253\run_18455832553\run_B_log.txt:89:shadow	Runner & concurrency guard	2025-10-13T05:13:01.2915251Z Cancel-in-progress: true
