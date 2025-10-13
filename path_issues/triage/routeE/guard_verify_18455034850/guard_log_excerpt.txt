@@ -1,0 +1,19 @@
+﻿shadow	Runner & concurrency guard	∩╗┐2025-10-13T04:20:19.5734835Z ##[group]Run echo "=== Runner & Concurrency Diagnostics ==="
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5735672Z [36;1mecho "=== Runner & Concurrency Diagnostics ==="[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5736350Z [36;1mecho "Runner name: GitHub Actions 1000002848"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5736932Z [36;1mecho "Runner OS: Linux"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5737425Z [36;1mecho "Runner arch: X64"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5742519Z [36;1mecho "Event: push"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5743245Z [36;1mecho "Ref: refs/heads/ci/guard-verify"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5745683Z [36;1mecho "Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/guard-verify"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5746484Z [36;1mecho "Cancel-in-progress: true"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5747914Z [36;1mecho "Job started: $(date -u +%FT%TZ)"[0m
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5913146Z === Runner & Concurrency Diagnostics ===
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5913805Z Runner name: GitHub Actions 1000002848
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5914407Z Runner OS: Linux
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5915164Z Runner arch: X64
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5919716Z Event: push
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5920108Z Ref: refs/heads/ci/guard-verify
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5922096Z Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/guard-verify
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5923000Z Cancel-in-progress: true
+shadow	Runner & concurrency guard	2025-10-13T04:20:19.5924182Z Job started: 2025-10-13T04:20:19Z

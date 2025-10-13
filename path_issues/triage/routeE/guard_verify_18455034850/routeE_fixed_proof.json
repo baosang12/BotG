@@ -1,0 +1,129 @@
+﻿{
+    "rid":  18455034850,
+    "ts":  "2025-10-13T11:18:04Z",
+    "workflow":  "smoke-fast-on-pr",
+    "meta":  {
+                 "attempt":  1,
+                 "conclusion":  "success",
+                 "createdAt":  "2025-10-13T04:20:15Z",
+                 "displayTitle":  "ci: trigger smoke-fast-on-pr to verify runner/concurrency guard (2025ΓÇª",
+                 "event":  "push",
+                 "headBranch":  "ci/guard-verify",
+                 "headSha":  "3402c6fc436317c97d3a80b3e61427e790a82c8c",
+                 "jobs":  [
+                              {
+                                  "completedAt":  "2025-10-13T04:20:24Z",
+                                  "conclusion":  "success",
+                                  "databaseId":  52574955529,
+                                  "name":  "shadow",
+                                  "startedAt":  "2025-10-13T04:20:18Z",
+                                  "status":  "completed",
+                                  "steps":  [
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:19Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Set up job",
+                                                    "number":  1,
+                                                    "startedAt":  "2025-10-13T04:20:18Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:19Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Runner \u0026 concurrency guard",
+                                                    "number":  2,
+                                                    "startedAt":  "2025-10-13T04:20:19Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:22Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Run actions/checkout@v4",
+                                                    "number":  3,
+                                                    "startedAt":  "2025-10-13T04:20:19Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:22Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Start event",
+                                                    "number":  4,
+                                                    "startedAt":  "2025-10-13T04:20:22Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:22Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Run shadow tests (fast)",
+                                                    "number":  5,
+                                                    "startedAt":  "2025-10-13T04:20:22Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:22Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Classify results",
+                                                    "number":  6,
+                                                    "startedAt":  "2025-10-13T04:20:22Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:22Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Decide \u0026 log",
+                                                    "number":  7,
+                                                    "startedAt":  "2025-10-13T04:20:22Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:23Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Upload events",
+                                                    "number":  8,
+                                                    "startedAt":  "2025-10-13T04:20:22Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:23Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Post Run actions/checkout@v4",
+                                                    "number":  16,
+                                                    "startedAt":  "2025-10-13T04:20:23Z",
+                                                    "status":  "completed"
+                                                },
+                                                {
+                                                    "completedAt":  "2025-10-13T04:20:23Z",
+                                                    "conclusion":  "success",
+                                                    "name":  "Complete job",
+                                                    "number":  17,
+                                                    "startedAt":  "2025-10-13T04:20:23Z",
+                                                    "status":  "completed"
+                                                }
+                                            ],
+                                  "url":  "https://github.com/baosang12/BotG/actions/runs/18455034850/job/52574955529"
+                              },
+                              {
+                                  "completedAt":  "2025-10-13T04:20:24Z",
+                                  "conclusion":  "skipped",
+                                  "databaseId":  52574961495,
+                                  "name":  "auto-rerun",
+                                  "startedAt":  "2025-10-13T04:20:24Z",
+                                  "status":  "completed",
+                                  "steps":  [
+
+                                            ],
+                                  "url":  "https://github.com/baosang12/BotG/actions/runs/18455034850/job/52574961495"
+                              }
+                          ],
+                 "number":  297,
+                 "status":  "completed",
+                 "updatedAt":  "2025-10-13T04:20:25Z",
+                 "url":  "https://github.com/baosang12/BotG/actions/runs/18455034850",
+                 "workflowDatabaseId":  183601640,
+                 "workflowName":  "smoke-fast-on-pr"
+             },
+    "has_guard_lines":  true,
+    "has_artifact":  true,
+    "guard_log_excerpt_rel":  "guard_log_excerpt.txt",
+    "artifact_rel":  "artifact"
+}
