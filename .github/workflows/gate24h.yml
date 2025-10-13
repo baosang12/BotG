@@ -176,6 +176,7 @@ jobs:
             ForEach-Object {
               Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
                 ForEach-Object {
+                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'config.runtime.json')
                   Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.json')
                   Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.paper.json')
                 }
