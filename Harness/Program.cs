@@ -51,8 +51,8 @@ class Program
             // ensure config value doesn't block auto-compute in this harness
             rm.GetSettings().PointValuePerUnit = 0.0;
             rm.SetSymbolReference(fakeSym);
-            // Force equity override for consistent sizing tests
-            rm.SetEquityOverrideForTesting(10000);
+            // Get equity from config instead of hardcoding
+            var initialEquity = cfg.GetInitialEquity(); rm.SetEquityOverrideForTesting(initialEquity);
             Console.WriteLine("[Harness] Auto PointValuePerUnit = " + rm.GetSettings().PointValuePerUnit.ToString("G"));
         }
         catch (Exception ex)
@@ -312,7 +312,7 @@ class Program
                     if (parts.Length >= 13 && parts[0] == "FILL") fills.Add(parts);
                 }
                 fills.Reverse();
-                double equity = 10000; // as overridden
+                double equity = cfg.GetInitialEquity(); // from config
                 // Prepare an RM instance mirroring harness assumptions to compute theoretical lots/units with clamp
                 var rm2 = new RiskManager.RiskManager();
                 rm2.Initialize(new RiskSettings { MaxLotsPerTrade = 10.0, LotSizeDefault = 100 });

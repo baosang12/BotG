@@ -41,5 +41,11 @@
     "timing":  {
                    "seconds_per_hour":  3600,
                    "hours":  24
-               }
+               },
+    "paper":  {
+                  "initial_balance":  200
+              },
+    "trading":  {
+                    "starting_balance_usd":  200
+                }
 }
