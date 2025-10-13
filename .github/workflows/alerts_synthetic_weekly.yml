@@ -46,3 +46,4 @@ jobs:
               core.setOutput("gate_run_id", run.id.toString());
               core.setOutput("gate_run_url", run.html_url);
             }
+

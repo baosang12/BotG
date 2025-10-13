@@ -1,0 +1,30 @@
+﻿{
+    "pr_number":  253,
+    "pr_branch":  "ci/phase2-actions-upload-concurrency",
+    "rid_A":  18455832485,
+    "rid_B":  18455832553,
+    "a_conclusion":  "failure",
+    "b_conclusion":  "success",
+    "diff_checks":  {
+                        "checkout_v4":  true,
+                        "upload_v4":  true,
+                        "setup_python_v5":  false,
+                        "if_always":  true,
+                        "cancel_in_progress_true":  true
+                    },
+    "diff_pass":  true,
+    "concurrency_ok":  true,
+    "versions_checks":  {
+                            "checkout_v4":  true,
+                            "upload_v4":  true,
+                            "setup_python_v5":  false
+                        },
+    "versions_ok":  true,
+    "upload_seen":  true,
+    "cancel_in_progress_effect":  false,
+    "notes":  [
+                  "actions/setup-python@v5 not observed in workflow run",
+                  "Run_A conclusion=failure (expected \u0027cancelled\u0027 when cancellation triggers)",
+                  "Diff missing actions/setup-python@v5 (maybe not applicable)"
+              ]
+}

@@ -1,4 +1,4 @@
-name: Test Dispatch
+﻿name: Test Dispatch
 on:
   workflow_dispatch:
     inputs:
@@ -10,3 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo 'dispatch ok'
+
