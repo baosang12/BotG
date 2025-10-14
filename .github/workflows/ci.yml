@@ -66,7 +66,6 @@ jobs:
           path: ./test-results
 
   quick-smoke:
-    timeout-minutes: 10
     name: Quick Smoke (60s)
     runs-on: windows-latest
     needs: build-test
@@ -121,11 +120,10 @@ jobs:
             ${{ steps.validate.outputs.path }}/*.csv
 
   reconstruct-validate:
-    timeout-minutes: 30
     name: Reconstruct & Validate (from smoke)
     runs-on: windows-latest
     needs: quick-smoke
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
