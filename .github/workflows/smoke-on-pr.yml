@@ -1,104 +1,106 @@
-﻿name: smoke-fast-on-pr
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [ main, develop, feat/** ]
-  push:
-    branches: [ ci/** ]
-
-concurrency:
-  group: workflow-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  shadow:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    outputs:
-      status:   ${{ steps.decide.outputs.status }}
-      reason:   ${{ steps.decide.outputs.reason }}
-      retry_ok: ${{ steps.decide.outputs.retry_ok }}
-    steps:
-      - name: Runner & concurrency guard
-        shell: bash
-        run: |
-          echo "=== Runner & Concurrency Diagnostics ==="
-          echo "Runner name: ${{ runner.name }}"
-          echo "Runner OS: ${{ runner.os }}"
-          echo "Runner arch: ${{ runner.arch }}"
-          echo "Runner temp: ${{ runner.temp }}"
-          echo "Runner tool cache: ${{ runner.tool_cache }}"
-          echo "---"
-          echo "Job ID: ${{ github.job }}"
-          echo "Run ID: ${{ github.run_id }}"
-          echo "Run number: ${{ github.run_number }}"
-          echo "Run attempt: ${{ github.run_attempt }}"
-          echo "---"
-          echo "Workflow: ${{ github.workflow }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "SHA: ${{ github.sha }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "---"
-          echo "Concurrency group: workflow-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
-          echo "Cancel-in-progress: true"
-          echo "---"
-          echo "Environment: ${{ github.environment }}"
-          echo "Job started: $(date -u +%FT%TZ)"
-          echo "========================================"
-
-      - uses: actions/checkout@v4
-
-      - name: Start event
-        run: |
-          mkdir -p .botg
-          echo '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'${{ github.run_id }}',"pr":'${{ github.event.pull_request.number || 0 }}',"stage":"shadow","level":"info","msg":"start","kv":{"sha":"${{ github.sha }}","actor":"${{ github.actor }}","runner":"${{ runner.name }}"}}' >> .botg/events.jsonl
-
-      - name: Run shadow tests (fast)
-        id: tests
-        shell: bash
-        run: |
-          set -e
-          echo "TODO: Implement shadow tests"
-          echo '{"status":"PASS","reason":"not_implemented"}' > .botg/status.json
-
-      - name: Classify results
-        if: always()
-        id: classify
-        shell: bash
-        run: |
-          set -e
-          cat .botg/status.json
-
-      - name: Decide & log
-        if: always()
-        id: decide
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          STATUS=$(jq -r .status < .botg/status.json)
-          REASON=$(jq -r .reason < .botg/status.json)
-          RETRY_OK="false"
-
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "reason=$REASON" >> $GITHUB_OUTPUT
-          echo "retry_ok=$RETRY_OK" >> $GITHUB_OUTPUT
-          echo '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'${{ github.run_id }}',"pr":'${{ github.event.pull_request.number || 0 }}',"stage":"decide","level":"info","msg":"conclusion","kv":{"status":"'"$STATUS"'","reason":"'"$REASON"'"}}' >> .botg/events.jsonl
-
-      - name: Upload events
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: workflow-events-${{ github.run_id }}
-          path: .botg/events.jsonl
-          retention-days: 7
-
-  auto-rerun:
-    needs: shadow
-    if: needs.shadow.outputs.status == 'AUTO_RERUN' && needs.shadow.outputs.retry_ok == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log auto-rerun
-        run: echo "Auto-rerun triggered"
+-n-a-m-e-:- -s-m-o-k-e---f-a-s-t---o-n---p-r--
+-o-n-:--
+- - -p-u-l-l-_-r-e-q-u-e-s-t-:--
+- - - - -t-y-p-e-s-:- -[-o-p-e-n-e-d-,- -s-y-n-c-h-r-o-n-i-z-e-,- -r-e-o-p-e-n-e-d-]--
+- - - - -b-r-a-n-c-h-e-s-:- -[- -m-a-i-n-,- -d-e-v-e-l-o-p-,- -f-e-a-t-/-*-*- -]--
+- - -p-u-s-h-:--
+- - - - -b-r-a-n-c-h-e-s-:- -[- -c-i-/-*-*- -]--
+--
+-c-o-n-c-u-r-r-e-n-c-y-:--
+- - -g-r-o-u-p-:- -w-o-r-k-f-l-o-w---$-{-{- -g-i-t-h-u-b-.-w-o-r-k-f-l-o-w- -}-}---$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-p-u-l-l-_-r-e-q-u-e-s-t-.-n-u-m-b-e-r- -|-|- -g-i-t-h-u-b-.-r-e-f- -}-}--
+- - -c-a-n-c-e-l---i-n---p-r-o-g-r-e-s-s-:- -t-r-u-e--
+--
+-j-o-b-s-:--
+- - -s-h-a-d-o-w-:--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -t-i-m-e-o-u-t---m-i-n-u-t-e-s-:- -2-0--
+- - - - -o-u-t-p-u-t-s-:--
+- - - - - - -s-t-a-t-u-s-:- - - -$-{-{- -s-t-e-p-s-.-d-e-c-i-d-e-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -}-}--
+- - - - - - -r-e-a-s-o-n-:- - - -$-{-{- -s-t-e-p-s-.-d-e-c-i-d-e-.-o-u-t-p-u-t-s-.-r-e-a-s-o-n- -}-}--
+- - - - - - -r-e-t-r-y-_-o-k-:- -$-{-{- -s-t-e-p-s-.-d-e-c-i-d-e-.-o-u-t-p-u-t-s-.-r-e-t-r-y-_-o-k- -}-}--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -R-u-n-n-e-r- -&- -c-o-n-c-u-r-r-e-n-c-y- -g-u-a-r-d--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -=-=-=- -R-u-n-n-e-r- -&- -C-o-n-c-u-r-r-e-n-c-y- -D-i-a-g-n-o-s-t-i-c-s- -=-=-=-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n-n-e-r- -n-a-m-e-:- -$-{-{- -r-u-n-n-e-r-.-n-a-m-e- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n-n-e-r- -O-S-:- -$-{-{- -r-u-n-n-e-r-.-o-s- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n-n-e-r- -a-r-c-h-:- -$-{-{- -r-u-n-n-e-r-.-a-r-c-h- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n-n-e-r- -t-e-m-p-:- -$-{-{- -r-u-n-n-e-r-.-t-e-m-p- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n-n-e-r- -t-o-o-l- -c-a-c-h-e-:- -$-{-{- -r-u-n-n-e-r-.-t-o-o-l-_-c-a-c-h-e- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -------"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -J-o-b- -I-D-:- -$-{-{- -g-i-t-h-u-b-.-j-o-b- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n- -I-D-:- -$-{-{- -g-i-t-h-u-b-.-r-u-n-_-i-d- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n- -n-u-m-b-e-r-:- -$-{-{- -g-i-t-h-u-b-.-r-u-n-_-n-u-m-b-e-r- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-u-n- -a-t-t-e-m-p-t-:- -$-{-{- -g-i-t-h-u-b-.-r-u-n-_-a-t-t-e-m-p-t- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -------"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -W-o-r-k-f-l-o-w-:- -$-{-{- -g-i-t-h-u-b-.-w-o-r-k-f-l-o-w- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -E-v-e-n-t-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-_-n-a-m-e- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-e-f-:- -$-{-{- -g-i-t-h-u-b-.-r-e-f- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -S-H-A-:- -$-{-{- -g-i-t-h-u-b-.-s-h-a- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -A-c-t-o-r-:- -$-{-{- -g-i-t-h-u-b-.-a-c-t-o-r- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -------"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -C-o-n-c-u-r-r-e-n-c-y- -g-r-o-u-p-:- -w-o-r-k-f-l-o-w---$-{-{- -g-i-t-h-u-b-.-w-o-r-k-f-l-o-w- -}-}---$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-p-u-l-l-_-r-e-q-u-e-s-t-.-n-u-m-b-e-r- -|-|- -g-i-t-h-u-b-.-r-e-f- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -C-a-n-c-e-l---i-n---p-r-o-g-r-e-s-s-:- -t-r-u-e-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -------"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -E-n-v-i-r-o-n-m-e-n-t-:- -$-{-{- -g-i-t-h-u-b-.-e-n-v-i-r-o-n-m-e-n-t- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -J-o-b- -s-t-a-r-t-e-d-:- -$-(-d-a-t-e- ---u- -+-%-F-T-%-T-Z-)-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"--
+--
+- - - - - - --- -u-s-e-s-:- -a-c-t-i-o-n-s-/-c-h-e-c-k-o-u-t-@-v-4--
+--
+- - - - - - --- -n-a-m-e-:- -S-t-a-r-t- -e-v-e-n-t--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -m-k-d-i-r- ---p- -.-b-o-t-g--
+- - - - - - - - - - -e-c-h-o- -'-{-"-t-s-"-:-"-'-"-$-(-d-a-t-e- ---u- -+-%-F-T-%-T-Z-)-"-'-"-,-"-r-u-n-_-i-d-"-:-'-$-{-{- -g-i-t-h-u-b-.-r-u-n-_-i-d- -}-}-'-,-"-p-r-"-:-'-$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-p-u-l-l-_-r-e-q-u-e-s-t-.-n-u-m-b-e-r- -|-|- -0- -}-}-'-,-"-s-t-a-g-e-"-:-"-s-h-a-d-o-w-"-,-"-l-e-v-e-l-"-:-"-i-n-f-o-"-,-"-m-s-g-"-:-"-s-t-a-r-t-"-,-"-k-v-"-:-{-"-s-h-a-"-:-"-$-{-{- -g-i-t-h-u-b-.-s-h-a- -}-}-"-,-"-a-c-t-o-r-"-:-"-$-{-{- -g-i-t-h-u-b-.-a-c-t-o-r- -}-}-"-,-"-r-u-n-n-e-r-"-:-"-$-{-{- -r-u-n-n-e-r-.-n-a-m-e- -}-}-"-}-}-'- ->->- -.-b-o-t-g-/-e-v-e-n-t-s-.-j-s-o-n-l--
+--
+- - - - - - --- -n-a-m-e-:- -R-u-n- -s-h-a-d-o-w- -t-e-s-t-s- -(-f-a-s-t-)--
+- - - - - - - - -i-d-:- -t-e-s-t-s--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -T-O-D-O-:- -I-m-p-l-e-m-e-n-t- -s-h-a-d-o-w- -t-e-s-t-s-"--
+- - - - - - - - - - -e-c-h-o- -'-{-"-s-t-a-t-u-s-"-:-"-P-A-S-S-"-,-"-r-e-a-s-o-n-"-:-"-n-o-t-_-i-m-p-l-e-m-e-n-t-e-d-"-}-'- ->- -.-b-o-t-g-/-s-t-a-t-u-s-.-j-s-o-n--
+--
+- - - - - - --- -n-a-m-e-:- -C-l-a-s-s-i-f-y- -r-e-s-u-l-t-s--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -i-d-:- -c-l-a-s-s-i-f-y--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e--
+- - - - - - - - - - -c-a-t- -.-b-o-t-g-/-s-t-a-t-u-s-.-j-s-o-n--
+--
+- - - - - - --- -n-a-m-e-:- -D-e-c-i-d-e- -&- -l-o-g--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -i-d-:- -d-e-c-i-d-e--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -e-n-v-:--
+- - - - - - - - - - -G-H-_-T-O-K-E-N-:- -$-{-{- -g-i-t-h-u-b-.-t-o-k-e-n- -}-}--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e--
+- - - - - - - - - - -S-T-A-T-U-S-=-$-(-j-q- ---r- -.-s-t-a-t-u-s- -<- -.-b-o-t-g-/-s-t-a-t-u-s-.-j-s-o-n-)--
+- - - - - - - - - - -R-E-A-S-O-N-=-$-(-j-q- ---r- -.-r-e-a-s-o-n- -<- -.-b-o-t-g-/-s-t-a-t-u-s-.-j-s-o-n-)--
+- - - - - - - - - - -R-E-T-R-Y-_-O-K-=-"-f-a-l-s-e-"--
+--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -s-t-a-t-u-s-=-$-S-T-A-T-U-S-"- ->->- -$-G-I-T-H-U-B-_-O-U-T-P-U-T--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-e-a-s-o-n-=-$-R-E-A-S-O-N-"- ->->- -$-G-I-T-H-U-B-_-O-U-T-P-U-T--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-e-t-r-y-_-o-k-=-$-R-E-T-R-Y-_-O-K-"- ->->- -$-G-I-T-H-U-B-_-O-U-T-P-U-T--
+- - - - - - - - - - -e-c-h-o- -'-{-"-t-s-"-:-"-'-"-$-(-d-a-t-e- ---u- -+-%-F-T-%-T-Z-)-"-'-"-,-"-r-u-n-_-i-d-"-:-'-$-{-{- -g-i-t-h-u-b-.-r-u-n-_-i-d- -}-}-'-,-"-p-r-"-:-'-$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-p-u-l-l-_-r-e-q-u-e-s-t-.-n-u-m-b-e-r- -|-|- -0- -}-}-'-,-"-s-t-a-g-e-"-:-"-d-e-c-i-d-e-"-,-"-l-e-v-e-l-"-:-"-i-n-f-o-"-,-"-m-s-g-"-:-"-c-o-n-c-l-u-s-i-o-n-"-,-"-k-v-"-:-{-"-s-t-a-t-u-s-"-:-"-'-"-$-S-T-A-T-U-S-"-'-"-,-"-r-e-a-s-o-n-"-:-"-'-"-$-R-E-A-S-O-N-"-'-"-}-}-'- ->->- -.-b-o-t-g-/-e-v-e-n-t-s-.-j-s-o-n-l--
+--
+- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -e-v-e-n-t-s--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -n-a-m-e-:- -w-o-r-k-f-l-o-w---e-v-e-n-t-s---$-{-{- -g-i-t-h-u-b-.-r-u-n-_-i-d- -}-}--
+- - - - - - - - - - -p-a-t-h-:- -.-b-o-t-g-/-e-v-e-n-t-s-.-j-s-o-n-l--
+- - - - - - - - - - -r-e-t-e-n-t-i-o-n---d-a-y-s-:- -7--
+--
+- - -a-u-t-o---r-e-r-u-n-:--
+- - - - -n-e-e-d-s-:- -s-h-a-d-o-w--
+- - - - -i-f-:- -n-e-e-d-s-.-s-h-a-d-o-w-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -=-=- -'-A-U-T-O-_-R-E-R-U-N-'- -&-&- -n-e-e-d-s-.-s-h-a-d-o-w-.-o-u-t-p-u-t-s-.-r-e-t-r-y-_-o-k- -=-=- -'-t-r-u-e-'--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -L-o-g- -a-u-t-o---r-e-r-u-n--
+- - - - - - - - -r-u-n-:- -e-c-h-o- -"-x- --- -A-u-t-o---r-e-r-u-n- -t-r-i-g-g-e-r-e-d-"--
+-

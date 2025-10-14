@@ -1,150 +1,152 @@
-﻿name: Notify on Gate24h failure
-on:
-  workflow_run:
-    workflows: ["Gate 24h (paper supervised)"]
-    types: [completed]
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: "Gate24h run id"
-        required: true
-      conclusion:
-        description: "Gate24h conclusion"
-        required: true
-      url:
-        description: "Gate24h url"
-        required: true
-
-permissions:
-  contents: read
-  issues: write
-
-jobs:
-  notify:
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success') || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    env:
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-    steps:
-      - name: Resolve on-call assignees (optional)
-        id: oncall
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "assignees=${{ secrets.ALERT_ASSIGNEES }}" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve vars (run info)
-        id: vars
-        shell: bash
-        env:
-          RUN_ID_WR: ${{ github.event.workflow_run.id }}
-          RUN_CONC_WR: ${{ github.event.workflow_run.conclusion }}
-          RUN_URL_WR: ${{ github.event.workflow_run.html_url }}
-          RUN_ID_DISP: ${{ github.event.inputs.run_id }}
-          RUN_CONC_DISP: ${{ github.event.inputs.conclusion }}
-          RUN_URL_DISP: ${{ github.event.inputs.url }}
-        run: |
-          set -euo pipefail
-          RUN_ID="${RUN_ID_WR:-$RUN_ID_DISP}"
-          RUN_CONC="${RUN_CONC_WR:-$RUN_CONC_DISP}"
-          RUN_URL="${RUN_URL_WR:-$RUN_URL_DISP}"
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "run_conc=$RUN_CONC" >> "$GITHUB_OUTPUT"
-          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
-          echo "Resolved: id=$RUN_ID conc=$RUN_CONC url=$RUN_URL"
-      - name: Telegram notify (if secrets)
-        id: tgram
-        if: ${{ env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
-        shell: bash
-        continue-on-error: true
-        env:
-          ALERT_ASSIGNEES: ${{ steps.oncall.outputs.assignees }}
-        run: |
-          set -euo pipefail
-          MSG="❌ Gate24h failed\nRepo: ${{ github.repository }}\nRunID: ${{ steps.vars.outputs.run_id }}\nConclusion: ${{ steps.vars.outputs.run_conc }}\nURL: ${{ steps.vars.outputs.run_url }}"
-          if [ -n "${ALERT_ASSIGNEES:-}" ]; then
-            MSG="ONCALL: ${ALERT_ASSIGNEES}\n${MSG}"
-          fi
-          RESP_FILE="/tmp/tg_resp.json"
-          HTTP=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-                 -d "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$(printf '%b' "$MSG")" -d "parse_mode=HTML" || echo "000")
-          echo "http_code=$HTTP" >> "$GITHUB_OUTPUT"
-          if [ "$HTTP" = "200" ] && grep -q '"ok":true' "$RESP_FILE"; then
-            echo "status=ok" >> "$GITHUB_OUTPUT"
-            echo "TELEGRAM_HTTP=200"
-          else
-            echo "status=fail" >> "$GITHUB_OUTPUT"
-            echo "TELEGRAM_HTTP=$HTTP"
-            echo "Telegram response:" && sed -e '1,5!d' "$RESP_FILE" || true
-          fi
-
-      - name: Dedupe: check existing alert issue
-        id: dedupe
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TITLE: "Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
-        run: |
-          set -euo pipefail
-          cnt=$(gh issue list --search "in:title \"$TITLE\" state:open" --json number --limit 1 | jq 'length')
-          echo "exists=$cnt" >> "$GITHUB_OUTPUT"
-
-      - name: Issue alert (fallback)
-        if: ${{ steps.tgram.outputs.status != 'ok' && steps.dedupe.outputs.exists == '0' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ALERT_ASSIGNEES: ${{ steps.oncall.outputs.assignees }}
-        shell: bash
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          TITLE="Gate24h alert: run #${{ steps.vars.outputs.run_id }} → ${{ steps.vars.outputs.run_conc }}"
-          BODY="${{ steps.vars.outputs.run_url }}"
-          LABEL="gate-alert"
-          # optional assignees (comma-separated usernames)
-          HAS_ASSIGNEES=0
-          if [ -n "${ALERT_ASSIGNEES:-}" ]; then
-            HAS_ASSIGNEES=1
-            echo "Assigning on-call: $ALERT_ASSIGNEES"
-          fi
-          if gh label list --limit 100 | grep -q "^${LABEL}\\b"; then
-            echo "Label '${LABEL}' found. Creating labeled issue..."
-            if [ $HAS_ASSIGNEES -eq 1 ]; then
-              gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l "$LABEL" --assignee "$ALERT_ASSIGNEES" || echo "Issue creation failed (labeled, assigned)."
-            else
-              gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" -l "$LABEL" || echo "Issue creation failed (labeled)."
-            fi
-          else
-            echo "Label '${LABEL}' not found. Creating issue without label..."
-            if [ $HAS_ASSIGNEES -eq 1 ]; then
-              gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" --assignee "$ALERT_ASSIGNEES" || echo "Issue creation failed (unlabeled, assigned)."
-            else
-              gh issue create -R "$GITHUB_REPOSITORY" -t "$TITLE" -b "$BODY" || echo "Issue creation failed (unlabeled)."
-            fi
-          fi
-
-      - name: Verbose summary (≥100 lines)
-        shell: bash
-        run: |
-          echo "---- NOTIFY SUMMARY BEGIN ----"
-          echo "repo=$GITHUB_REPOSITORY"
-          echo "run_id=${{ steps.vars.outputs.run_id }}"
-          echo "conclusion=${{ steps.vars.outputs.run_conc }}"
-          echo "url=${{ steps.vars.outputs.run_url }}"
-          # Derive telegram status/http with safe fallbacks (empty when step didn't run)
-          TSTAT="${{ steps.tgram.outputs.status }}"; [ -z "$TSTAT" ] && TSTAT="skipped"; echo "telegram_status=$TSTAT"
-          THTTP="${{ steps.tgram.outputs.http_code }}"; [ -z "$THTTP" ] && THTTP="NA"; echo "telegram_http=$THTTP"
-          for i in $(seq 1 90); do
-            echo "keepalive-$i ts=$(date -u +%FT%TZ) run=${{ steps.vars.outputs.run_id }}"
-          done
-          echo "---- NOTIFY SUMMARY END ----"
-
-      - name: Upload notify_e2e_proof.json (if exists)
-        if: always()
-        uses: actions/upload-artifact@v4
-        if: ${{ hashFiles('path_issues/notify_e2e_proof.json') != '' }}
-        with:
-          name: notify_e2e_proof
-          path: path_issues/notify_e2e_proof.json
-
+-n-a-m-e-:- -N-o-t-i-f-y- -o-n- -G-a-t-e-2-4-h- -f-a-i-l-u-r-e--
+-o-n-:--
+- - -w-o-r-k-f-l-o-w-_-r-u-n-:--
+- - - - -w-o-r-k-f-l-o-w-s-:- -[-"-G-a-t-e- -2-4-h- -(-p-a-p-e-r- -s-u-p-e-r-v-i-s-e-d-)-"-]--
+- - - - -t-y-p-e-s-:- -[-c-o-m-p-l-e-t-e-d-]--
+- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
+- - - - -i-n-p-u-t-s-:--
+- - - - - - -r-u-n-_-i-d-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -"-G-a-t-e-2-4-h- -r-u-n- -i-d-"--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -t-r-u-e--
+- - - - - - -c-o-n-c-l-u-s-i-o-n-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -"-G-a-t-e-2-4-h- -c-o-n-c-l-u-s-i-o-n-"--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -t-r-u-e--
+- - - - - - -u-r-l-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -"-G-a-t-e-2-4-h- -u-r-l-"--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -t-r-u-e--
+--
+-p-e-r-m-i-s-s-i-o-n-s-:--
+- - -c-o-n-t-e-n-t-s-:- -r-e-a-d--
+- - -i-s-s-u-e-s-:- -w-r-i-t-e--
+--
+-j-o-b-s-:--
+- - -n-o-t-i-f-y-:--
+- - - - -i-f-:- -$-{-{- -(-g-i-t-h-u-b-.-e-v-e-n-t-_-n-a-m-e- -=-=- -'-w-o-r-k-f-l-o-w-_-r-u-n-'- -&-&- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-c-o-n-c-l-u-s-i-o-n- -!-=- -'-s-u-c-c-e-s-s-'-)- -|-|- -g-i-t-h-u-b-.-e-v-e-n-t-_-n-a-m-e- -=-=- -'-w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-'- -}-}--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -e-n-v-:--
+- - - - - - -T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N-:- -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -}-}--
+- - - - - - -T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D-:- -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D- -}-}--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -R-e-s-o-l-v-e- -o-n---c-a-l-l- -a-s-s-i-g-n-e-e-s- -(-o-p-t-i-o-n-a-l-)--
+- - - - - - - - -i-d-:- -o-n-c-a-l-l--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e-u-o- -p-i-p-e-f-a-i-l--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -a-s-s-i-g-n-e-e-s-=-$-{-{- -s-e-c-r-e-t-s-.-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S- -}-}-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+--
+- - - - - - --- -n-a-m-e-:- -R-e-s-o-l-v-e- -v-a-r-s- -(-r-u-n- -i-n-f-o-)--
+- - - - - - - - -i-d-:- -v-a-r-s--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -e-n-v-:--
+- - - - - - - - - - -R-U-N-_-I-D-_-W-R-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-i-d- -}-}--
+- - - - - - - - - - -R-U-N-_-C-O-N-C-_-W-R-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - -R-U-N-_-U-R-L-_-W-R-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-h-t-m-l-_-u-r-l- -}-}--
+- - - - - - - - - - -R-U-N-_-I-D-_-D-I-S-P-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-i-n-p-u-t-s-.-r-u-n-_-i-d- -}-}--
+- - - - - - - - - - -R-U-N-_-C-O-N-C-_-D-I-S-P-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-i-n-p-u-t-s-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - -R-U-N-_-U-R-L-_-D-I-S-P-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-i-n-p-u-t-s-.-u-r-l- -}-}--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e-u-o- -p-i-p-e-f-a-i-l--
+- - - - - - - - - - -R-U-N-_-I-D-=-"-$-{-R-U-N-_-I-D-_-W-R-:---$-R-U-N-_-I-D-_-D-I-S-P-}-"--
+- - - - - - - - - - -R-U-N-_-C-O-N-C-=-"-$-{-R-U-N-_-C-O-N-C-_-W-R-:---$-R-U-N-_-C-O-N-C-_-D-I-S-P-}-"--
+- - - - - - - - - - -R-U-N-_-U-R-L-=-"-$-{-R-U-N-_-U-R-L-_-W-R-:---$-R-U-N-_-U-R-L-_-D-I-S-P-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-u-n-_-i-d-=-$-R-U-N-_-I-D-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-u-n-_-c-o-n-c-=-$-R-U-N-_-C-O-N-C-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-u-n-_-u-r-l-=-$-R-U-N-_-U-R-L-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -R-e-s-o-l-v-e-d-:- -i-d-=-$-R-U-N-_-I-D- -c-o-n-c-=-$-R-U-N-_-C-O-N-C- -u-r-l-=-$-R-U-N-_-U-R-L-"--
+- - - - - - --- -n-a-m-e-:- -T-e-l-e-g-r-a-m- -n-o-t-i-f-y- -(-i-f- -s-e-c-r-e-t-s-)--
+- - - - - - - - -i-d-:- -t-g-r-a-m--
+- - - - - - - - -i-f-:- -$-{-{- -e-n-v-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -!-=- -'-'- -&-&- -e-n-v-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D- -!-=- -'-'- -}-}--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -c-o-n-t-i-n-u-e---o-n---e-r-r-o-r-:- -t-r-u-e--
+- - - - - - - - -e-n-v-:--
+- - - - - - - - - - -A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-:- -$-{-{- -s-t-e-p-s-.-o-n-c-a-l-l-.-o-u-t-p-u-t-s-.-a-s-s-i-g-n-e-e-s- -}-}--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e-u-o- -p-i-p-e-f-a-i-l--
+- - - - - - - - - - -M-S-G-=-"-❌- -G-a-t-e-2-4-h- -f-a-i-l-e-d-\-n-R-e-p-o-:- -$-{-{- -g-i-t-h-u-b-.-r-e-p-o-s-i-t-o-r-y- -}-}-\-n-R-u-n-I-D-:- -$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-i-d- -}-}-\-n-C-o-n-c-l-u-s-i-o-n-:- -$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-c-o-n-c- -}-}-\-n-U-R-L-:- -$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-u-r-l- -}-}-"--
+- - - - - - - - - - -i-f- -[- ---n- -"-$-{-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-:---}-"- -]-;- -t-h-e-n--
+- - - - - - - - - - - - -M-S-G-=-"-O-N-C-A-L-L-:- -$-{-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-}-\-n-$-{-M-S-G-}-"--
+- - - - - - - - - - -f-i--
+- - - - - - - - - - -R-E-S-P-_-F-I-L-E-=-"-/-t-m-p-/-t-g-_-r-e-s-p-.-j-s-o-n-"--
+- - - - - - - - - - -H-T-T-P-=-$-(-c-u-r-l- ---s-S- ---o- -"-$-R-E-S-P-_-F-I-L-E-"- ---w- -"-%-{-h-t-t-p-_-c-o-d-e-}-"- ---X- -P-O-S-T- -"-h-t-t-p-s-:-/-/-a-p-i-.-t-e-l-e-g-r-a-m-.-o-r-g-/-b-o-t-$-{-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N-}-/-s-e-n-d-M-e-s-s-a-g-e-"- -\--
+- - - - - - - - - - - - - - - - - ---d- -"-c-h-a-t-_-i-d-=-$-{-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D-}-"- -----d-a-t-a---u-r-l-e-n-c-o-d-e- -"-t-e-x-t-=-$-(-p-r-i-n-t-f- -'-%-b-'- -"-$-M-S-G-"-)-"- ---d- -"-p-a-r-s-e-_-m-o-d-e-=-H-T-M-L-"- -|-|- -e-c-h-o- -"-x- --- -0-0-0-"-)--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -h-t-t-p-_-c-o-d-e-=-$-H-T-T-P-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - -i-f- -[- -"-$-H-T-T-P-"- -=- -"-2-0-0-"- -]- -&-&- -g-r-e-p- ---q- -'-"-o-k-"-:-t-r-u-e-'- -"-$-R-E-S-P-_-F-I-L-E-"-;- -t-h-e-n--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -s-t-a-t-u-s-=-o-k-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -T-E-L-E-G-R-A-M-_-H-T-T-P-=-2-0-0-"--
+- - - - - - - - - - -e-l-s-e--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -s-t-a-t-u-s-=-f-a-i-l-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -T-E-L-E-G-R-A-M-_-H-T-T-P-=-$-H-T-T-P-"--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -T-e-l-e-g-r-a-m- -r-e-s-p-o-n-s-e-:-"- -&-&- -s-e-d- ---e- -'-1-,-5-!-d-'- -"-$-R-E-S-P-_-F-I-L-E-"- -|-|- -t-r-u-e--
+- - - - - - - - - - -f-i--
+--
+- - - - - - --- -n-a-m-e-:- -D-e-d-u-p-e-:- -c-h-e-c-k- -e-x-i-s-t-i-n-g- -a-l-e-r-t- -i-s-s-u-e--
+- - - - - - - - -i-d-:- -d-e-d-u-p-e--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -e-n-v-:--
+- - - - - - - - - - -G-H-_-T-O-K-E-N-:- -$-{-{- -s-e-c-r-e-t-s-.-G-I-T-H-U-B-_-T-O-K-E-N- -}-}--
+- - - - - - - - - - -T-I-T-L-E-:- -"-G-a-t-e-2-4-h- -a-l-e-r-t-:- -r-u-n- -#-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-i-d- -}-}- -→- -$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-c-o-n-c- -}-}-"--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e-u-o- -p-i-p-e-f-a-i-l--
+- - - - - - - - - - -c-n-t-=-$-(-g-h- -i-s-s-u-e- -l-i-s-t- -----s-e-a-r-c-h- -"-i-n-:-t-i-t-l-e- -\-"-$-T-I-T-L-E-\-"- -s-t-a-t-e-:-o-p-e-n-"- -----j-s-o-n- -n-u-m-b-e-r- -----l-i-m-i-t- -1- -|- -j-q- -'-l-e-n-g-t-h-'-)--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -e-x-i-s-t-s-=-$-c-n-t-"- ->->- -"-$-G-I-T-H-U-B-_-O-U-T-P-U-T-"--
+--
+- - - - - - --- -n-a-m-e-:- -I-s-s-u-e- -a-l-e-r-t- -(-f-a-l-l-b-a-c-k-)--
+- - - - - - - - -i-f-:- -$-{-{- -s-t-e-p-s-.-t-g-r-a-m-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -!-=- -'-o-k-'- -&-&- -s-t-e-p-s-.-d-e-d-u-p-e-.-o-u-t-p-u-t-s-.-e-x-i-s-t-s- -=-=- -'-0-'- -}-}--
+- - - - - - - - -e-n-v-:--
+- - - - - - - - - - -G-H-_-T-O-K-E-N-:- -$-{-{- -s-e-c-r-e-t-s-.-G-I-T-H-U-B-_-T-O-K-E-N- -}-}--
+- - - - - - - - - - -A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-:- -$-{-{- -s-t-e-p-s-.-o-n-c-a-l-l-.-o-u-t-p-u-t-s-.-a-s-s-i-g-n-e-e-s- -}-}--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -c-o-n-t-i-n-u-e---o-n---e-r-r-o-r-:- -t-r-u-e--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -s-e-t- ---e-u-o- -p-i-p-e-f-a-i-l--
+- - - - - - - - - - -T-I-T-L-E-=-"-G-a-t-e-2-4-h- -a-l-e-r-t-:- -r-u-n- -#-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-i-d- -}-}- -→- -$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-c-o-n-c- -}-}-"--
+- - - - - - - - - - -B-O-D-Y-=-"-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-u-r-l- -}-}-"--
+- - - - - - - - - - -L-A-B-E-L-=-"-g-a-t-e---a-l-e-r-t-"--
+- - - - - - - - - - -#- -o-p-t-i-o-n-a-l- -a-s-s-i-g-n-e-e-s- -(-c-o-m-m-a---s-e-p-a-r-a-t-e-d- -u-s-e-r-n-a-m-e-s-)--
+- - - - - - - - - - -H-A-S-_-A-S-S-I-G-N-E-E-S-=-0--
+- - - - - - - - - - -i-f- -[- ---n- -"-$-{-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-:---}-"- -]-;- -t-h-e-n--
+- - - - - - - - - - - - -H-A-S-_-A-S-S-I-G-N-E-E-S-=-1--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -A-s-s-i-g-n-i-n-g- -o-n---c-a-l-l-:- -$-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-"--
+- - - - - - - - - - -f-i--
+- - - - - - - - - - -i-f- -g-h- -l-a-b-e-l- -l-i-s-t- -----l-i-m-i-t- -1-0-0- -|- -g-r-e-p- ---q- -"-^-$-{-L-A-B-E-L-}-\-\-b-"-;- -t-h-e-n--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -L-a-b-e-l- -'-$-{-L-A-B-E-L-}-'- -f-o-u-n-d-.- -C-r-e-a-t-i-n-g- -l-a-b-e-l-e-d- -i-s-s-u-e-.-.-.-"--
+- - - - - - - - - - - - -i-f- -[- -$-H-A-S-_-A-S-S-I-G-N-E-E-S- ---e-q- -1- -]-;- -t-h-e-n--
+- - - - - - - - - - - - - - -g-h- -i-s-s-u-e- -c-r-e-a-t-e- ---R- -"-$-G-I-T-H-U-B-_-R-E-P-O-S-I-T-O-R-Y-"- ---t- -"-$-T-I-T-L-E-"- ---b- -"-$-B-O-D-Y-"- ---l- -"-$-L-A-B-E-L-"- -----a-s-s-i-g-n-e-e- -"-$-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-"- -|-|- -e-c-h-o- -"-x- --- -I-s-s-u-e- -c-r-e-a-t-i-o-n- -f-a-i-l-e-d- -(-l-a-b-e-l-e-d-,- -a-s-s-i-g-n-e-d-)-.-"--
+- - - - - - - - - - - - -e-l-s-e--
+- - - - - - - - - - - - - - -g-h- -i-s-s-u-e- -c-r-e-a-t-e- ---R- -"-$-G-I-T-H-U-B-_-R-E-P-O-S-I-T-O-R-Y-"- ---t- -"-$-T-I-T-L-E-"- ---b- -"-$-B-O-D-Y-"- ---l- -"-$-L-A-B-E-L-"- -|-|- -e-c-h-o- -"-x- --- -I-s-s-u-e- -c-r-e-a-t-i-o-n- -f-a-i-l-e-d- -(-l-a-b-e-l-e-d-)-.-"--
+- - - - - - - - - - - - -f-i--
+- - - - - - - - - - -e-l-s-e--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -L-a-b-e-l- -'-$-{-L-A-B-E-L-}-'- -n-o-t- -f-o-u-n-d-.- -C-r-e-a-t-i-n-g- -i-s-s-u-e- -w-i-t-h-o-u-t- -l-a-b-e-l-.-.-.-"--
+- - - - - - - - - - - - -i-f- -[- -$-H-A-S-_-A-S-S-I-G-N-E-E-S- ---e-q- -1- -]-;- -t-h-e-n--
+- - - - - - - - - - - - - - -g-h- -i-s-s-u-e- -c-r-e-a-t-e- ---R- -"-$-G-I-T-H-U-B-_-R-E-P-O-S-I-T-O-R-Y-"- ---t- -"-$-T-I-T-L-E-"- ---b- -"-$-B-O-D-Y-"- -----a-s-s-i-g-n-e-e- -"-$-A-L-E-R-T-_-A-S-S-I-G-N-E-E-S-"- -|-|- -e-c-h-o- -"-x- --- -I-s-s-u-e- -c-r-e-a-t-i-o-n- -f-a-i-l-e-d- -(-u-n-l-a-b-e-l-e-d-,- -a-s-s-i-g-n-e-d-)-.-"--
+- - - - - - - - - - - - -e-l-s-e--
+- - - - - - - - - - - - - - -g-h- -i-s-s-u-e- -c-r-e-a-t-e- ---R- -"-$-G-I-T-H-U-B-_-R-E-P-O-S-I-T-O-R-Y-"- ---t- -"-$-T-I-T-L-E-"- ---b- -"-$-B-O-D-Y-"- -|-|- -e-c-h-o- -"-x- --- -I-s-s-u-e- -c-r-e-a-t-i-o-n- -f-a-i-l-e-d- -(-u-n-l-a-b-e-l-e-d-)-.-"--
+- - - - - - - - - - - - -f-i--
+- - - - - - - - - - -f-i--
+--
+- - - - - - --- -n-a-m-e-:- -V-e-r-b-o-s-e- -s-u-m-m-a-r-y- -(-≥-1-0-0- -l-i-n-e-s-)--
+- - - - - - - - -s-h-e-l-l-:- -b-a-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -e-c-h-o- -"-x- --- --------- -N-O-T-I-F-Y- -S-U-M-M-A-R-Y- -B-E-G-I-N- ---------"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-e-p-o-=-$-G-I-T-H-U-B-_-R-E-P-O-S-I-T-O-R-Y-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -r-u-n-_-i-d-=-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-i-d- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -c-o-n-c-l-u-s-i-o-n-=-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-c-o-n-c- -}-}-"--
+- - - - - - - - - - -e-c-h-o- -"-x- --- -u-r-l-=-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-u-r-l- -}-}-"--
+- - - - - - - - - - -#- -D-e-r-i-v-e- -t-e-l-e-g-r-a-m- -s-t-a-t-u-s-/-h-t-t-p- -w-i-t-h- -s-a-f-e- -f-a-l-l-b-a-c-k-s- -(-e-m-p-t-y- -w-h-e-n- -s-t-e-p- -d-i-d-n-'-t- -r-u-n-)--
+- - - - - - - - - - -T-S-T-A-T-=-"-$-{-{- -s-t-e-p-s-.-t-g-r-a-m-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -}-}-"-;- -[- ---z- -"-$-T-S-T-A-T-"- -]- -&-&- -T-S-T-A-T-=-"-s-k-i-p-p-e-d-"-;- -e-c-h-o- -"-x- --- -t-e-l-e-g-r-a-m-_-s-t-a-t-u-s-=-$-T-S-T-A-T-"--
+- - - - - - - - - - -T-H-T-T-P-=-"-$-{-{- -s-t-e-p-s-.-t-g-r-a-m-.-o-u-t-p-u-t-s-.-h-t-t-p-_-c-o-d-e- -}-}-"-;- -[- ---z- -"-$-T-H-T-T-P-"- -]- -&-&- -T-H-T-T-P-=-"-N-A-"-;- -e-c-h-o- -"-x- --- -t-e-l-e-g-r-a-m-_-h-t-t-p-=-$-T-H-T-T-P-"--
+- - - - - - - - - - -f-o-r- -i- -i-n- -$-(-s-e-q- -1- -9-0-)-;- -d-o--
+- - - - - - - - - - - - -e-c-h-o- -"-x- --- -k-e-e-p-a-l-i-v-e---$-i- -t-s-=-$-(-d-a-t-e- ---u- -+-%-F-T-%-T-Z-)- -r-u-n-=-$-{-{- -s-t-e-p-s-.-v-a-r-s-.-o-u-t-p-u-t-s-.-r-u-n-_-i-d- -}-}-"--
+- - - - - - - - - - -d-o-n-e--
+- - - - - - - - - - -e-c-h-o- -"-x- --- --------- -N-O-T-I-F-Y- -S-U-M-M-A-R-Y- -E-N-D- ---------"--
+--
+- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -n-o-t-i-f-y-_-e-2-e-_-p-r-o-o-f-.-j-s-o-n- -(-i-f- -e-x-i-s-t-s-)--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
+- - - - - - - - -i-f-:- -$-{-{- -h-a-s-h-F-i-l-e-s-(-'-p-a-t-h-_-i-s-s-u-e-s-/-n-o-t-i-f-y-_-e-2-e-_-p-r-o-o-f-.-j-s-o-n-'-)- -!-=- -'-'- -}-}--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -n-a-m-e-:- -n-o-t-i-f-y-_-e-2-e-_-p-r-o-o-f--
+- - - - - - - - - - -p-a-t-h-:- -p-a-t-h-_-i-s-s-u-e-s-/-n-o-t-i-f-y-_-e-2-e-_-p-r-o-o-f-.-j-s-o-n--
+--
+-

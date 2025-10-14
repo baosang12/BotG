@@ -1,41 +1,42 @@
-﻿name: Notify on Gate24h failure
-on:
-  workflow_run:
-    workflows: ["Gate 24h (paper supervised)"]
-    types: [completed]
-jobs:
-  notify:
-    if: ${{ github.event.workflow_run.conclusion != 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Telegram notify (if secrets)
-        id: tgram
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
-        uses: appleboy/telegram-action@4fde07eaa6fb2ab49ca1af1c65b9b9b5fd5ad1ce
-        timeout-minutes: 2
-        continue-on-error: true
-        with:
-          to:    ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            âŒ Gate24h failed
-            Repo: ${{ github.repository }}
-            RunID: ${{ github.event.workflow_run.id }}
-            Conclusion: ${{ github.event.workflow_run.conclusion }}
-            URL: ${{ github.event.workflow_run.html_url }}
-
-      - name: Issue alert (fallback)
-        if: steps.tgram.outcome != 'success'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-        with:
-          script: |
-            const tit = 'Gate24h alerts (auto)';
-            const body = `âŒ Gate24h failed
-            Conclusion: ${{ github.event.workflow_run.conclusion }}
-            URL: ${{ github.event.workflow_run.html_url }}`;
-            const {data: issues} = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100});
-            let issue = issues.find(i => i.title === tit);
-            if (!issue) {
-              issue = (await github.rest.issues.create({owner: context.repo.owner, repo: context.repo.repo, title: tit, labels: ['gate-alert']})).data;
-            }
-            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, body});
+-n-a-m-e-:- -N-o-t-i-f-y- -o-n- -G-a-t-e-2-4-h- -f-a-i-l-u-r-e--
+-o-n-:--
+- - -w-o-r-k-f-l-o-w-_-r-u-n-:--
+- - - - -w-o-r-k-f-l-o-w-s-:- -[-"-G-a-t-e- -2-4-h- -(-p-a-p-e-r- -s-u-p-e-r-v-i-s-e-d-)-"-]--
+- - - - -t-y-p-e-s-:- -[-c-o-m-p-l-e-t-e-d-]--
+-j-o-b-s-:--
+- - -n-o-t-i-f-y-:--
+- - - - -i-f-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-c-o-n-c-l-u-s-i-o-n- -!-=- -'-s-u-c-c-e-s-s-'- -}-}--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -T-e-l-e-g-r-a-m- -n-o-t-i-f-y- -(-i-f- -s-e-c-r-e-t-s-)--
+- - - - - - - - -i-d-:- -t-g-r-a-m--
+- - - - - - - - -i-f-:- -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -&-&- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D- -}-}--
+- - - - - - - - -u-s-e-s-:- -a-p-p-l-e-b-o-y-/-t-e-l-e-g-r-a-m---a-c-t-i-o-n-@-4-f-d-e-0-7-e-a-a-6-f-b-2-a-b-4-9-c-a-1-a-f-1-c-6-5-b-9-b-9-b-5-f-d-5-a-d-1-c-e--
+- - - - - - - - -t-i-m-e-o-u-t---m-i-n-u-t-e-s-:- -2--
+- - - - - - - - -c-o-n-t-i-n-u-e---o-n---e-r-r-o-r-:- -t-r-u-e--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -t-o-:- - - - -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D- -}-}--
+- - - - - - - - - - -t-o-k-e-n-:- -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -}-}--
+- - - - - - - - - - -m-e-s-s-a-g-e-:- -|--
+- - - - - - - - - - - - -â--Œ- -G-a-t-e-2-4-h- -f-a-i-l-e-d--
+- - - - - - - - - - - - -R-e-p-o-:- -$-{-{- -g-i-t-h-u-b-.-r-e-p-o-s-i-t-o-r-y- -}-}--
+- - - - - - - - - - - - -R-u-n-I-D-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-i-d- -}-}--
+- - - - - - - - - - - - -C-o-n-c-l-u-s-i-o-n-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - - - -U-R-L-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-h-t-m-l-_-u-r-l- -}-}--
+--
+- - - - - - --- -n-a-m-e-:- -I-s-s-u-e- -a-l-e-r-t- -(-f-a-l-l-b-a-c-k-)--
+- - - - - - - - -i-f-:- -s-t-e-p-s-.-t-g-r-a-m-.-o-u-t-c-o-m-e- -!-=- -'-s-u-c-c-e-s-s-'--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-g-i-t-h-u-b---s-c-r-i-p-t-@-f-2-8-e-4-0-c-7-f-3-4-b-d-e-8-b-3-0-4-6-d-8-8-5-e-9-8-6-c-b-6-2-9-0-c-5-6-7-3-b--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -s-c-r-i-p-t-:- -|--
+- - - - - - - - - - - - -c-o-n-s-t- -t-i-t- -=- -'-G-a-t-e-2-4-h- -a-l-e-r-t-s- -(-a-u-t-o-)-'-;--
+- - - - - - - - - - - - -c-o-n-s-t- -b-o-d-y- -=- -`-â--Œ- -G-a-t-e-2-4-h- -f-a-i-l-e-d--
+- - - - - - - - - - - - -C-o-n-c-l-u-s-i-o-n-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - - - -U-R-L-:- -$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-w-o-r-k-f-l-o-w-_-r-u-n-.-h-t-m-l-_-u-r-l- -}-}-`-;--
+- - - - - - - - - - - - -c-o-n-s-t- -{-d-a-t-a-:- -i-s-s-u-e-s-}- -=- -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-l-i-s-t-F-o-r-R-e-p-o-(-{-o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -s-t-a-t-e-:- -'-o-p-e-n-'-,- -p-e-r-_-p-a-g-e-:- -1-0-0-}-)-;--
+- - - - - - - - - - - - -l-e-t- -i-s-s-u-e- -=- -i-s-s-u-e-s-.-f-i-n-d-(-i- -=->- -i-.-t-i-t-l-e- -=-=-=- -t-i-t-)-;--
+- - - - - - - - - - - - -i-f- -(-!-i-s-s-u-e-)- -{--
+- - - - - - - - - - - - - - -i-s-s-u-e- -=- -(-a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-c-r-e-a-t-e-(-{-o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -t-i-t-l-e-:- -t-i-t-,- -l-a-b-e-l-s-:- -[-'-g-a-t-e---a-l-e-r-t-'-]-}-)-)-.-d-a-t-a-;--
+- - - - - - - - - - - - -}--
+- - - - - - - - - - - - -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-c-r-e-a-t-e-C-o-m-m-e-n-t-(-{-o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -i-s-s-u-e-_-n-u-m-b-e-r-:- -i-s-s-u-e-.-n-u-m-b-e-r-,- -b-o-d-y-}-)-;--
+-

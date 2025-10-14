@@ -1,14 +1,15 @@
-﻿name: Manual diag
-on:
-  workflow_dispatch:
-    inputs:
-      note:
-        description: 'why'
-        required: false
-        default: 'ping'
-jobs:
-  diag:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "manual-dispatch-ok"
-
+-n-a-m-e-:- -M-a-n-u-a-l- -d-i-a-g--
+-o-n-:--
+- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
+- - - - -i-n-p-u-t-s-:--
+- - - - - - -n-o-t-e-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -'-w-h-y-'--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -f-a-l-s-e--
+- - - - - - - - -d-e-f-a-u-l-t-:- -'-p-i-n-g-'--
+-j-o-b-s-:--
+- - -d-i-a-g-:--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -r-u-n-:- -e-c-h-o- -"-x- --- -m-a-n-u-a-l---d-i-s-p-a-t-c-h---o-k-"--
+--
+-

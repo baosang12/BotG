@@ -1,42 +1,43 @@
-﻿name: Paper Pulse
-
-on:
-  workflow_dispatch:
-    inputs:
-      hours:
-        description: 'Duration in hours (e.g., 4 or 24)'
-        required: false
-        default: '4'
-
-jobs:
-  pulse:
-    runs-on: windows-latest
-    timeout-minutes: 1440
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '6.0.x'
-
-      - name: Build
-        run: dotnet build $Env:GITHUB_WORKSPACE
-
-      - name: Run paper pulse
-        shell: pwsh
-        run: |
-          $hours = '${{ github.event.inputs.hours }}'
-          if (-not $hours) { $hours = '4' }
-          $art = Join-Path $env:RUNNER_TEMP 'botg_pulse_artifacts'
-          New-Item -ItemType Directory -Path $art -Force | Out-Null
-          & "${{ github.workspace }}\scripts\run_paper_pulse.ps1" -Hours ([int]$hours) -ArtifactPath $art -FillProb 0.9 -FeePerTrade 0.02 -GeneratePlots:$false 2>&1 | Tee-Object -FilePath (Join-Path $art 'pulse_stdout.log')
-
-      - name: Upload pulse artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: paper-pulse-artifacts
-          path: ${{ runner.temp }}\botg_pulse_artifacts
-
+-n-a-m-e-:- -P-a-p-e-r- -P-u-l-s-e--
+--
+-o-n-:--
+- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
+- - - - -i-n-p-u-t-s-:--
+- - - - - - -h-o-u-r-s-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -'-D-u-r-a-t-i-o-n- -i-n- -h-o-u-r-s- -(-e-.-g-.-,- -4- -o-r- -2-4-)-'--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -f-a-l-s-e--
+- - - - - - - - -d-e-f-a-u-l-t-:- -'-4-'--
+--
+-j-o-b-s-:--
+- - -p-u-l-s-e-:--
+- - - - -r-u-n-s---o-n-:- -w-i-n-d-o-w-s---l-a-t-e-s-t--
+- - - - -t-i-m-e-o-u-t---m-i-n-u-t-e-s-:- -1-4-4-0--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -C-h-e-c-k-o-u-t--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-c-h-e-c-k-o-u-t-@-v-4--
+--
+- - - - - - --- -n-a-m-e-:- -S-e-t-u-p- -.-N-E-T--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-s-e-t-u-p---d-o-t-n-e-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -d-o-t-n-e-t---v-e-r-s-i-o-n-:- -'-6-.-0-.-x-'--
+--
+- - - - - - --- -n-a-m-e-:- -B-u-i-l-d--
+- - - - - - - - -r-u-n-:- -d-o-t-n-e-t- -b-u-i-l-d- -$-E-n-v-:-G-I-T-H-U-B-_-W-O-R-K-S-P-A-C-E--
+--
+- - - - - - --- -n-a-m-e-:- -R-u-n- -p-a-p-e-r- -p-u-l-s-e--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-h-o-u-r-s- -=- -'-$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-i-n-p-u-t-s-.-h-o-u-r-s- -}-}-'--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-h-o-u-r-s-)- -{- -$-h-o-u-r-s- -=- -'-4-'- -}--
+- - - - - - - - - - -$-a-r-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-p-u-l-s-e-_-a-r-t-i-f-a-c-t-s-'--
+- - - - - - - - - - -N-e-w---I-t-e-m- ---I-t-e-m-T-y-p-e- -D-i-r-e-c-t-o-r-y- ---P-a-t-h- -$-a-r-t- ---F-o-r-c-e- -|- -O-u-t---N-u-l-l--
+- - - - - - - - - - -&- -"-$-{-{- -g-i-t-h-u-b-.-w-o-r-k-s-p-a-c-e- -}-}-\-s-c-r-i-p-t-s-\-r-u-n-_-p-a-p-e-r-_-p-u-l-s-e-.-p-s-1-"- ---H-o-u-r-s- -(-[-i-n-t-]-$-h-o-u-r-s-)- ---A-r-t-i-f-a-c-t-P-a-t-h- -$-a-r-t- ---F-i-l-l-P-r-o-b- -0-.-9- ---F-e-e-P-e-r-T-r-a-d-e- -0-.-0-2- ---G-e-n-e-r-a-t-e-P-l-o-t-s-:-$-f-a-l-s-e- -2->-&-1- -|- -T-e-e---O-b-j-e-c-t- ---F-i-l-e-P-a-t-h- -(-J-o-i-n---P-a-t-h- -$-a-r-t- -'-p-u-l-s-e-_-s-t-d-o-u-t-.-l-o-g-'-)--
+--
+- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -p-u-l-s-e- -a-r-t-i-f-a-c-t-s--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -n-a-m-e-:- -p-a-p-e-r---p-u-l-s-e---a-r-t-i-f-a-c-t-s--
+- - - - - - - - - - -p-a-t-h-:- -$-{-{- -r-u-n-n-e-r-.-t-e-m-p- -}-}-\-b-o-t-g-_-p-u-l-s-e-_-a-r-t-i-f-a-c-t-s--
+--
+-

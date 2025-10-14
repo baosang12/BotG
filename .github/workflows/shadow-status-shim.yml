@@ -1,11 +1,12 @@
-name: smoke-fast-on-pr
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-
-jobs:
-  shadow:
-    name: shadow
-    runs-on: windows-latest
-    steps:
-      - run: echo "shadow status shim - OK"
+-n-a-m-e-:- -s-m-o-k-e---f-a-s-t---o-n---p-r--
+-o-n-:--
+- - -p-u-l-l-_-r-e-q-u-e-s-t-:--
+- - - - -t-y-p-e-s-:- -[-o-p-e-n-e-d-,- -s-y-n-c-h-r-o-n-i-z-e-,- -r-e-o-p-e-n-e-d-]--
+--
+-j-o-b-s-:--
+- - -s-h-a-d-o-w-:--
+- - - - -n-a-m-e-:- -s-h-a-d-o-w--
+- - - - -r-u-n-s---o-n-:- -w-i-n-d-o-w-s---l-a-t-e-s-t--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -r-u-n-:- -e-c-h-o- -"-x- --- -s-h-a-d-o-w- -s-t-a-t-u-s- -s-h-i-m- --- -O-K-"--
+-

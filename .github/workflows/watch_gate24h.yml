@@ -1,57 +1,58 @@
-﻿name: Gate24h watchdog (10min)
-on:
-  schedule:
-    - cron: "*/10 * * * *"
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    env:
-      WATCHDOG_QUEUE_MIN: 10
-    steps:
-      - name: Check latest Gate24h status
-        id: s
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-        with:
-          script: |
-            const wf = "gate24h_main.yml";
-            const r = (await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner, repo: context.repo.repo, workflow_id: wf, per_page: 1
-            })).data.workflow_runs[0];
-            const q = (Date.now() - new Date(r.created_at)) / 60000;
-            core.setOutput('status', r.status || '');
-            core.setOutput('conclusion', r.conclusion || '');
-            core.setOutput('id', r.id);
-            core.setOutput('url', r.html_url);
-            core.setOutput('queued', q.toFixed(0));
-
-      - name: Telegram alert (if secrets)
-        if: steps.s.outputs.conclusion != 'success' || (steps.s.outputs.status == 'queued' && fromJSON(steps.s.outputs.queued) > 10)
-        uses: appleboy/telegram-action@v0.1.4
-        with:
-          to:    ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            🔔 Gate24h watchdog
-            Status: ${{ steps.s.outputs.status }}
-            Conclusion: ${{ steps.s.outputs.conclusion }}
-            Queued(min): ${{ steps.s.outputs.queued }}
-            RunID: ${{ steps.s.outputs.id }}
-            URL: ${{ steps.s.outputs.url }}
-
-      - name: Issue alert (fallback)
-        if: (steps.s.outputs.conclusion != 'success' || (steps.s.outputs.status == 'queued' && fromJSON(steps.s.outputs.queued) > 10)) && (!secrets.TELEGRAM_BOT_TOKEN || !secrets.TELEGRAM_CHAT_ID)
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-        with:
-          script: |
-            const tit='Gate24h alerts (auto)';
-            const msg=`🔔 Gate24h watchdog
-            Status: ${{ steps.s.outputs.status }}
-            Conclusion: ${{ steps.s.outputs.conclusion }}
-            Queued(min): ${{ steps.s.outputs.queued }}
-            RunID: ${{ steps.s.outputs.id }}
-            URL: ${{ steps.s.outputs.url }}`;
-            const {data: issues}=await github.rest.issues.listForRepo({owner:context.repo.owner,repo:context.repo.repo,state:'open',per_page:100});
-            let issue=issues.find(i=>i.title===tit);
-            if(!issue){ issue=(await github.rest.issues.create({owner:context.repo.owner,repo:context.repo.repo,title:tit,labels:['gate-alert']})).data; }
-            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:issue.number,body:msg});
-
+-n-a-m-e-:- -G-a-t-e-2-4-h- -w-a-t-c-h-d-o-g- -(-1-0-m-i-n-)--
+-o-n-:--
+- - -s-c-h-e-d-u-l-e-:--
+- - - - --- -c-r-o-n-:- -"-*-/-1-0- -*- -*- -*- -*-"--
+-j-o-b-s-:--
+- - -c-h-e-c-k-:--
+- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
+- - - - -e-n-v-:--
+- - - - - - -W-A-T-C-H-D-O-G-_-Q-U-E-U-E-_-M-I-N-:- -1-0--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -C-h-e-c-k- -l-a-t-e-s-t- -G-a-t-e-2-4-h- -s-t-a-t-u-s--
+- - - - - - - - -i-d-:- -s--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-g-i-t-h-u-b---s-c-r-i-p-t-@-f-2-8-e-4-0-c-7-f-3-4-b-d-e-8-b-3-0-4-6-d-8-8-5-e-9-8-6-c-b-6-2-9-0-c-5-6-7-3-b--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -s-c-r-i-p-t-:- -|--
+- - - - - - - - - - - - -c-o-n-s-t- -w-f- -=- -"-g-a-t-e-2-4-h-_-m-a-i-n-.-y-m-l-"-;--
+- - - - - - - - - - - - -c-o-n-s-t- -r- -=- -(-a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-a-c-t-i-o-n-s-.-l-i-s-t-W-o-r-k-f-l-o-w-R-u-n-s-(-{--
+- - - - - - - - - - - - - - -o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -w-o-r-k-f-l-o-w-_-i-d-:- -w-f-,- -p-e-r-_-p-a-g-e-:- -1--
+- - - - - - - - - - - - -}-)-)-.-d-a-t-a-.-w-o-r-k-f-l-o-w-_-r-u-n-s-[-0-]-;--
+- - - - - - - - - - - - -c-o-n-s-t- -q- -=- -(-D-a-t-e-.-n-o-w-(-)- --- -n-e-w- -D-a-t-e-(-r-.-c-r-e-a-t-e-d-_-a-t-)-)- -/- -6-0-0-0-0-;--
+- - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-'-s-t-a-t-u-s-'-,- -r-.-s-t-a-t-u-s- -|-|- -'-'-)-;--
+- - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-'-c-o-n-c-l-u-s-i-o-n-'-,- -r-.-c-o-n-c-l-u-s-i-o-n- -|-|- -'-'-)-;--
+- - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-'-i-d-'-,- -r-.-i-d-)-;--
+- - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-'-u-r-l-'-,- -r-.-h-t-m-l-_-u-r-l-)-;--
+- - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-'-q-u-e-u-e-d-'-,- -q-.-t-o-F-i-x-e-d-(-0-)-)-;--
+--
+- - - - - - --- -n-a-m-e-:- -T-e-l-e-g-r-a-m- -a-l-e-r-t- -(-i-f- -s-e-c-r-e-t-s-)--
+- - - - - - - - -i-f-:- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-c-o-n-c-l-u-s-i-o-n- -!-=- -'-s-u-c-c-e-s-s-'- -|-|- -(-s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -=-=- -'-q-u-e-u-e-d-'- -&-&- -f-r-o-m-J-S-O-N-(-s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-q-u-e-u-e-d-)- ->- -1-0-)--
+- - - - - - - - -u-s-e-s-:- -a-p-p-l-e-b-o-y-/-t-e-l-e-g-r-a-m---a-c-t-i-o-n-@-v-0-.-1-.-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -t-o-:- - - - -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D- -}-}--
+- - - - - - - - - - -t-o-k-e-n-:- -$-{-{- -s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -}-}--
+- - - - - - - - - - -m-e-s-s-a-g-e-:- -|--
+- - - - - - - - - - - - -�-�- -G-a-t-e-2-4-h- -w-a-t-c-h-d-o-g--
+- - - - - - - - - - - - -S-t-a-t-u-s-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -}-}--
+- - - - - - - - - - - - -C-o-n-c-l-u-s-i-o-n-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - - - -Q-u-e-u-e-d-(-m-i-n-)-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-q-u-e-u-e-d- -}-}--
+- - - - - - - - - - - - -R-u-n-I-D-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-i-d- -}-}--
+- - - - - - - - - - - - -U-R-L-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-u-r-l- -}-}--
+--
+- - - - - - --- -n-a-m-e-:- -I-s-s-u-e- -a-l-e-r-t- -(-f-a-l-l-b-a-c-k-)--
+- - - - - - - - -i-f-:- -(-s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-c-o-n-c-l-u-s-i-o-n- -!-=- -'-s-u-c-c-e-s-s-'- -|-|- -(-s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -=-=- -'-q-u-e-u-e-d-'- -&-&- -f-r-o-m-J-S-O-N-(-s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-q-u-e-u-e-d-)- ->- -1-0-)-)- -&-&- -(-!-s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-B-O-T-_-T-O-K-E-N- -|-|- -!-s-e-c-r-e-t-s-.-T-E-L-E-G-R-A-M-_-C-H-A-T-_-I-D-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-g-i-t-h-u-b---s-c-r-i-p-t-@-f-2-8-e-4-0-c-7-f-3-4-b-d-e-8-b-3-0-4-6-d-8-8-5-e-9-8-6-c-b-6-2-9-0-c-5-6-7-3-b--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -s-c-r-i-p-t-:- -|--
+- - - - - - - - - - - - -c-o-n-s-t- -t-i-t-=-'-G-a-t-e-2-4-h- -a-l-e-r-t-s- -(-a-u-t-o-)-'-;--
+- - - - - - - - - - - - -c-o-n-s-t- -m-s-g-=-`-�-�- -G-a-t-e-2-4-h- -w-a-t-c-h-d-o-g--
+- - - - - - - - - - - - -S-t-a-t-u-s-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-s-t-a-t-u-s- -}-}--
+- - - - - - - - - - - - -C-o-n-c-l-u-s-i-o-n-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-c-o-n-c-l-u-s-i-o-n- -}-}--
+- - - - - - - - - - - - -Q-u-e-u-e-d-(-m-i-n-)-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-q-u-e-u-e-d- -}-}--
+- - - - - - - - - - - - -R-u-n-I-D-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-i-d- -}-}--
+- - - - - - - - - - - - -U-R-L-:- -$-{-{- -s-t-e-p-s-.-s-.-o-u-t-p-u-t-s-.-u-r-l- -}-}-`-;--
+- - - - - - - - - - - - -c-o-n-s-t- -{-d-a-t-a-:- -i-s-s-u-e-s-}-=-a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-l-i-s-t-F-o-r-R-e-p-o-(-{-o-w-n-e-r-:-c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,-r-e-p-o-:-c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,-s-t-a-t-e-:-'-o-p-e-n-'-,-p-e-r-_-p-a-g-e-:-1-0-0-}-)-;--
+- - - - - - - - - - - - -l-e-t- -i-s-s-u-e-=-i-s-s-u-e-s-.-f-i-n-d-(-i-=->-i-.-t-i-t-l-e-=-=-=-t-i-t-)-;--
+- - - - - - - - - - - - -i-f-(-!-i-s-s-u-e-)-{- -i-s-s-u-e-=-(-a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-c-r-e-a-t-e-(-{-o-w-n-e-r-:-c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,-r-e-p-o-:-c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,-t-i-t-l-e-:-t-i-t-,-l-a-b-e-l-s-:-[-'-g-a-t-e---a-l-e-r-t-'-]-}-)-)-.-d-a-t-a-;- -}--
+- - - - - - - - - - - - -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-i-s-s-u-e-s-.-c-r-e-a-t-e-C-o-m-m-e-n-t-(-{-o-w-n-e-r-:-c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,-r-e-p-o-:-c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,-i-s-s-u-e-_-n-u-m-b-e-r-:-i-s-s-u-e-.-n-u-m-b-e-r-,-b-o-d-y-:-m-s-g-}-)-;--
+--
+-

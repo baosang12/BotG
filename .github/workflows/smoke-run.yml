@@ -1,192 +1,193 @@
-﻿name: Smoke Run
-
-on:
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      seconds:
-        description: 'Duration in seconds'
-        required: false
-        default: '60'
-
-jobs:
-  smoke:
-    runs-on: windows-latest
-    timeout-minutes: 10
-    env:
-      SMOKE_PREVIEW_LINES: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET SDKs (6.x)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 6.0.x
-
-      - name: Build
-        run: dotnet build $Env:GITHUB_WORKSPACE
-
-      - name: Run smoke (hardened)
-        id: runsmoke
-        shell: pwsh
-        run: |
-          $sec = '${{ github.event.inputs.seconds }}'
-          if (-not $sec) { $sec = '60' }
-          $art = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-          if (Test-Path -LiteralPath $art) { Remove-Item -Recurse -Force $art }
-          New-Item -ItemType Directory -Path $art | Out-Null
-          & "${{ github.workspace }}\scripts\ci_smoke_test.ps1" -Seconds ([int]$sec) -DrainSeconds 10
-          $dir = Get-ChildItem -Path $art -Directory -Filter 'telemetry_run_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if ($dir) {
-            ("path=" + $dir.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          } else {
-            ("path=") | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          }
-
-      - name: Print quick preview of artifacts
-        if: always()
-        shell: pwsh
-        run: |
-          $artifact = "${{ steps.runsmoke.outputs.path }}"
-          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
-            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($candidate) { $artifact = $candidate.FullName }
-          }
-          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
-            Write-Host "WARNING: No artifact folder found under $env:RUNNER_TEMP"; exit 0
-          }
-          Write-Host "Using artifact folder: $artifact"
-          $previewFile = Join-Path $artifact 'quick_preview.log'
-          '' | Out-File -FilePath $previewFile -Encoding utf8
-          function Print-Head([string]$f) {
-            if (Test-Path -LiteralPath $f) {
-              $n = [int]$env:SMOKE_PREVIEW_LINES
-              $take = $n + 1
-              $lines = Get-Content -LiteralPath $f -TotalCount $take
-              $text = ($lines -join [Environment]::NewLine)
-              if ($text.Length -gt 4000) { $text = $text.Substring(0,4000) + "`n...[truncated]..." }
-              Write-Host ("---- Preview: " + $f + " ----")
-              Write-Host $text
-              $text | Out-File -FilePath $previewFile -Append -Encoding utf8
-            } else {
-              Write-Host ("WARNING: " + $f + " not found")
-            }
-          }
-          Print-Head (Join-Path $artifact 'orders.csv')
-          Print-Head (Join-Path $artifact 'closed_trades_fifo.csv')
-          Write-Host ("Quick preview saved to " + $previewFile)
-
-      - name: Fill-rate and analysis summary
-        if: always()
-        shell: pwsh
-        run: |
-          $artifact = "${{ steps.runsmoke.outputs.path }}"
-          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) {
-            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($candidate) { $artifact = $candidate.FullName }
-          }
-          if (-not $artifact -or -not (Test-Path -LiteralPath $artifact)) { Write-Host "WARNING: No artifact folder found for summary."; exit 0 }
-          $orders = Join-Path $artifact 'orders.csv'
-          $analysis = Join-Path $artifact 'analysis_summary.json'
-          $previewFile = Join-Path $artifact 'quick_preview.log'
-          function Append([string]$s) { $s | Out-File -FilePath $previewFile -Append -Encoding utf8; Write-Host $s }
-          if (Test-Path -LiteralPath $orders) {
-            $rows = Import-Csv -LiteralPath $orders
-            $req = ($rows | Where-Object { $_.status -eq 'REQUEST' -or $_.phase -eq 'REQUEST' }).Count
-            $fills = ($rows | Where-Object { $_.status -eq 'FILL' -or $_.phase -eq 'FILL' }).Count
-            $acks = ($rows | Where-Object { $_.status -eq 'ACK' -or $_.phase -eq 'ACK' }).Count
-            $rate = if ($req -gt 0) { [math]::Round(($fills / $req), 4) } else { 0 }
-            Append ("fill_summary: REQUEST={0} ACK={1} FILL={2} fill_rate={3}" -f $req, $acks, $fills, $rate)
-          } else {
-            Write-Host "WARNING: orders.csv not found for fill-rate."
-          }
-          if (Test-Path -LiteralPath $analysis) {
-            try {
-              $obj = Get-Content -LiteralPath $analysis -Raw | ConvertFrom-Json
-              Append ("analysis: trades={0} total_pnl={1} max_drawdown={2}" -f $obj.trades, $obj.total_pnl, $obj.max_drawdown)
-            } catch { Write-Host "WARNING: Failed to parse analysis_summary.json" }
-          } else {
-            Write-Host "WARNING: analysis_summary.json not found"
-          }
-
-      - name: Find zip
-        id: findzip
-        shell: pwsh
-        run: |
-          $artifact = "${{ steps.runsmoke.outputs.path }}"
-          $zip = $null
-          if ($artifact -and (Test-Path -LiteralPath $artifact)) {
-            $zip = Get-ChildItem -Path $artifact -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $zip) {
-            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-            $zip = Get-ChildItem -Path $root -Recurse -Filter 'telemetry_run_*.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          }
-          if ($null -eq $zip) { "zip=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append; exit 0 }
-          ("zip=" + $zip.FullName) | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Upload artifact
-        if: ${{ always() && steps.findzip.outputs.zip != '' }}
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-telemetry
-          path: ${{ steps.findzip.outputs.zip }}
-
-      - name: Upload derived artifacts (breakdown, reconcile, monitoring, plots)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-derived
-          path: |
-            ${{ steps.runsmoke.outputs.path }}/fill_rate_by_side.csv
-            ${{ steps.runsmoke.outputs.path }}/fill_breakdown_by_hour.csv
-            ${{ steps.runsmoke.outputs.path }}/reconcile_report.json
-            ${{ steps.runsmoke.outputs.path }}/reconcile_report.txt
-            ${{ steps.runsmoke.outputs.path }}/monitoring_summary.json
-            ${{ steps.runsmoke.outputs.path }}/equity_curve.png
-            ${{ steps.runsmoke.outputs.path }}/pnl_histogram.png
-            ${{ steps.runsmoke.outputs.path }}/pnl_by_hour.png
-
-      - name: Sanity check - orders.csv header
-        if: always()
-        shell: pwsh
-        run: |
-          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
-          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
-            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($candidate) { $artifactDir = $candidate.FullName }
-          }
-          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for header check.'; exit 0 }
-          $orders = Join-Path $artifactDir 'orders.csv'
-          if (-not (Test-Path -LiteralPath $orders)) { Write-Host 'WARNING: orders.csv not foundâ€”skipping header check.'; exit 0 }
-          $header = (Get-Content -LiteralPath $orders -TotalCount 1)
-          $hasTs = $header -imatch '(^|,)timestamp_iso(,|$)'
-          $hasId = $header -imatch '(^|,)orderId(,|$)'
-          if (-not ($hasTs -and $hasId)) {
-            Write-Error 'orders.csv header missing required fields: timestamp_iso and/or orderId'
-            exit 1
-          }
-          Write-Host 'orders.csv header sanity check passed.'
-
-      - name: Sanity check - closed_trades_fifo.csv non-empty
-        if: always()
-        shell: pwsh
-        run: |
-          $artifactDir = "${{ steps.runsmoke.outputs.path }}"
-          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) {
-            $root = Join-Path $env:RUNNER_TEMP 'botg_artifact'
-            $candidate = Get-ChildItem -Path $root -Directory -Filter 'telemetry_run_*' -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($candidate) { $artifactDir = $candidate.FullName }
-          }
-          if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for closed trades check.'; exit 0 }
-          $closed = Join-Path $artifactDir 'closed_trades_fifo.csv'
-          if (-not (Test-Path -LiteralPath $closed)) { Write-Host 'WARNING: closed_trades_fifo.csv not found.'; exit 0 }
-          $lines = 0; try { $lines = (Get-Content -LiteralPath $closed | Measure-Object -Line).Lines } catch {}
-          if ($lines -lt 2) { Write-Host 'WARNING: closed_trades_fifo.csv is empty (only header).'; exit 0 }
-          Write-Host ("closed_trades_fifo.csv OK, rows=" + ($lines - 1))
-
+-n-a-m-e-:- -S-m-o-k-e- -R-u-n--
+--
+-o-n-:--
+- - -p-u-l-l-_-r-e-q-u-e-s-t-:--
+- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
+- - - - -i-n-p-u-t-s-:--
+- - - - - - -s-e-c-o-n-d-s-:--
+- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -'-D-u-r-a-t-i-o-n- -i-n- -s-e-c-o-n-d-s-'--
+- - - - - - - - -r-e-q-u-i-r-e-d-:- -f-a-l-s-e--
+- - - - - - - - -d-e-f-a-u-l-t-:- -'-6-0-'--
+--
+-j-o-b-s-:--
+- - -s-m-o-k-e-:--
+- - - - -r-u-n-s---o-n-:- -w-i-n-d-o-w-s---l-a-t-e-s-t--
+- - - - -t-i-m-e-o-u-t---m-i-n-u-t-e-s-:- -1-0--
+- - - - -e-n-v-:--
+- - - - - - -S-M-O-K-E-_-P-R-E-V-I-E-W-_-L-I-N-E-S-:- -1-0--
+- - - - -s-t-e-p-s-:--
+- - - - - - --- -n-a-m-e-:- -C-h-e-c-k-o-u-t--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-c-h-e-c-k-o-u-t-@-v-4--
+--
+- - - - - - --- -n-a-m-e-:- -S-e-t-u-p- -.-N-E-T- -S-D-K-s- -(-6-.-x-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-s-e-t-u-p---d-o-t-n-e-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -d-o-t-n-e-t---v-e-r-s-i-o-n-:- -6-.-0-.-x--
+--
+- - - - - - --- -n-a-m-e-:- -B-u-i-l-d--
+- - - - - - - - -r-u-n-:- -d-o-t-n-e-t- -b-u-i-l-d- -$-E-n-v-:-G-I-T-H-U-B-_-W-O-R-K-S-P-A-C-E--
+--
+- - - - - - --- -n-a-m-e-:- -R-u-n- -s-m-o-k-e- -(-h-a-r-d-e-n-e-d-)--
+- - - - - - - - -i-d-:- -r-u-n-s-m-o-k-e--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-s-e-c- -=- -'-$-{-{- -g-i-t-h-u-b-.-e-v-e-n-t-.-i-n-p-u-t-s-.-s-e-c-o-n-d-s- -}-}-'--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-s-e-c-)- -{- -$-s-e-c- -=- -'-6-0-'- -}--
+- - - - - - - - - - -$-a-r-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - -i-f- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-)- -{- -R-e-m-o-v-e---I-t-e-m- ---R-e-c-u-r-s-e- ---F-o-r-c-e- -$-a-r-t- -}--
+- - - - - - - - - - -N-e-w---I-t-e-m- ---I-t-e-m-T-y-p-e- -D-i-r-e-c-t-o-r-y- ---P-a-t-h- -$-a-r-t- -|- -O-u-t---N-u-l-l--
+- - - - - - - - - - -&- -"-$-{-{- -g-i-t-h-u-b-.-w-o-r-k-s-p-a-c-e- -}-}-\-s-c-r-i-p-t-s-\-c-i-_-s-m-o-k-e-_-t-e-s-t-.-p-s-1-"- ---S-e-c-o-n-d-s- -(-[-i-n-t-]-$-s-e-c-)- ---D-r-a-i-n-S-e-c-o-n-d-s- -1-0--
+- - - - - - - - - - -$-d-i-r- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-a-r-t- ---D-i-r-e-c-t-o-r-y- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - -i-f- -(-$-d-i-r-)- -{--
+- - - - - - - - - - - - -(-"-p-a-t-h-=-"- -+- -$-d-i-r-.-F-u-l-l-N-a-m-e-)- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-e-n-v-:-G-I-T-H-U-B-_-O-U-T-P-U-T- ---A-p-p-e-n-d- ---E-n-c-o-d-i-n-g- -u-t-f-8--
+- - - - - - - - - - -}- -e-l-s-e- -{--
+- - - - - - - - - - - - -(-"-p-a-t-h-=-"-)- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-e-n-v-:-G-I-T-H-U-B-_-O-U-T-P-U-T- ---A-p-p-e-n-d- ---E-n-c-o-d-i-n-g- -u-t-f-8--
+- - - - - - - - - - -}--
+--
+- - - - - - --- -n-a-m-e-:- -P-r-i-n-t- -q-u-i-c-k- -p-r-e-v-i-e-w- -o-f- -a-r-t-i-f-a-c-t-s--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-a-r-t-i-f-a-c-t- -=- -"-$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-"--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-)-)- -{--
+- - - - - - - - - - - - -$-r-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - - - -$-c-a-n-d-i-d-a-t-e- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-r-o-o-t- ---D-i-r-e-c-t-o-r-y- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- ---R-e-c-u-r-s-e- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - - - -i-f- -(-$-c-a-n-d-i-d-a-t-e-)- -{- -$-a-r-t-i-f-a-c-t- -=- -$-c-a-n-d-i-d-a-t-e-.-F-u-l-l-N-a-m-e- -}--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-)-)- -{--
+- - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -"-W-A-R-N-I-N-G-:- -N-o- -a-r-t-i-f-a-c-t- -f-o-l-d-e-r- -f-o-u-n-d- -u-n-d-e-r- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P-"-;- -e-x-i-t- -0--
+- - - - - - - - - - -}--
+- - - - - - - - - - -W-r-i-t-e---H-o-s-t- -"-U-s-i-n-g- -a-r-t-i-f-a-c-t- -f-o-l-d-e-r-:- -$-a-r-t-i-f-a-c-t-"--
+- - - - - - - - - - -$-p-r-e-v-i-e-w-F-i-l-e- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-q-u-i-c-k-_-p-r-e-v-i-e-w-.-l-o-g-'--
+- - - - - - - - - - -'-'- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-p-r-e-v-i-e-w-F-i-l-e- ---E-n-c-o-d-i-n-g- -u-t-f-8--
+- - - - - - - - - - -f-u-n-c-t-i-o-n- -P-r-i-n-t---H-e-a-d-(-[-s-t-r-i-n-g-]-$-f-)- -{--
+- - - - - - - - - - - - -i-f- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-f-)- -{--
+- - - - - - - - - - - - - - -$-n- -=- -[-i-n-t-]-$-e-n-v-:-S-M-O-K-E-_-P-R-E-V-I-E-W-_-L-I-N-E-S--
+- - - - - - - - - - - - - - -$-t-a-k-e- -=- -$-n- -+- -1--
+- - - - - - - - - - - - - - -$-l-i-n-e-s- -=- -G-e-t---C-o-n-t-e-n-t- ---L-i-t-e-r-a-l-P-a-t-h- -$-f- ---T-o-t-a-l-C-o-u-n-t- -$-t-a-k-e--
+- - - - - - - - - - - - - - -$-t-e-x-t- -=- -(-$-l-i-n-e-s- ---j-o-i-n- -[-E-n-v-i-r-o-n-m-e-n-t-]-:-:-N-e-w-L-i-n-e-)--
+- - - - - - - - - - - - - - -i-f- -(-$-t-e-x-t-.-L-e-n-g-t-h- ---g-t- -4-0-0-0-)- -{- -$-t-e-x-t- -=- -$-t-e-x-t-.-S-u-b-s-t-r-i-n-g-(-0-,-4-0-0-0-)- -+- -"-`-n-.-.-.-[-t-r-u-n-c-a-t-e-d-]-.-.-.-"- -}--
+- - - - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -(-"--------- -P-r-e-v-i-e-w-:- -"- -+- -$-f- -+- -"- ---------"-)--
+- - - - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -$-t-e-x-t--
+- - - - - - - - - - - - - - -$-t-e-x-t- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-p-r-e-v-i-e-w-F-i-l-e- ---A-p-p-e-n-d- ---E-n-c-o-d-i-n-g- -u-t-f-8--
+- - - - - - - - - - - - -}- -e-l-s-e- -{--
+- - - - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -(-"-W-A-R-N-I-N-G-:- -"- -+- -$-f- -+- -"- -n-o-t- -f-o-u-n-d-"-)--
+- - - - - - - - - - - - -}--
+- - - - - - - - - - -}--
+- - - - - - - - - - -P-r-i-n-t---H-e-a-d- -(-J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-o-r-d-e-r-s-.-c-s-v-'-)--
+- - - - - - - - - - -P-r-i-n-t---H-e-a-d- -(-J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v-'-)--
+- - - - - - - - - - -W-r-i-t-e---H-o-s-t- -(-"-Q-u-i-c-k- -p-r-e-v-i-e-w- -s-a-v-e-d- -t-o- -"- -+- -$-p-r-e-v-i-e-w-F-i-l-e-)--
+--
+- - - - - - --- -n-a-m-e-:- -F-i-l-l---r-a-t-e- -a-n-d- -a-n-a-l-y-s-i-s- -s-u-m-m-a-r-y--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-a-r-t-i-f-a-c-t- -=- -"-$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-"--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-)-)- -{--
+- - - - - - - - - - - - -$-r-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - - - -$-c-a-n-d-i-d-a-t-e- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-r-o-o-t- ---D-i-r-e-c-t-o-r-y- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- ---R-e-c-u-r-s-e- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - - - -i-f- -(-$-c-a-n-d-i-d-a-t-e-)- -{- -$-a-r-t-i-f-a-c-t- -=- -$-c-a-n-d-i-d-a-t-e-.-F-u-l-l-N-a-m-e- -}--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-)-)- -{- -W-r-i-t-e---H-o-s-t- -"-W-A-R-N-I-N-G-:- -N-o- -a-r-t-i-f-a-c-t- -f-o-l-d-e-r- -f-o-u-n-d- -f-o-r- -s-u-m-m-a-r-y-.-"-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -$-o-r-d-e-r-s- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-o-r-d-e-r-s-.-c-s-v-'--
+- - - - - - - - - - -$-a-n-a-l-y-s-i-s- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-a-n-a-l-y-s-i-s-_-s-u-m-m-a-r-y-.-j-s-o-n-'--
+- - - - - - - - - - -$-p-r-e-v-i-e-w-F-i-l-e- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t- -'-q-u-i-c-k-_-p-r-e-v-i-e-w-.-l-o-g-'--
+- - - - - - - - - - -f-u-n-c-t-i-o-n- -A-p-p-e-n-d-(-[-s-t-r-i-n-g-]-$-s-)- -{- -$-s- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-p-r-e-v-i-e-w-F-i-l-e- ---A-p-p-e-n-d- ---E-n-c-o-d-i-n-g- -u-t-f-8-;- -W-r-i-t-e---H-o-s-t- -$-s- -}--
+- - - - - - - - - - -i-f- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-o-r-d-e-r-s-)- -{--
+- - - - - - - - - - - - -$-r-o-w-s- -=- -I-m-p-o-r-t---C-s-v- ---L-i-t-e-r-a-l-P-a-t-h- -$-o-r-d-e-r-s--
+- - - - - - - - - - - - -$-r-e-q- -=- -(-$-r-o-w-s- -|- -W-h-e-r-e---O-b-j-e-c-t- -{- -$-_-.-s-t-a-t-u-s- ---e-q- -'-R-E-Q-U-E-S-T-'- ---o-r- -$-_-.-p-h-a-s-e- ---e-q- -'-R-E-Q-U-E-S-T-'- -}-)-.-C-o-u-n-t--
+- - - - - - - - - - - - -$-f-i-l-l-s- -=- -(-$-r-o-w-s- -|- -W-h-e-r-e---O-b-j-e-c-t- -{- -$-_-.-s-t-a-t-u-s- ---e-q- -'-F-I-L-L-'- ---o-r- -$-_-.-p-h-a-s-e- ---e-q- -'-F-I-L-L-'- -}-)-.-C-o-u-n-t--
+- - - - - - - - - - - - -$-a-c-k-s- -=- -(-$-r-o-w-s- -|- -W-h-e-r-e---O-b-j-e-c-t- -{- -$-_-.-s-t-a-t-u-s- ---e-q- -'-A-C-K-'- ---o-r- -$-_-.-p-h-a-s-e- ---e-q- -'-A-C-K-'- -}-)-.-C-o-u-n-t--
+- - - - - - - - - - - - -$-r-a-t-e- -=- -i-f- -(-$-r-e-q- ---g-t- -0-)- -{- -[-m-a-t-h-]-:-:-R-o-u-n-d-(-(-$-f-i-l-l-s- -/- -$-r-e-q-)-,- -4-)- -}- -e-l-s-e- -{- -0- -}--
+- - - - - - - - - - - - -A-p-p-e-n-d- -(-"-f-i-l-l-_-s-u-m-m-a-r-y-:- -R-E-Q-U-E-S-T-=-{-0-}- -A-C-K-=-{-1-}- -F-I-L-L-=-{-2-}- -f-i-l-l-_-r-a-t-e-=-{-3-}-"- ---f- -$-r-e-q-,- -$-a-c-k-s-,- -$-f-i-l-l-s-,- -$-r-a-t-e-)--
+- - - - - - - - - - -}- -e-l-s-e- -{--
+- - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -"-W-A-R-N-I-N-G-:- -o-r-d-e-r-s-.-c-s-v- -n-o-t- -f-o-u-n-d- -f-o-r- -f-i-l-l---r-a-t-e-.-"--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-n-a-l-y-s-i-s-)- -{--
+- - - - - - - - - - - - -t-r-y- -{--
+- - - - - - - - - - - - - - -$-o-b-j- -=- -G-e-t---C-o-n-t-e-n-t- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-n-a-l-y-s-i-s- ---R-a-w- -|- -C-o-n-v-e-r-t-F-r-o-m---J-s-o-n--
+- - - - - - - - - - - - - - -A-p-p-e-n-d- -(-"-a-n-a-l-y-s-i-s-:- -t-r-a-d-e-s-=-{-0-}- -t-o-t-a-l-_-p-n-l-=-{-1-}- -m-a-x-_-d-r-a-w-d-o-w-n-=-{-2-}-"- ---f- -$-o-b-j-.-t-r-a-d-e-s-,- -$-o-b-j-.-t-o-t-a-l-_-p-n-l-,- -$-o-b-j-.-m-a-x-_-d-r-a-w-d-o-w-n-)--
+- - - - - - - - - - - - -}- -c-a-t-c-h- -{- -W-r-i-t-e---H-o-s-t- -"-W-A-R-N-I-N-G-:- -F-a-i-l-e-d- -t-o- -p-a-r-s-e- -a-n-a-l-y-s-i-s-_-s-u-m-m-a-r-y-.-j-s-o-n-"- -}--
+- - - - - - - - - - -}- -e-l-s-e- -{--
+- - - - - - - - - - - - -W-r-i-t-e---H-o-s-t- -"-W-A-R-N-I-N-G-:- -a-n-a-l-y-s-i-s-_-s-u-m-m-a-r-y-.-j-s-o-n- -n-o-t- -f-o-u-n-d-"--
+- - - - - - - - - - -}--
+--
+- - - - - - --- -n-a-m-e-:- -F-i-n-d- -z-i-p--
+- - - - - - - - -i-d-:- -f-i-n-d-z-i-p--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-a-r-t-i-f-a-c-t- -=- -"-$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-"--
+- - - - - - - - - - -$-z-i-p- -=- -$-n-u-l-l--
+- - - - - - - - - - -i-f- -(-$-a-r-t-i-f-a-c-t- ---a-n-d- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-)-)- -{--
+- - - - - - - - - - - - -$-z-i-p- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-a-r-t-i-f-a-c-t- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-.-z-i-p-'- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-z-i-p-)- -{--
+- - - - - - - - - - - - -$-r-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - - - -$-z-i-p- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-r-o-o-t- ---R-e-c-u-r-s-e- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-.-z-i-p-'- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(-$-n-u-l-l- ---e-q- -$-z-i-p-)- -{- -"-z-i-p-=-"- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-e-n-v-:-G-I-T-H-U-B-_-O-U-T-P-U-T- ---A-p-p-e-n-d-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -(-"-z-i-p-=-"- -+- -$-z-i-p-.-F-u-l-l-N-a-m-e-)- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-e-n-v-:-G-I-T-H-U-B-_-O-U-T-P-U-T- ---A-p-p-e-n-d--
+--
+- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -a-r-t-i-f-a-c-t--
+- - - - - - - - -i-f-:- -$-{-{- -a-l-w-a-y-s-(-)- -&-&- -s-t-e-p-s-.-f-i-n-d-z-i-p-.-o-u-t-p-u-t-s-.-z-i-p- -!-=- -'-'- -}-}--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -n-a-m-e-:- -s-m-o-k-e---t-e-l-e-m-e-t-r-y--
+- - - - - - - - - - -p-a-t-h-:- -$-{-{- -s-t-e-p-s-.-f-i-n-d-z-i-p-.-o-u-t-p-u-t-s-.-z-i-p- -}-}--
+--
+- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -d-e-r-i-v-e-d- -a-r-t-i-f-a-c-t-s- -(-b-r-e-a-k-d-o-w-n-,- -r-e-c-o-n-c-i-l-e-,- -m-o-n-i-t-o-r-i-n-g-,- -p-l-o-t-s-)--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
+- - - - - - - - -w-i-t-h-:--
+- - - - - - - - - - -n-a-m-e-:- -s-m-o-k-e---d-e-r-i-v-e-d--
+- - - - - - - - - - -p-a-t-h-:- -|--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-f-i-l-l-_-r-a-t-e-_-b-y-_-s-i-d-e-.-c-s-v--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-f-i-l-l-_-b-r-e-a-k-d-o-w-n-_-b-y-_-h-o-u-r-.-c-s-v--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-r-e-c-o-n-c-i-l-e-_-r-e-p-o-r-t-.-j-s-o-n--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-r-e-c-o-n-c-i-l-e-_-r-e-p-o-r-t-.-t-x-t--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-m-o-n-i-t-o-r-i-n-g-_-s-u-m-m-a-r-y-.-j-s-o-n--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-e-q-u-i-t-y-_-c-u-r-v-e-.-p-n-g--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-p-n-l-_-h-i-s-t-o-g-r-a-m-.-p-n-g--
+- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-/-p-n-l-_-b-y-_-h-o-u-r-.-p-n-g--
+--
+- - - - - - --- -n-a-m-e-:- -S-a-n-i-t-y- -c-h-e-c-k- --- -o-r-d-e-r-s-.-c-s-v- -h-e-a-d-e-r--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-a-r-t-i-f-a-c-t-D-i-r- -=- -"-$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-"--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t-D-i-r- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r-)-)- -{--
+- - - - - - - - - - - - -$-r-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - - - -$-c-a-n-d-i-d-a-t-e- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-r-o-o-t- ---D-i-r-e-c-t-o-r-y- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- ---R-e-c-u-r-s-e- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - - - -i-f- -(-$-c-a-n-d-i-d-a-t-e-)- -{- -$-a-r-t-i-f-a-c-t-D-i-r- -=- -$-c-a-n-d-i-d-a-t-e-.-F-u-l-l-N-a-m-e- -}--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t-D-i-r- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r-)-)- -{- -W-r-i-t-e---H-o-s-t- -'-W-A-R-N-I-N-G-:- -N-o- -a-r-t-i-f-a-c-t- -f-o-l-d-e-r- -f-o-u-n-d- -f-o-r- -h-e-a-d-e-r- -c-h-e-c-k-.-'-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -$-o-r-d-e-r-s- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r- -'-o-r-d-e-r-s-.-c-s-v-'--
+- - - - - - - - - - -i-f- -(---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-o-r-d-e-r-s-)-)- -{- -W-r-i-t-e---H-o-s-t- -'-W-A-R-N-I-N-G-:- -o-r-d-e-r-s-.-c-s-v- -n-o-t- -f-o-u-n-d-â-€-”-s-k-i-p-p-i-n-g- -h-e-a-d-e-r- -c-h-e-c-k-.-'-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -$-h-e-a-d-e-r- -=- -(-G-e-t---C-o-n-t-e-n-t- ---L-i-t-e-r-a-l-P-a-t-h- -$-o-r-d-e-r-s- ---T-o-t-a-l-C-o-u-n-t- -1-)--
+- - - - - - - - - - -$-h-a-s-T-s- -=- -$-h-e-a-d-e-r- ---i-m-a-t-c-h- -'-(-^-|-,-)-t-i-m-e-s-t-a-m-p-_-i-s-o-(-,-|-$-)-'--
+- - - - - - - - - - -$-h-a-s-I-d- -=- -$-h-e-a-d-e-r- ---i-m-a-t-c-h- -'-(-^-|-,-)-o-r-d-e-r-I-d-(-,-|-$-)-'--
+- - - - - - - - - - -i-f- -(---n-o-t- -(-$-h-a-s-T-s- ---a-n-d- -$-h-a-s-I-d-)-)- -{--
+- - - - - - - - - - - - -W-r-i-t-e---E-r-r-o-r- -'-o-r-d-e-r-s-.-c-s-v- -h-e-a-d-e-r- -m-i-s-s-i-n-g- -r-e-q-u-i-r-e-d- -f-i-e-l-d-s-:- -t-i-m-e-s-t-a-m-p-_-i-s-o- -a-n-d-/-o-r- -o-r-d-e-r-I-d-'--
+- - - - - - - - - - - - -e-x-i-t- -1--
+- - - - - - - - - - -}--
+- - - - - - - - - - -W-r-i-t-e---H-o-s-t- -'-o-r-d-e-r-s-.-c-s-v- -h-e-a-d-e-r- -s-a-n-i-t-y- -c-h-e-c-k- -p-a-s-s-e-d-.-'--
+--
+- - - - - - --- -n-a-m-e-:- -S-a-n-i-t-y- -c-h-e-c-k- --- -c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v- -n-o-n---e-m-p-t-y--
+- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
+- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
+- - - - - - - - -r-u-n-:- -|--
+- - - - - - - - - - -$-a-r-t-i-f-a-c-t-D-i-r- -=- -"-$-{-{- -s-t-e-p-s-.-r-u-n-s-m-o-k-e-.-o-u-t-p-u-t-s-.-p-a-t-h- -}-}-"--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t-D-i-r- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r-)-)- -{--
+- - - - - - - - - - - - -$-r-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-e-n-v-:-R-U-N-N-E-R-_-T-E-M-P- -'-b-o-t-g-_-a-r-t-i-f-a-c-t-'--
+- - - - - - - - - - - - -$-c-a-n-d-i-d-a-t-e- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-r-o-o-t- ---D-i-r-e-c-t-o-r-y- ---F-i-l-t-e-r- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- ---R-e-c-u-r-s-e- ---E-r-r-o-r-A-c-t-i-o-n- -S-i-l-e-n-t-l-y-C-o-n-t-i-n-u-e- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
+- - - - - - - - - - - - -i-f- -(-$-c-a-n-d-i-d-a-t-e-)- -{- -$-a-r-t-i-f-a-c-t-D-i-r- -=- -$-c-a-n-d-i-d-a-t-e-.-F-u-l-l-N-a-m-e- -}--
+- - - - - - - - - - -}--
+- - - - - - - - - - -i-f- -(---n-o-t- -$-a-r-t-i-f-a-c-t-D-i-r- ---o-r- ---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r-)-)- -{- -W-r-i-t-e---H-o-s-t- -'-W-A-R-N-I-N-G-:- -N-o- -a-r-t-i-f-a-c-t- -f-o-l-d-e-r- -f-o-u-n-d- -f-o-r- -c-l-o-s-e-d- -t-r-a-d-e-s- -c-h-e-c-k-.-'-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -$-c-l-o-s-e-d- -=- -J-o-i-n---P-a-t-h- -$-a-r-t-i-f-a-c-t-D-i-r- -'-c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v-'--
+- - - - - - - - - - -i-f- -(---n-o-t- -(-T-e-s-t---P-a-t-h- ---L-i-t-e-r-a-l-P-a-t-h- -$-c-l-o-s-e-d-)-)- -{- -W-r-i-t-e---H-o-s-t- -'-W-A-R-N-I-N-G-:- -c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v- -n-o-t- -f-o-u-n-d-.-'-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -$-l-i-n-e-s- -=- -0-;- -t-r-y- -{- -$-l-i-n-e-s- -=- -(-G-e-t---C-o-n-t-e-n-t- ---L-i-t-e-r-a-l-P-a-t-h- -$-c-l-o-s-e-d- -|- -M-e-a-s-u-r-e---O-b-j-e-c-t- ---L-i-n-e-)-.-L-i-n-e-s- -}- -c-a-t-c-h- -{-}--
+- - - - - - - - - - -i-f- -(-$-l-i-n-e-s- ---l-t- -2-)- -{- -W-r-i-t-e---H-o-s-t- -'-W-A-R-N-I-N-G-:- -c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v- -i-s- -e-m-p-t-y- -(-o-n-l-y- -h-e-a-d-e-r-)-.-'-;- -e-x-i-t- -0- -}--
+- - - - - - - - - - -W-r-i-t-e---H-o-s-t- -(-"-c-l-o-s-e-d-_-t-r-a-d-e-s-_-f-i-f-o-.-c-s-v- -O-K-,- -r-o-w-s-=-"- -+- -(-$-l-i-n-e-s- --- -1-)-)--
+--
+-
