@@ -24,6 +24,7 @@
 Notes:
 - If the config is missing, defaults are used and the app continues to run.
 - ATR-based SL is still TODO to be wired with a real provider.
+- Workflow lint guard keeps the workflow catalog clean across the 18 maintained pipelines.
 
 ## Realtime run: safe sequence
 
