@@ -1,7 +1,6 @@
 name: Alerts synthetic weekly (Gate24h dispatch + cancel)
 on:
   schedule:
-    timeout-minutes: 10
     - cron: '5 2 * * 1'  # Thứ Hai 02:05 UTC
   workflow_dispatch: {}
 

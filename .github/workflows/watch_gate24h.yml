@@ -1,7 +1,6 @@
 name: Gate24h watchdog (10min)
 on:
   schedule:
-    timeout-minutes: 10
     - cron: "*/10 * * * *"
 jobs:
   check:

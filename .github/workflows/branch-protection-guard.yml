@@ -7,7 +7,6 @@ on:
       - ".github/branch-protection/**"
       - "scripts/admin/sync_branch_protection.ps1"
   push:
-    timeout-minutes: 10
     branches: [ main ]
     paths:
       - ".github/workflows/**"

@@ -10,7 +10,6 @@ on:
 
 jobs:
   pulse:
-    timeout-minutes: 10
     runs-on: windows-latest
     timeout-minutes: 1440
     steps:

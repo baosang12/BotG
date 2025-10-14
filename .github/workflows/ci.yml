@@ -3,7 +3,6 @@ name: CI - build & test
 on:
   workflow_dispatch:
   push:
-    timeout-minutes: 10
     branches:
       - main
       - 'botg/**'
