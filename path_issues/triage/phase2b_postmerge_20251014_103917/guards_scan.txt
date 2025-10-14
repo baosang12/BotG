@@ -1,0 +1,4 @@
+﻿OK: notify_on_failure.yml
+OK: selftest.yml
+OK: selftest_new.yml
+OK: smoke-on-pr.yml

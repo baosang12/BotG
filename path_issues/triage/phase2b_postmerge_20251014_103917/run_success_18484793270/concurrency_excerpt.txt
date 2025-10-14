@@ -1,0 +1,4 @@
+D:\tmp\phase2b_postmerge_20251014_103917\run_success_18484793270\log.txt:62:shadow	Runner & concurrency guard	2025-10-14T03:42:56.2746119Z [36;1mecho "Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2b-postmerge-ok-20251014_103917"[0m
+D:\tmp\phase2b_postmerge_20251014_103917\run_success_18484793270\log.txt:63:shadow	Runner & concurrency guard	2025-10-14T03:42:56.2747031Z [36;1mecho "Cancel-in-progress: true"[0m
+D:\tmp\phase2b_postmerge_20251014_103917\run_success_18484793270\log.txt:88:shadow	Runner & concurrency guard	2025-10-14T03:42:56.2918535Z Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2b-postmerge-ok-20251014_103917
+D:\tmp\phase2b_postmerge_20251014_103917\run_success_18484793270\log.txt:89:shadow	Runner & concurrency guard	2025-10-14T03:42:56.2919380Z Cancel-in-progress: true

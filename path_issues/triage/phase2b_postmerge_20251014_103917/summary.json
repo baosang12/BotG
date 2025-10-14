@@ -1,0 +1,18 @@
+﻿{
+    "timestamp":  "2025-10-14T10:48:33Z",
+    "main_head":  "e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c",
+    "guards_ok":  true,
+    "bom_ok":  true,
+    "sentinel_ok":  true,
+    "success_run":  {
+                        "id":  "18484793270",
+                        "url":  "https://github.com/baosang12/BotG/actions/runs/18484793270",
+                        "conclusion":  "success"
+                    },
+    "failure_run":  {
+                        "id":  "18484804369",
+                        "url":  "https://github.com/baosang12/BotG/actions/runs/18484804369",
+                        "conclusion":  "failure"
+                    },
+    "workflow_count":  19
+}

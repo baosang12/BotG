@@ -1,0 +1,232 @@
+﻿shadow	Set up job	∩╗┐2025-10-14T03:42:55.4752482Z Current runner version: '2.328.0'
+shadow	Set up job	2025-10-14T03:42:55.4785804Z ##[group]Runner Image Provisioner
+shadow	Set up job	2025-10-14T03:42:55.4786951Z Hosted Compute Agent
+shadow	Set up job	2025-10-14T03:42:55.4788072Z Version: 20250912.392
+shadow	Set up job	2025-10-14T03:42:55.4789005Z Commit: d921fda672a98b64f4f82364647e2f10b2267d0b
+shadow	Set up job	2025-10-14T03:42:55.4790019Z Build Date: 2025-09-12T15:23:14Z
+shadow	Set up job	2025-10-14T03:42:55.4791061Z ##[endgroup]
+shadow	Set up job	2025-10-14T03:42:55.4791878Z ##[group]Operating System
+shadow	Set up job	2025-10-14T03:42:55.4792759Z Ubuntu
+shadow	Set up job	2025-10-14T03:42:55.4793573Z 24.04.3
+shadow	Set up job	2025-10-14T03:42:55.4794256Z LTS
+shadow	Set up job	2025-10-14T03:42:55.4794959Z ##[endgroup]
+shadow	Set up job	2025-10-14T03:42:55.4795727Z ##[group]Runner Image
+shadow	Set up job	2025-10-14T03:42:55.4796659Z Image: ubuntu-24.04
+shadow	Set up job	2025-10-14T03:42:55.4797449Z Version: 20250929.60.1
+shadow	Set up job	2025-10-14T03:42:55.4799326Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250929.60/images/ubuntu/Ubuntu2404-Readme.md
+shadow	Set up job	2025-10-14T03:42:55.4801564Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250929.60
+shadow	Set up job	2025-10-14T03:42:55.4803445Z ##[endgroup]
+shadow	Set up job	2025-10-14T03:42:55.4807388Z ##[group]GITHUB_TOKEN Permissions
+shadow	Set up job	2025-10-14T03:42:55.4810428Z Actions: write
+shadow	Set up job	2025-10-14T03:42:55.4811218Z Attestations: write
+shadow	Set up job	2025-10-14T03:42:55.4811974Z Checks: write
+shadow	Set up job	2025-10-14T03:42:55.4812622Z Contents: write
+shadow	Set up job	2025-10-14T03:42:55.4813447Z Deployments: write
+shadow	Set up job	2025-10-14T03:42:55.4814148Z Discussions: write
+shadow	Set up job	2025-10-14T03:42:55.4814905Z Issues: write
+shadow	Set up job	2025-10-14T03:42:55.4815650Z Metadata: read
+shadow	Set up job	2025-10-14T03:42:55.4816353Z Models: read
+shadow	Set up job	2025-10-14T03:42:55.4817047Z Packages: write
+shadow	Set up job	2025-10-14T03:42:55.4818020Z Pages: write
+shadow	Set up job	2025-10-14T03:42:55.4818623Z PullRequests: write
+shadow	Set up job	2025-10-14T03:42:55.4819211Z RepositoryProjects: write
+shadow	Set up job	2025-10-14T03:42:55.4820091Z SecurityEvents: write
+shadow	Set up job	2025-10-14T03:42:55.4820967Z Statuses: write
+shadow	Set up job	2025-10-14T03:42:55.4821707Z ##[endgroup]
+shadow	Set up job	2025-10-14T03:42:55.4824735Z Secret source: Actions
+shadow	Set up job	2025-10-14T03:42:55.4826057Z Prepare workflow directory
+shadow	Set up job	2025-10-14T03:42:55.5399036Z Prepare all required actions
+shadow	Set up job	2025-10-14T03:42:55.5453654Z Getting action download info
+shadow	Set up job	2025-10-14T03:42:55.8631319Z Download action repository 'actions/checkout@v4' (SHA:08eba0b27e820071cde6df949e0beb9ba4906955)
+shadow	Set up job	2025-10-14T03:42:56.0226712Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+shadow	Set up job	2025-10-14T03:42:56.2098217Z Complete job name: shadow
+shadow	Runner & concurrency guard	∩╗┐2025-10-14T03:42:56.2735020Z ##[group]Run echo "=== Runner & Concurrency Diagnostics ==="
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2735842Z [36;1mecho "=== Runner & Concurrency Diagnostics ==="[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2736512Z [36;1mecho "Runner name: GitHub Actions 1000002952"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2737078Z [36;1mecho "Runner OS: Linux"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2737716Z [36;1mecho "Runner arch: X64"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2738284Z [36;1mecho "Runner temp: /home/runner/work/_temp"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2738934Z [36;1mecho "Runner tool cache: /opt/hostedtoolcache"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2739509Z [36;1mecho "---"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2739930Z [36;1mecho "Job ID: shadow"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2740420Z [36;1mecho "Run ID: 18484793270"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2740913Z [36;1mecho "Run number: 321"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2741400Z [36;1mecho "Run attempt: 1"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2741856Z [36;1mecho "---"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2742299Z [36;1mecho "Workflow: smoke-fast-on-pr"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2742831Z [36;1mecho "Event: push"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2743460Z [36;1mecho "Ref: refs/heads/ci/phase2b-postmerge-ok-20251014_103917"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2744223Z [36;1mecho "SHA: e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2744832Z [36;1mecho "Actor: baosang12"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2745313Z [36;1mecho "---"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2746119Z [36;1mecho "Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2b-postmerge-ok-20251014_103917"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2747031Z [36;1mecho "Cancel-in-progress: true"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2747708Z [36;1mecho "---"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2748135Z [36;1mecho "Environment: "[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2748870Z [36;1mecho "Job started: $(date -u +%FT%TZ)"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2749459Z [36;1mecho "========================================"[0m
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2786059Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2787041Z ##[endgroup]
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2907966Z === Runner & Concurrency Diagnostics ===
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2908905Z Runner name: GitHub Actions 1000002952
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2909635Z Runner OS: Linux
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2910067Z Runner arch: X64
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2910767Z Runner temp: /home/runner/work/_temp
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2911728Z Runner tool cache: /opt/hostedtoolcache
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2912488Z ---
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2912921Z Job ID: shadow
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2913329Z Run ID: 18484793270
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2913743Z Run number: 321
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2914227Z Run attempt: 1
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2914623Z ---
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2915003Z Workflow: smoke-fast-on-pr
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2915470Z Event: push
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2915954Z Ref: refs/heads/ci/phase2b-postmerge-ok-20251014_103917
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2916599Z SHA: e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2917129Z Actor: baosang12
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2917804Z ---
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2918535Z Concurrency group: workflow-smoke-fast-on-pr-refs/heads/ci/phase2b-postmerge-ok-20251014_103917
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2919380Z Cancel-in-progress: true
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2919816Z ---
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2920182Z Environment: 
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2920598Z Job started: 2025-10-14T03:42:56Z
+shadow	Runner & concurrency guard	2025-10-14T03:42:56.2921086Z ========================================
+shadow	Run actions/checkout@v4	∩╗┐2025-10-14T03:42:56.3077938Z ##[group]Run actions/checkout@v4
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3078549Z with:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3078939Z   repository: baosang12/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3079577Z   token: ***
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3079983Z   ssh-strict: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3080391Z   ssh-user: git
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3080818Z   persist-credentials: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3081284Z   clean: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3081698Z   sparse-checkout-cone-mode: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3082213Z   fetch-depth: 1
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3082626Z   fetch-tags: false
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3083030Z   show-progress: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3083444Z   lfs: false
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3083823Z   submodules: false
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3084309Z   set-safe-directory: true
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.3084762Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4089861Z Syncing repository: baosang12/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4091861Z ##[group]Getting Git version info
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4092528Z Working directory is '/home/runner/work/BotG/BotG'
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4093495Z [command]/usr/bin/git version
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4169402Z git version 2.51.0
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4195468Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4215792Z Temporarily overriding HOME='/home/runner/work/_temp/da000f9c-44ed-41c8-898a-f597928229b2' before making global git config changes
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4220748Z Adding repository directory to the temporary git global config as a safe directory
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4221985Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/BotG/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4254865Z Deleting the contents of '/home/runner/work/BotG/BotG'
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4258423Z ##[group]Initializing the repository
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4262094Z [command]/usr/bin/git init /home/runner/work/BotG/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4372489Z hint: Using 'master' as the name for the initial branch. This default branch name
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4374329Z hint: is subject to change. To configure the initial branch name to use in all
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4376020Z hint: of your new repositories, which will suppress this warning, call:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4377152Z hint:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4378044Z hint: 	git config --global init.defaultBranch <name>
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4378715Z hint:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4379278Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4380192Z hint: 'development'. The just-created branch can be renamed via this command:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4380903Z hint:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4381529Z hint: 	git branch -m <name>
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4381985Z hint:
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4382599Z hint: Disable this message with "git config set advice.defaultBranchName false"
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4383557Z Initialized empty Git repository in /home/runner/work/BotG/BotG/.git/
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4392624Z [command]/usr/bin/git remote add origin https://github.com/baosang12/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4431760Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4432936Z ##[group]Disabling automatic garbage collection
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4436627Z [command]/usr/bin/git config --local gc.auto 0
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4465365Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4466528Z ##[group]Setting up auth
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4472953Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4503091Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4832232Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.4864630Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.5104878Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.5144348Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.5145513Z ##[group]Fetching the repository
+shadow	Run actions/checkout@v4	2025-10-14T03:42:56.5154290Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c:refs/remotes/origin/ci/phase2b-postmerge-ok-20251014_103917
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4585613Z From https://github.com/baosang12/BotG
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4588761Z  * [new ref]         e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c -> origin/ci/phase2b-postmerge-ok-20251014_103917
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4616521Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4618046Z ##[group]Determining the checkout info
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4619561Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4623231Z [command]/usr/bin/git sparse-checkout disable
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4661721Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4688673Z ##[group]Checking out the ref
+shadow	Run actions/checkout@v4	2025-10-14T03:42:58.4693391Z [command]/usr/bin/git checkout --progress --force -B ci/phase2b-postmerge-ok-20251014_103917 refs/remotes/origin/ci/phase2b-postmerge-ok-20251014_103917
+shadow	Run actions/checkout@v4	2025-10-14T03:42:59.2805240Z Switched to a new branch 'ci/phase2b-postmerge-ok-20251014_103917'
+shadow	Run actions/checkout@v4	2025-10-14T03:42:59.2806549Z branch 'ci/phase2b-postmerge-ok-20251014_103917' set up to track 'origin/ci/phase2b-postmerge-ok-20251014_103917'.
+shadow	Run actions/checkout@v4	2025-10-14T03:42:59.2849520Z ##[endgroup]
+shadow	Run actions/checkout@v4	2025-10-14T03:42:59.2887862Z [command]/usr/bin/git log -1 --format=%H
+shadow	Run actions/checkout@v4	2025-10-14T03:42:59.2910612Z e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c
+shadow	Start event	∩╗┐2025-10-14T03:42:59.3034925Z ##[group]Run mkdir -p .botg
+shadow	Start event	2025-10-14T03:42:59.3035543Z [36;1mmkdir -p .botg[0m
+shadow	Start event	2025-10-14T03:42:59.3036422Z [36;1mecho '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'18484793270',"pr":'0',"stage":"shadow","level":"info","msg":"start","kv":{"sha":"e61a7f83f80d6ba234acb94c0fd9ac11af40fb9c","actor":"baosang12","runner":"GitHub Actions 1000002952"}}' >> .botg/events.jsonl[0m
+shadow	Start event	2025-10-14T03:42:59.3070024Z shell: /usr/bin/bash -e {0}
+shadow	Start event	2025-10-14T03:42:59.3070322Z ##[endgroup]
+shadow	Run shadow tests (fast)	∩╗┐2025-10-14T03:42:59.3168685Z ##[group]Run set -e
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3168994Z [36;1mset -e[0m
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3169246Z [36;1mecho "TODO: Implement shadow tests"[0m
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3169666Z [36;1mecho '{"status":"PASS","reason":"not_implemented"}' > .botg/status.json[0m
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3199141Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3199532Z ##[endgroup]
+shadow	Run shadow tests (fast)	2025-10-14T03:42:59.3245888Z TODO: Implement shadow tests
+shadow	Classify results	∩╗┐2025-10-14T03:42:59.3275847Z ##[group]Run set -e
+shadow	Classify results	2025-10-14T03:42:59.3276301Z [36;1mset -e[0m
+shadow	Classify results	2025-10-14T03:42:59.3276538Z [36;1mcat .botg/status.json[0m
+shadow	Classify results	2025-10-14T03:42:59.3305755Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+shadow	Classify results	2025-10-14T03:42:59.3306160Z ##[endgroup]
+shadow	Classify results	2025-10-14T03:42:59.3361773Z {"status":"PASS","reason":"not_implemented"}
+shadow	Decide & log	∩╗┐2025-10-14T03:42:59.3399233Z ##[group]Run set -e
+shadow	Decide & log	2025-10-14T03:42:59.3399532Z [36;1mset -e[0m
+shadow	Decide & log	2025-10-14T03:42:59.3399800Z [36;1mSTATUS=$(jq -r .status < .botg/status.json)[0m
+shadow	Decide & log	2025-10-14T03:42:59.3400173Z [36;1mREASON=$(jq -r .reason < .botg/status.json)[0m
+shadow	Decide & log	2025-10-14T03:42:59.3400470Z [36;1mRETRY_OK="false"[0m
+shadow	Decide & log	2025-10-14T03:42:59.3400706Z [36;1m[0m
+shadow	Decide & log	2025-10-14T03:42:59.3400936Z [36;1mecho "status=$STATUS" >> $GITHUB_OUTPUT[0m
+shadow	Decide & log	2025-10-14T03:42:59.3401257Z [36;1mecho "reason=$REASON" >> $GITHUB_OUTPUT[0m
+shadow	Decide & log	2025-10-14T03:42:59.3401575Z [36;1mecho "retry_ok=$RETRY_OK" >> $GITHUB_OUTPUT[0m
+shadow	Decide & log	2025-10-14T03:42:59.3402206Z [36;1mecho '{"ts":"'"$(date -u +%FT%TZ)"'","run_id":'18484793270',"pr":'0',"stage":"decide","level":"info","msg":"conclusion","kv":{"status":"'"$STATUS"'","reason":"'"$REASON"'"}}' >> .botg/events.jsonl[0m
+shadow	Decide & log	2025-10-14T03:42:59.3431687Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+shadow	Decide & log	2025-10-14T03:42:59.3432055Z env:
+shadow	Decide & log	2025-10-14T03:42:59.3432653Z   GH_TOKEN: ***
+shadow	Decide & log	2025-10-14T03:42:59.3432880Z ##[endgroup]
+shadow	Upload events	∩╗┐2025-10-14T03:42:59.3691149Z ##[group]Run actions/upload-artifact@v4
+shadow	Upload events	2025-10-14T03:42:59.3691487Z with:
+shadow	Upload events	2025-10-14T03:42:59.3691722Z   name: workflow-events-18484793270
+shadow	Upload events	2025-10-14T03:42:59.3692006Z   path: .botg/events.jsonl
+shadow	Upload events	2025-10-14T03:42:59.3692248Z   retention-days: 7
+shadow	Upload events	2025-10-14T03:42:59.3692531Z   if-no-files-found: warn
+shadow	Upload events	2025-10-14T03:42:59.3692774Z   compression-level: 6
+shadow	Upload events	2025-10-14T03:42:59.3693004Z   overwrite: false
+shadow	Upload events	2025-10-14T03:42:59.3693229Z   include-hidden-files: false
+shadow	Upload events	2025-10-14T03:42:59.3693479Z ##[endgroup]
+shadow	Upload events	2025-10-14T03:42:59.5876603Z With the provided path, there will be 1 file uploaded
+shadow	Upload events	2025-10-14T03:42:59.5883368Z Artifact name is valid!
+shadow	Upload events	2025-10-14T03:42:59.5884344Z Root directory input is valid!
+shadow	Upload events	2025-10-14T03:42:59.7542043Z Beginning upload of artifact content to blob storage
+shadow	Upload events	2025-10-14T03:42:59.9180129Z Uploaded bytes 363
+shadow	Upload events	2025-10-14T03:42:59.9612848Z Finished uploading artifact content to blob storage!
+shadow	Upload events	2025-10-14T03:42:59.9616028Z SHA256 digest of uploaded artifact zip is dd98ab60a8df3c1cf8b9b395fd4b87b13df8c749236369fa0697ecdd43290705
+shadow	Upload events	2025-10-14T03:42:59.9618002Z Finalizing artifact upload
+shadow	Upload events	2025-10-14T03:43:00.0649117Z Artifact workflow-events-18484793270.zip successfully finalized. Artifact ID 4260968140
+shadow	Upload events	2025-10-14T03:43:00.0650389Z Artifact workflow-events-18484793270 has been successfully uploaded! Final size is 363 bytes. Artifact ID is 4260968140
+shadow	Upload events	2025-10-14T03:43:00.0656437Z Artifact download URL: https://github.com/baosang12/BotG/actions/runs/18484793270/artifacts/4260968140
+shadow	Post Run actions/checkout@v4	∩╗┐2025-10-14T03:43:00.0807018Z Post job cleanup.
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1734035Z [command]/usr/bin/git version
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1774832Z git version 2.51.0
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1817051Z Temporarily overriding HOME='/home/runner/work/_temp/d2d65c54-de9c-4fea-95a8-146021127e13' before making global git config changes
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1818120Z Adding repository directory to the temporary git global config as a safe directory
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1829189Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/BotG/BotG
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1862136Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.1892801Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.2124750Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.2144919Z http.https://github.com/.extraheader
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.2157290Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+shadow	Post Run actions/checkout@v4	2025-10-14T03:43:00.2186468Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+shadow	Complete job	∩╗┐2025-10-14T03:43:00.2511682Z Evaluate and set job outputs
+shadow	Complete job	2025-10-14T03:43:00.2519420Z Set output 'status'
+shadow	Complete job	2025-10-14T03:43:00.2521184Z Set output 'reason'
+shadow	Complete job	2025-10-14T03:43:00.2521903Z Set output 'retry_ok'
+shadow	Complete job	2025-10-14T03:43:00.2522591Z Cleaning up orphan processes
