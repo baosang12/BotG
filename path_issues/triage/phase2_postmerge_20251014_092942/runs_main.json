@@ -1,0 +1,42 @@
+﻿[
+    {
+        "conclusion":  "success",
+        "createdAt":  "2025-10-14T01:35:42Z",
+        "databaseId":  18482787702,
+        "status":  "completed",
+        "url":  "https://github.com/baosang12/BotG/actions/runs/18482787702",
+        "workflowName":  "Smoke selftest"
+    },
+    {
+        "conclusion":  "success",
+        "createdAt":  "2025-10-14T01:30:38Z",
+        "databaseId":  18482707460,
+        "status":  "completed",
+        "url":  "https://github.com/baosang12/BotG/actions/runs/18482707460",
+        "workflowName":  "Smoke selftest"
+    },
+    {
+        "conclusion":  "failure",
+        "createdAt":  "2025-10-13T18:39:56Z",
+        "databaseId":  18475172624,
+        "status":  "completed",
+        "url":  "https://github.com/baosang12/BotG/actions/runs/18475172624",
+        "workflowName":  "Smoke ├óΓé¼ΓÇ¥ 60m paper run"
+    },
+    {
+        "conclusion":  "success",
+        "createdAt":  "2025-10-13T06:11:02Z",
+        "databaseId":  18456782079,
+        "status":  "completed",
+        "url":  "https://github.com/baosang12/BotG/actions/runs/18456782079",
+        "workflowName":  "Smoke selftest"
+    },
+    {
+        "conclusion":  "success",
+        "createdAt":  "2025-10-13T06:11:02Z",
+        "databaseId":  18456782055,
+        "status":  "completed",
+        "url":  "https://github.com/baosang12/BotG/actions/runs/18456782055",
+        "workflowName":  "Smoke selftest"
+    }
+]

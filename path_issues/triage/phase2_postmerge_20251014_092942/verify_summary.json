@@ -1,0 +1,9 @@
+﻿{
+    "head":  "605a0b795c7ca0f9e20760a7db57c980230445c9",
+    "rid_A":  18483660153,
+    "rid_B":  18483661521,
+    "cancelled_expected":  true,
+    "cancelled_observed":  true,
+    "concurrency_seen":  true,
+    "artifact_seen":  true
+}

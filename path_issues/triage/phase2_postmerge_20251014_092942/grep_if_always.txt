@@ -1,0 +1,4 @@
+﻿notify_on_failure.yml: MISSING if: always() near upload
+selftest.yml: MISSING if: always() near upload
+selftest_new.yml: MISSING if: always() near upload
+smoke-on-pr.yml: MISSING if: always() near upload

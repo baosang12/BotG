@@ -1,0 +1,28 @@
+{
+    "timestamp": "2025-10-14T09:32:26Z",
+    "issues": [
+        {
+            "category": "upload_artifact_if_guard",
+            "status": "fail",
+            "details": [
+                "notify_on_failure.yml: missing if: always() guard",
+                "selftest.yml: missing if: always() guard",
+                "selftest_new.yml: missing if: always() guard",
+                "smoke-on-pr.yml: missing if: always() guard"
+            ]
+        },
+        {
+            "category": "workflow_bom_unicode",
+            "status": "fail",
+            "details": [
+                "alerts_synthetic_weekly.yml: BOM=True; Unicode=True",
+                "branch-protection-guard.yml: BOM=True; Unicode=True",
+                "ci.yml: BOM=True; Unicode=True"
+            ]
+        }
+    ],
+    "notes": [
+        "actions/checkout@v4 and actions/upload-artifact@v4 present across workflows",
+        "Concurrency cancellation observed in runs 18483660153 -> 18483661521"
+    ]
+}

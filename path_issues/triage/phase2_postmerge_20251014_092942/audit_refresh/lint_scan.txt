@@ -1,0 +1,1 @@
+﻿Missing if: always() guard in notify_on_failure.yml; selftest.yml; selftest_new.yml; smoke-on-pr.yml. Workflows also carry BOM + non-ASCII header markers (see bom_unicode_scan.txt).
