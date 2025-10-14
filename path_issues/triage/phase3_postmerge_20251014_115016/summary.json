@@ -1,0 +1,9 @@
+﻿{
+    "python_v5_ok":  true,
+    "guards_ok":  true,
+    "bom_ok":  true,
+    "concurrency_ok":  true,
+    "sentinel_ok":  true,
+    "main_head":  "0371ad7d7fac40532abb30bc1339e171a39a7a13",
+    "timeouts_ok":  true
+}

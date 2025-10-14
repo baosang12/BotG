@@ -1,0 +1,224 @@
+﻿{
+    "generated_at":  "2025-10-14T12:42:43.9506270+07:00",
+    "go_no_go":  "WATCH",
+    "iterations":  [
+                       {
+                           "timestamp":  "2025-10-14T12:39:16.1566267+07:00",
+                           "total_runs":  10,
+                           "success_count":  0,
+                           "failure_count":  10,
+                           "success_rate":  0,
+                           "duration_percentiles":  {
+                                                        "p50":  0,
+                                                        "p95":  0
+                                                    },
+                           "concurrency_guard_ok":  0,
+                           "events_artifact_ok":  0,
+                           "timeout_failures":  [
+
+                                                ],
+                           "runs":  [
+                                        {
+                                            "id":  18454815168,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18454815168",
+                                            "created_at":  "2025-10-13T04:06:42Z",
+                                            "updated_at":  "2025-10-13T04:06:42Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "b4f8845fd2c00dbd745c10824ed7455ab52eeb3e",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18442368734,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18442368734",
+                                            "created_at":  "2025-10-12T09:55:36Z",
+                                            "updated_at":  "2025-10-12T09:55:36Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "879b82da687e0d5d178afb4d7b5aa5478a74c4db",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18442084332,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18442084332",
+                                            "created_at":  "2025-10-12T09:25:31Z",
+                                            "updated_at":  "2025-10-12T09:25:31Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "7339be14263a2963a813b02b1cf95c369f05b909",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18441763261,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18441763261",
+                                            "created_at":  "2025-10-12T08:56:48Z",
+                                            "updated_at":  "2025-10-12T08:56:48Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "191a0f716ced3c2de5cfb75bd4920b2310bd30bf",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18441193191,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18441193191",
+                                            "created_at":  "2025-10-12T08:01:51Z",
+                                            "updated_at":  "2025-10-12T08:01:51Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "4a5ed25063a7e5190c5ae68e44aac1e3f90e4221",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18440836727,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18440836727",
+                                            "created_at":  "2025-10-12T07:21:39Z",
+                                            "updated_at":  "2025-10-12T07:21:39Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "1f1e5dfbf6bea2d963dfda8a1c784617ed8ce677",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18440696905,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18440696905",
+                                            "created_at":  "2025-10-12T07:09:15Z",
+                                            "updated_at":  "2025-10-12T07:09:15Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "c287d9344cf39845cc65e18c7ab7953ed0230359",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18424250190,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18424250190",
+                                            "created_at":  "2025-10-11T04:13:21Z",
+                                            "updated_at":  "2025-10-11T04:13:21Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "56d92c7cb10c979de812e3007e8e950357676271",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18394759832,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18394759832",
+                                            "created_at":  "2025-10-10T02:35:44Z",
+                                            "updated_at":  "2025-10-10T02:35:44Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "36424c912ce527f67fa9f98d7036259277e7c186",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        },
+                                        {
+                                            "id":  18379062559,
+                                            "url":  "https://github.com/baosang12/BotG/actions/runs/18379062559",
+                                            "created_at":  "2025-10-09T14:08:29Z",
+                                            "updated_at":  "2025-10-09T14:08:29Z",
+                                            "duration_seconds":  0,
+                                            "conclusion":  "failure",
+                                            "head_branch":  "main",
+                                            "head_sha":  "e5efd895baf8083bba188934d259a95af55e652b",
+                                            "events_artifact":  false,
+                                            "concurrency_lines":  [
+
+                                                                  ],
+                                            "timeout_jobs":  [
+
+                                                             ],
+                                            "timeout_evidence":  [
+
+                                                                 ]
+                                        }
+                                    ]
+                       }
+                   ]
+}

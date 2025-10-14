@@ -1,0 +1,20 @@
+﻿{
+    "id":  18440836727,
+    "url":  "https://github.com/baosang12/BotG/actions/runs/18440836727",
+    "created_at":  "2025-10-12T07:21:39Z",
+    "updated_at":  "2025-10-12T07:21:39Z",
+    "duration_seconds":  0,
+    "conclusion":  "failure",
+    "head_branch":  "main",
+    "head_sha":  "1f1e5dfbf6bea2d963dfda8a1c784617ed8ce677",
+    "events_artifact":  false,
+    "concurrency_lines":  [
+
+                          ],
+    "timeout_jobs":  [
+
+                     ],
+    "timeout_evidence":  [
+
+                         ]
+}

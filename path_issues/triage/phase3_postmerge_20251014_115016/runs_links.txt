@@ -1,0 +1,2 @@
+﻿SUCCESS 18485913995 https://github.com/baosang12/BotG/actions/runs/18485913995
+FAIL 18485975669 https://github.com/baosang12/BotG/actions/runs/18485975669
