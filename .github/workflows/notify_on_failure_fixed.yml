@@ -1,4 +1,4 @@
-name: Notify on Gate24h failure
+﻿name: Notify on Gate24h failure
 on:
   workflow_run:
     workflows: ["Gate 24h (paper supervised)"]
@@ -18,7 +18,7 @@ jobs:
           to:    ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ❌ Gate24h failed
+            âŒ Gate24h failed
             Repo: ${{ github.repository }}
             RunID: ${{ github.event.workflow_run.id }}
             Conclusion: ${{ github.event.workflow_run.conclusion }}
@@ -30,7 +30,7 @@ jobs:
         with:
           script: |
             const tit = 'Gate24h alerts (auto)';
-            const body = `❌ Gate24h failed
+            const body = `âŒ Gate24h failed
             Conclusion: ${{ github.event.workflow_run.conclusion }}
             URL: ${{ github.event.workflow_run.html_url }}`;
             const {data: issues} = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100});

@@ -1,4 +1,4 @@
-name: Smoke Run
+﻿name: Smoke Run
 
 on:
   pull_request:
@@ -130,6 +130,7 @@ jobs:
 
       - name: Upload artifact
         if: ${{ always() && steps.findzip.outputs.zip != '' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-telemetry
@@ -162,7 +163,7 @@ jobs:
           }
           if (-not $artifactDir -or -not (Test-Path -LiteralPath $artifactDir)) { Write-Host 'WARNING: No artifact folder found for header check.'; exit 0 }
           $orders = Join-Path $artifactDir 'orders.csv'
-          if (-not (Test-Path -LiteralPath $orders)) { Write-Host 'WARNING: orders.csv not found—skipping header check.'; exit 0 }
+          if (-not (Test-Path -LiteralPath $orders)) { Write-Host 'WARNING: orders.csv not foundâ€”skipping header check.'; exit 0 }
           $header = (Get-Content -LiteralPath $orders -TotalCount 1)
           $hasTs = $header -imatch '(^|,)timestamp_iso(,|$)'
           $hasId = $header -imatch '(^|,)orderId(,|$)'
@@ -188,3 +189,4 @@ jobs:
           $lines = 0; try { $lines = (Get-Content -LiteralPath $closed | Measure-Object -Line).Lines } catch {}
           if ($lines -lt 2) { Write-Host 'WARNING: closed_trades_fifo.csv is empty (only header).'; exit 0 }
           Write-Host ("closed_trades_fifo.csv OK, rows=" + ($lines - 1))
+

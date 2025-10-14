@@ -1,4 +1,4 @@
-name: Paper Pulse
+﻿name: Paper Pulse
 
 on:
   workflow_dispatch:
@@ -39,3 +39,4 @@ jobs:
         with:
           name: paper-pulse-artifacts
           path: ${{ runner.temp }}\botg_pulse_artifacts
+

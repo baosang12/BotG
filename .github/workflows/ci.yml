@@ -1,4 +1,4 @@
-name: CI - build & test
+﻿name: CI - build & test
 
 on:
   workflow_dispatch:
@@ -152,7 +152,7 @@ jobs:
 
   report-required-status:
     # This job publishes a single commit status named exactly 'CI - build & test'
-    # to satisfy the required check shown as "Expected — Waiting for status to be reported".
+    # to satisfy the required check shown as "Expected â€” Waiting for status to be reported".
     name: CI - build & test (aggregated)
     runs-on: ubuntu-latest
     needs: [build-test, quick-smoke, reconstruct-validate]
@@ -194,3 +194,4 @@ jobs:
               description,
               target_url
             });
+
