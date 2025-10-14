@@ -1,23 +1,67 @@
 name: workflow-lint
+
 on:
   pull_request:
-    paths:
-      - ".github/workflows/**.yml"
-      - "Tools/workflow_lint.ps1"
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   lint:
+    name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Run workflow lint
-        shell: pwsh
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: diff
+        shell: bash
         run: |
-          ./Tools/workflow_lint.ps1 -OutputDir "path_issues/triage/workflow_lint_${{ github.run_id }}"
+          set -euo pipefail
+          if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            # Fallback (shouldn't happen on PR)
+            base="$(git merge-base origin/${{ github.base_ref }} ${{ github.sha }})"
+          fi
+          head="${{ github.sha }}"
+          files="$(git diff --name-only "$base" "$head" || true)"
+          echo "$files" > changed_files.txt
+          if echo "$files" | grep -E '^(Tools/workflow_lint\.ps1|\.github/workflows/.*\.yml)$' >/dev/null; then
+            echo "has_relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No-op pass summary
+        if: steps.diff.outputs.has_relevant == 'false'
+        shell: bash
+        run: |
+          mkdir -p path_issues/triage/workflow_lint_noop_${{ github.run_id }}
+          {
+            echo "NOOP PASS"
+            echo "No workflow or Tools/workflow_lint.ps1 changes detected."
+            echo "PR: #${{ github.event.pull_request.number }}"
+            echo "Run: ${{ github.run_id }}"
+          } | tee path_issues/triage/workflow_lint_noop_${{ github.run_id }}/summary.txt
+
+      - name: Run lint (pwsh)
+        if: steps.diff.outputs.has_relevant == 'true'
+        shell: pwsh
+        run: ./Tools/workflow_lint.ps1 -OutputDir "path_issues/triage/workflow_lint_${{ github.run_id }}"
+
       - name: Upload lint artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: workflow-lint-${{ github.run_id }}
-          path: path_issues/triage/workflow_lint_${{ github.run_id }}
+          path: |
+            path_issues/triage/workflow_lint_**
+            path_issues/triage/workflow_lint_noop_**
+            changed_files.txt
