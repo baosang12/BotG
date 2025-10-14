@@ -1,0 +1,10 @@
+﻿name: probe-violation
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print message
+        run: echo "probe"
