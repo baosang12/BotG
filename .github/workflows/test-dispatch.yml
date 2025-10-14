@@ -1,14 +1,13 @@
--n-a-m-e-:- -T-e-s-t- -D-i-s-p-a-t-c-h--
--o-n-:--
-- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
-- - - - -i-n-p-u-t-s-:--
-- - - - - - -s-a-m-p-l-e-:--
-- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -'-S-a-m-p-l-e-'--
-- - - - - - - - -r-e-q-u-i-r-e-d-:- -f-a-l-s-e--
--j-o-b-s-:--
-- - -p-i-n-g-:--
-- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
-- - - - -s-t-e-p-s-:--
-- - - - - - --- -r-u-n-:- -e-c-h-o- -'-d-i-s-p-a-t-c-h- -o-k-'--
---
--
+﻿name: Test Dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: 'Sample'
+        required: false
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'dispatch ok'
+

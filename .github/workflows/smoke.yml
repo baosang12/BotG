@@ -1,69 +1,68 @@
--n-a-m-e-:- -S-m-o-k-e- -â-€-”- -6-0-m- -p-a-p-e-r- -r-u-n--
---
--o-n-:--
-- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:--
-- - - - -i-n-p-u-t-s-:--
-- - - - - - -d-u-r-a-t-i-o-n-S-e-c-o-n-d-s-:--
-- - - - - - - - -d-e-s-c-r-i-p-t-i-o-n-:- -D-u-r-a-t-i-o-n- -i-n- -s-e-c-o-n-d-s--
-- - - - - - - - -r-e-q-u-i-r-e-d-:- -f-a-l-s-e--
-- - - - - - - - -d-e-f-a-u-l-t-:- -'-3-6-0-0-'--
-- - -s-c-h-e-d-u-l-e-:--
-- - - - --- -c-r-o-n-:- -'-3-0- -1-8- -*- -*- -*-'- - -#- -d-a-i-l-y- -a-t- -1-8-:-3-0- -U-T-C--
---
--j-o-b-s-:--
-- - -s-m-o-k-e-:--
-- - - - -n-a-m-e-:- -S-m-o-k-e- -(-w-i-n-d-o-w-s---l-a-t-e-s-t-)--
-- - - - -r-u-n-s---o-n-:- -w-i-n-d-o-w-s---l-a-t-e-s-t--
-- - - - -t-i-m-e-o-u-t---m-i-n-u-t-e-s-:- -1-2-0--
-- - - - -s-t-e-p-s-:--
-- - - - - - --- -n-a-m-e-:- -C-h-e-c-k-o-u-t--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-c-h-e-c-k-o-u-t-@-v-4--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -f-e-t-c-h---d-e-p-t-h-:- -0--
---
-- - - - - - --- -n-a-m-e-:- -S-e-t-u-p- -.-N-E-T- -S-D-K-s- -(-6-.-x- -a-n-d- -9-.-x-)--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-s-e-t-u-p---d-o-t-n-e-t-@-v-4--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -d-o-t-n-e-t---v-e-r-s-i-o-n-:- -|--
-- - - - - - - - - - - - -6-.-0-.-x--
-- - - - - - - - - - - - -9-.-0-.-x--
---
-- - - - - - --- -n-a-m-e-:- -R-u-n- -s-m-o-k-e- -(-s-i-m-u-l-a-t-e-)--
-- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
-- - - - - - - - -r-u-n-:- -|--
-- - - - - - - - - - -$-d-u-r- -=- -'-$-{-{- -i-n-p-u-t-s-.-d-u-r-a-t-i-o-n-S-e-c-o-n-d-s- -}-}-'--
-- - - - - - - - - - -i-f- -(---n-o-t- -$-d-u-r-)- -{- -$-d-u-r- -=- -'-3-6-0-0-'- -}--
-- - - - - - - - - - -.-/-s-c-r-i-p-t-s-/-r-u-n-_-h-a-r-n-e-s-s-_-a-n-d-_-c-o-l-l-e-c-t-.-p-s-1- ---D-u-r-a-t-i-o-n-S-e-c-o-n-d-s- -(-[-i-n-t-]-$-d-u-r-)- ---S-i-m-u-l-a-t-e- ---F-o-r-c-e-R-u-n--
---
-- - - - - - --- -n-a-m-e-:- -F-i-n-d- -l-a-t-e-s-t- -a-r-t-i-f-a-c-t- -d-i-r--
-- - - - - - - - -i-d-:- -f-i-n-d-a-r-t--
-- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
-- - - - - - - - -r-u-n-:- -|--
-- - - - - - - - - - -$-a-r-t-R-o-o-t- -=- -J-o-i-n---P-a-t-h- -$-P-W-D- -'-a-r-t-i-f-a-c-t-s-'--
-- - - - - - - - - - -i-f- -(---n-o-t- -(-T-e-s-t---P-a-t-h- -$-a-r-t-R-o-o-t-)-)- -{- -t-h-r-o-w- -'-a-r-t-i-f-a-c-t-s- -f-o-l-d-e-r- -n-o-t- -f-o-u-n-d-'- -}--
-- - - - - - - - - - -$-d-i-r- -=- -G-e-t---C-h-i-l-d-I-t-e-m- ---P-a-t-h- -$-a-r-t-R-o-o-t- ---D-i-r-e-c-t-o-r-y- -|- -W-h-e-r-e---O-b-j-e-c-t- -{- -$-_-.-N-a-m-e- ---l-i-k-e- -'-t-e-l-e-m-e-t-r-y-_-r-u-n-_-*-'- -}- -|- -S-o-r-t---O-b-j-e-c-t- -L-a-s-t-W-r-i-t-e-T-i-m-e- ---D-e-s-c-e-n-d-i-n-g- -|- -S-e-l-e-c-t---O-b-j-e-c-t- ---F-i-r-s-t- -1--
-- - - - - - - - - - -i-f- -(---n-o-t- -$-d-i-r-)- -{- -t-h-r-o-w- -'-N-o- -t-e-l-e-m-e-t-r-y-_-r-u-n-_-*- -d-i-r-e-c-t-o-r-y- -f-o-u-n-d-'- -}--
-- - - - - - - - - - -e-c-h-o- -"-x- --- -d-i-r-=-$-(-$-d-i-r-.-F-u-l-l-N-a-m-e-)-"- -|- -O-u-t---F-i-l-e- ---F-i-l-e-P-a-t-h- -$-e-n-v-:-G-I-T-H-U-B-_-O-U-T-P-U-T- ---A-p-p-e-n-d- ---E-n-c-o-d-i-n-g- -u-t-f-8--
---
-- - - - - - --- -n-a-m-e-:- -S-e-t-u-p- -P-y-t-h-o-n--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-s-e-t-u-p---p-y-t-h-o-n-@-v-5--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -p-y-t-h-o-n---v-e-r-s-i-o-n-:- -'-3-.-x-'--
---
-- - - - - - --- -n-a-m-e-:- -A-n-a-l-y-z-e- -s-m-o-k-e- -o-u-t-p-u-t-s--
-- - - - - - - - -s-h-e-l-l-:- -p-w-s-h--
-- - - - - - - - -r-u-n-:- -|--
-- - - - - - - - - - -p-y-t-h-o-n- -----v-e-r-s-i-o-n--
-- - - - - - - - - - -p-y-t-h-o-n- -s-c-r-i-p-t-s-/-a-n-a-l-y-z-e-_-s-m-o-k-e-.-p-y- -----b-a-s-e- -'-$-{-{- -s-t-e-p-s-.-f-i-n-d-a-r-t-.-o-u-t-p-u-t-s-.-d-i-r- -}-}-'--
---
-- - - - - - --- -n-a-m-e-:- -U-p-l-o-a-d- -s-m-o-k-e- -a-r-t-i-f-a-c-t-s--
-- - - - - - - - -i-f-:- -a-l-w-a-y-s-(-)--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-u-p-l-o-a-d---a-r-t-i-f-a-c-t-@-v-4--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -n-a-m-e-:- -s-m-o-k-e---a-r-t-i-f-a-c-t-s--
-- - - - - - - - - - -p-a-t-h-:- -|--
-- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-f-i-n-d-a-r-t-.-o-u-t-p-u-t-s-.-d-i-r- -}-}--
-- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-f-i-n-d-a-r-t-.-o-u-t-p-u-t-s-.-d-i-r- -}-}-/-*-.-j-s-o-n--
-- - - - - - - - - - - - -$-{-{- -s-t-e-p-s-.-f-i-n-d-a-r-t-.-o-u-t-p-u-t-s-.-d-i-r- -}-}-/-*-.-c-s-v--
---
--
+﻿name: Smoke â€” 60m paper run
+
+on:
+  workflow_dispatch:
+    inputs:
+      durationSeconds:
+        description: Duration in seconds
+        required: false
+        default: '3600'
+  schedule:
+    - cron: '30 18 * * *'  # daily at 18:30 UTC
+
+jobs:
+  smoke:
+    name: Smoke (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs (6.x and 9.x)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Run smoke (simulate)
+        shell: pwsh
+        run: |
+          $dur = '${{ inputs.durationSeconds }}'
+          if (-not $dur) { $dur = '3600' }
+          ./scripts/run_harness_and_collect.ps1 -DurationSeconds ([int]$dur) -Simulate -ForceRun
+
+      - name: Find latest artifact dir
+        id: findart
+        shell: pwsh
+        run: |
+          $artRoot = Join-Path $PWD 'artifacts'
+          if (-not (Test-Path $artRoot)) { throw 'artifacts folder not found' }
+          $dir = Get-ChildItem -Path $artRoot -Directory | Where-Object { $_.Name -like 'telemetry_run_*' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dir) { throw 'No telemetry_run_* directory found' }
+          echo "dir=$($dir.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Analyze smoke outputs
+        shell: pwsh
+        run: |
+          python --version
+          python scripts/analyze_smoke.py --base '${{ steps.findart.outputs.dir }}'
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: |
+            ${{ steps.findart.outputs.dir }}
+            ${{ steps.findart.outputs.dir }}/*.json
+            ${{ steps.findart.outputs.dir }}/*.csv
+

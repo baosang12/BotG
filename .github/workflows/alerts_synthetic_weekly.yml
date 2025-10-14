@@ -1,50 +1,49 @@
--n-a-m-e-:- -A-l-e-r-t-s- -s-y-n-t-h-e-t-i-c- -w-e-e-k-l-y- -(-G-a-t-e-2-4-h- -d-i-s-p-a-t-c-h- -+- -c-a-n-c-e-l-)--
--o-n-:--
-- - -s-c-h-e-d-u-l-e-:--
-- - - - --- -c-r-o-n-:- -'-5- -2- -*- -*- -1-'- - -#- -T-h-ứ- -H-a-i- -0-2-:-0-5- -U-T-C--
-- - -w-o-r-k-f-l-o-w-_-d-i-s-p-a-t-c-h-:- -{-}--
---
--j-o-b-s-:--
-- - -s-y-n-t-h-:--
-- - - - -r-u-n-s---o-n-:- -u-b-u-n-t-u---l-a-t-e-s-t--
-- - - - -s-t-e-p-s-:--
-- - - - - - --- -n-a-m-e-:- -D-i-s-p-a-t-c-h- -G-a-t-e-2-4-h- -p-r-e-f-l-i-g-h-t- -(-0-.-1-h-,- -p-a-p-e-r-)--
-- - - - - - - - -i-d-:- -d-i-s-p-a-t-c-h--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-g-i-t-h-u-b---s-c-r-i-p-t-@-f-2-8-e-4-0-c-7-f-3-4-b-d-e-8-b-3-0-4-6-d-8-8-5-e-9-8-6-c-b-6-2-9-0-c-5-6-7-3-b--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -s-c-r-i-p-t-:- -|--
-- - - - - - - - - - - - -c-o-n-s-t- -r-e-s- -=- -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-a-c-t-i-o-n-s-.-c-r-e-a-t-e-W-o-r-k-f-l-o-w-D-i-s-p-a-t-c-h-(-{--
-- - - - - - - - - - - - - - -o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,--
-- - - - - - - - - - - - - - -r-e-p-o-:- - -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,--
-- - - - - - - - - - - - - - -w-o-r-k-f-l-o-w-_-i-d-:- -"-g-a-t-e-2-4-h-_-m-a-i-n-.-y-m-l-"-,--
-- - - - - - - - - - - - - - -r-e-f-:- -"-m-a-i-n-"-,--
-- - - - - - - - - - - - - - -i-n-p-u-t-s-:- -{- -h-o-u-r-s-:- -"-0-.-1-"-,- -m-o-d-e-:- -"-p-a-p-e-r-"-,- -s-o-u-r-c-e-:- -"-s-y-n-t-h-e-t-i-c-"- -}--
-- - - - - - - - - - - - -}-)-;--
-- - - - - - - - - - - - -c-o-r-e-.-n-o-t-i-c-e-(-"-G-a-t-e-2-4-h- -d-i-s-p-a-t-c-h-e-d-"-)-;--
---
-- - - - - - --- -n-a-m-e-:- -P-o-l-l- -n-e-w-e-s-t- -G-a-t-e-2-4-h- -r-u-n- -a-n-d- -c-a-n-c-e-l- -(-t-o- -t-r-i-g-g-e-r- -n-o-t-i-f-y-)--
-- - - - - - - - -i-d-:- -c-a-n-c-e-l--
-- - - - - - - - -u-s-e-s-:- -a-c-t-i-o-n-s-/-g-i-t-h-u-b---s-c-r-i-p-t-@-f-2-8-e-4-0-c-7-f-3-4-b-d-e-8-b-3-0-4-6-d-8-8-5-e-9-8-6-c-b-6-2-9-0-c-5-6-7-3-b--
-- - - - - - - - -w-i-t-h-:--
-- - - - - - - - - - -s-c-r-i-p-t-:- -|--
-- - - - - - - - - - - - -c-o-n-s-t- -w-f- -=- -"-g-a-t-e-2-4-h-_-m-a-i-n-.-y-m-l-"-;--
-- - - - - - - - - - - - -l-e-t- -r-u-n-;--
-- - - - - - - - - - - - -f-o-r- -(-l-e-t- -i-=-0-;-i-<-3-0-;-i-+-+-)-{--
-- - - - - - - - - - - - - - -c-o-n-s-t- -{-d-a-t-a-}- -=- -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-a-c-t-i-o-n-s-.-l-i-s-t-W-o-r-k-f-l-o-w-R-u-n-s-(-{--
-- - - - - - - - - - - - - - - - -o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -w-o-r-k-f-l-o-w-_-i-d-:- -w-f-,- -p-e-r-_-p-a-g-e-:- -1--
-- - - - - - - - - - - - - - -}-)-;--
-- - - - - - - - - - - - - - -r-u-n- -=- -d-a-t-a-.-w-o-r-k-f-l-o-w-_-r-u-n-s-[-0-]-;--
-- - - - - - - - - - - - - - -i-f- -(-r-u-n- -&-&- -(-r-u-n-.-s-t-a-t-u-s- -=-=-=- -"-i-n-_-p-r-o-g-r-e-s-s-"- -|-|- -r-u-n-.-s-t-a-t-u-s- -=-=-=- -"-q-u-e-u-e-d-"-)-)- -{- -b-r-e-a-k-;- -}--
-- - - - - - - - - - - - - - -a-w-a-i-t- -n-e-w- -P-r-o-m-i-s-e-(-r-=->-s-e-t-T-i-m-e-o-u-t-(-r-,- -5-0-0-0-)-)-;--
-- - - - - - - - - - - - -}--
-- - - - - - - - - - - - -i-f-(-!-r-u-n-)- -c-o-r-e-.-s-e-t-F-a-i-l-e-d-(-"-N-o- -G-a-t-e-2-4-h- -r-u-n- -f-o-u-n-d- -t-o- -c-a-n-c-e-l-"-)-;--
-- - - - - - - - - - - - -e-l-s-e- -{--
-- - - - - - - - - - - - - - -a-w-a-i-t- -g-i-t-h-u-b-.-r-e-s-t-.-a-c-t-i-o-n-s-.-c-a-n-c-e-l-W-o-r-k-f-l-o-w-R-u-n-(-{--
-- - - - - - - - - - - - - - - - -o-w-n-e-r-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-o-w-n-e-r-,- -r-e-p-o-:- -c-o-n-t-e-x-t-.-r-e-p-o-.-r-e-p-o-,- -r-u-n-_-i-d-:- -r-u-n-.-i-d--
-- - - - - - - - - - - - - - -}-)-;--
-- - - - - - - - - - - - - - -c-o-r-e-.-n-o-t-i-c-e-(-C-a-n-c-e-l-l-e-d- -G-a-t-e-2-4-h- -r-u-n- -$-{-r-u-n-.-i-d-}- -t-o- -t-r-i-g-g-e-r- -n-o-t-i-f-y-.-)-;--
-- - - - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-"-g-a-t-e-_-r-u-n-_-i-d-"-,- -r-u-n-.-i-d-.-t-o-S-t-r-i-n-g-(-)-)-;--
-- - - - - - - - - - - - - - -c-o-r-e-.-s-e-t-O-u-t-p-u-t-(-"-g-a-t-e-_-r-u-n-_-u-r-l-"-,- -r-u-n-.-h-t-m-l-_-u-r-l-)-;--
-- - - - - - - - - - - - -}--
---
--
+﻿name: Alerts synthetic weekly (Gate24h dispatch + cancel)
+on:
+  schedule:
+    - cron: '5 2 * * 1'  # Thứ Hai 02:05 UTC
+  workflow_dispatch: {}
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Gate24h preflight (0.1h, paper)
+        id: dispatch
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const res = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              workflow_id: "gate24h_main.yml",
+              ref: "main",
+              inputs: { hours: "0.1", mode: "paper", source: "synthetic" }
+            });
+            core.notice("Gate24h dispatched");
+
+      - name: Poll newest Gate24h run and cancel (to trigger notify)
+        id: cancel
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const wf = "gate24h_main.yml";
+            let run;
+            for (let i=0;i<30;i++){
+              const {data} = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner, repo: context.repo.repo, workflow_id: wf, per_page: 1
+              });
+              run = data.workflow_runs[0];
+              if (run && (run.status === "in_progress" || run.status === "queued")) { break; }
+              await new Promise(r=>setTimeout(r, 5000));
+            }
+            if(!run) core.setFailed("No Gate24h run found to cancel");
+            else {
+              await github.rest.actions.cancelWorkflowRun({
+                owner: context.repo.owner, repo: context.repo.repo, run_id: run.id
+              });
+              core.notice(Cancelled Gate24h run ${run.id} to trigger notify.);
+              core.setOutput("gate_run_id", run.id.toString());
+              core.setOutput("gate_run_url", run.html_url);
+            }
+
