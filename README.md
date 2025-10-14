@@ -41,7 +41,7 @@ Windows (PowerShell 5.1) recommended steps:
   - VS Code task: `realtime-1h-ascii`
   - Or run: `scripts/start_realtime_1h_ascii.ps1 -Seconds 3600 -SecondsPerHour 3600`
 
-4) Monitor logs and finalize (if daemon didn’t finalize)
+4) Monitor logs and finalize (if daemon didnâ€™t finalize)
   - VS Code task: `finalize-last-ascii`
   - Or run: `scripts/finalize_realtime_1h_report.ps1 -OutBase <outdir>`
 
@@ -53,7 +53,7 @@ Windows (PowerShell 5.1) recommended steps:
 
 ### Path hardening (Windows, OneDrive)
 
-If your OneDrive folder contains Unicode in its name (for example, `D:\OneDrive\Tài Liệu\...`), prefer an ASCII-safe root and set an environment variable for the repo:
+If your OneDrive folder contains Unicode in its name (for example, `D:\OneDrive\TÃ i Liá»‡u\...`), prefer an ASCII-safe root and set an environment variable for the repo:
 
 - Recommended repo path: `D:\OneDrive\TaiLieu\cAlgo\Sources\Robots\BotG`
 - Set once per session:
@@ -63,4 +63,4 @@ If your OneDrive folder contains Unicode in its name (for example, `D:\OneDrive\
 Scripts now reference `$env:BOTG_ROOT` (and `$env:BOTG_RUNS_ROOT`/`$env:BOTG_LOG_PATH` when applicable) instead of hard-coded absolute paths.
 ## Gate2 24h paper run
 
-See docs/RUNBOOK_gate2.md for PASS criteria, how to run the one-shot workflow, and validator details.
+See docs/RUNBOOK_gate2.md for PASS criteria, how to run the one-shot workflow, and validator details. 
