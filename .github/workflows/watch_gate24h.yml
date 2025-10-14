@@ -1,9 +1,11 @@
-﻿name: Gate24h watchdog (10min)
+name: Gate24h watchdog (10min)
 on:
   schedule:
+    timeout-minutes: 10
     - cron: "*/10 * * * *"
 jobs:
   check:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     env:
       WATCHDOG_QUEUE_MIN: 10

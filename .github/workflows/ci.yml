@@ -3,6 +3,7 @@ name: CI - build & test
 on:
   workflow_dispatch:
   push:
+    timeout-minutes: 10
     branches:
       - main
       - 'botg/**'
@@ -17,6 +18,7 @@ permissions:
 
 jobs:
   build-test:
+    timeout-minutes: 30
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -65,6 +67,7 @@ jobs:
           path: ./test-results
 
   quick-smoke:
+    timeout-minutes: 10
     name: Quick Smoke (60s)
     runs-on: windows-latest
     needs: build-test
@@ -119,6 +122,7 @@ jobs:
             ${{ steps.validate.outputs.path }}/*.csv
 
   reconstruct-validate:
+    timeout-minutes: 30
     name: Reconstruct & Validate (from smoke)
     runs-on: windows-latest
     needs: quick-smoke
@@ -151,6 +155,7 @@ jobs:
           path: recon-out
 
   report-required-status:
+    timeout-minutes: 10
     # This job publishes a single commit status named exactly 'CI - build & test'
     # to satisfy the required check shown as "Expected — Waiting for status to be reported".
     name: CI - build & test (aggregated)

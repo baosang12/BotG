@@ -1,4 +1,4 @@
-﻿name: Smoke â€” 60m paper run
+name: Smoke â€” 60m paper run
 
 on:
   workflow_dispatch:
@@ -8,10 +8,12 @@ on:
         required: false
         default: '3600'
   schedule:
+    timeout-minutes: 10
     - cron: '30 18 * * *'  # daily at 18:30 UTC
 
 jobs:
   smoke:
+    timeout-minutes: 10
     name: Smoke (windows-latest)
     runs-on: windows-latest
     timeout-minutes: 120

@@ -1,10 +1,11 @@
-﻿name: Notify on Gate24h failure
+name: Notify on Gate24h failure
 on:
   workflow_run:
     workflows: ["Gate 24h (paper supervised)"]
     types: [completed]
 jobs:
   notify:
+    timeout-minutes: 10
     if: ${{ github.event.workflow_run.conclusion != 'success' }}
     runs-on: ubuntu-latest
     steps:

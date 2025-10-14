@@ -1,4 +1,4 @@
-﻿name: Paper Pulse
+name: Paper Pulse
 
 on:
   workflow_dispatch:
@@ -10,6 +10,7 @@ on:
 
 jobs:
   pulse:
+    timeout-minutes: 10
     runs-on: windows-latest
     timeout-minutes: 1440
     steps:
