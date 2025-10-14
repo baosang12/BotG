@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   build-test:
+    timeout-minutes: 30
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -122,7 +123,7 @@ jobs:
     name: Reconstruct & Validate (from smoke)
     runs-on: windows-latest
     needs: quick-smoke
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -151,6 +152,7 @@ jobs:
           path: recon-out
 
   report-required-status:
+    timeout-minutes: 10
     # This job publishes a single commit status named exactly 'CI - build & test'
     # to satisfy the required check shown as "Expected — Waiting for status to be reported".
     name: CI - build & test (aggregated)

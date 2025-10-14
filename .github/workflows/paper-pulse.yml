@@ -1,4 +1,4 @@
-﻿name: Paper Pulse
+name: Paper Pulse
 
 on:
   workflow_dispatch:

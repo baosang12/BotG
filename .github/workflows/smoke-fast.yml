@@ -1,4 +1,4 @@
-﻿name: smoke-fast
+name: smoke-fast
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   smoke:
+    timeout-minutes: 10
     runs-on: windows-latest
     steps:
       - name: Checkout

@@ -1,4 +1,4 @@
-﻿name: smoke-fast-on-pr
+name: smoke-fast-on-pr
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -96,6 +96,7 @@ jobs:
           retention-days: 7
 
   auto-rerun:
+    timeout-minutes: 10
     needs: shadow
     if: needs.shadow.outputs.status == 'AUTO_RERUN' && needs.shadow.outputs.retry_ok == 'true'
     runs-on: ubuntu-latest

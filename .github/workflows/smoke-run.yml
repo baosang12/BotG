@@ -1,4 +1,4 @@
-﻿name: Smoke Run
+name: Smoke Run
 
 on:
   pull_request:

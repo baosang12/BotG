@@ -5,6 +5,7 @@ on:
 
 jobs:
   shadow:
+    timeout-minutes: 10
     name: shadow
     runs-on: windows-latest
     steps:

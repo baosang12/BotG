@@ -1,4 +1,4 @@
-﻿# reindex: move to new path
+# reindex: move to new path
 name: Smoke selftest
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   selftest:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 30
     
     steps:
       - name: Checkout repository

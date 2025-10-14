@@ -1,4 +1,4 @@
-﻿name: Manual diag
+name: Manual diag
 on:
   workflow_dispatch:
     inputs:
@@ -8,6 +8,7 @@ on:
         default: 'ping'
 jobs:
   diag:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - run: echo "manual-dispatch-ok"

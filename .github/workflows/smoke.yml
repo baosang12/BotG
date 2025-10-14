@@ -1,4 +1,4 @@
-﻿name: Smoke â€” 60m paper run
+name: Smoke â€” 60m paper run
 
 on:
   workflow_dispatch:
