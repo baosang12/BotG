@@ -1,0 +1,32 @@
+name: gate2-probe
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Windows, botg]
+    timeout-minutes: 5
+    concurrency:
+      group: gate2-probe
+      cancel-in-progress: true
+
+    steps:
+      - name: Prepare summary (pwsh)
+        shell: pwsh
+        run: |
+          $out = "path_issues/triage/gate2_final/probe_${env:GITHUB_RUN_ID}"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          @"
+          PROBE PASS
+          Runner: $env:RUNNER_NAME
+          OS: $env:OS
+          Time: $(Get-Date -Format o)
+          "@ | Set-Content "$out/summary.txt" -Encoding ASCII
+
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2-probe-${{ github.run_id }}
+          path: path_issues/triage/gate2_final/probe_${{ github.run_id }}/summary.txt
