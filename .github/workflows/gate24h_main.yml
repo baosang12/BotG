@@ -1,4 +1,4 @@
-﻿name: Gate 24h (paper supervised)
+name: Gate 24h (paper supervised)
 
 concurrency:
   group: gate24h
