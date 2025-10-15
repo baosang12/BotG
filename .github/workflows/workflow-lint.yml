@@ -1,5 +1,4 @@
 name: workflow-lint
-
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -12,7 +11,6 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,16 +22,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            # Fallback (shouldn't happen on PR)
-            base="$(git merge-base origin/${{ github.base_ref }} ${{ github.sha }})"
-          fi
+          base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.sha }}"
           files="$(git diff --name-only "$base" "$head" || true)"
           echo "$files" > changed_files.txt
-          if echo "$files" | grep -E '^(Tools/workflow_lint\.ps1|\.github/workflows/.*\.yml)$' >/dev/null; then
+          if echo "$files" | grep -E '^(Tools/workflow_lint\.ps1|\.github/workflows/.*\.ya?ml)$' >/dev/null; then
             echo "has_relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_relevant=false" >> "$GITHUB_OUTPUT"
