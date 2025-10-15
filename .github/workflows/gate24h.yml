@@ -1,4 +1,4 @@
-﻿name: Gate24h paper run
+name: Gate24h paper run
 
 on:
   workflow_dispatch:
@@ -111,76 +111,21 @@ jobs:
         shell: powershell
         run: dotnet build BotG.sln -c Release --no-restore
 
-      - name: Activate run config (equity 200, fees>0)
-        shell: powershell
+      - name: Activate run config (equity=$200, fees/spread>0)
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
-          if (!(Test-Path $src)) { throw ("Missing config file at " + $src) }
-
-          Write-Output ("=== ORIGINAL CONFIG (first 120 lines) ===")
-          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
-
-          # --- 1) Náº¡p, chá»‰nh JSON táº¡i CHÃNH FILE NGUá»’N ---
-          $json = Get-Content $src -Raw | ConvertFrom-Json
-
-          # Báº£o Ä‘áº£m cÃ¡c nhÃ¡nh tá»“n táº¡i
-          if (-not $json.PSObject.Properties.Name -contains 'account'){ $json | Add-Member -NotePropertyName 'account' -NotePropertyValue (@{}) }
-          if (-not $json.PSObject.Properties.Name -contains 'paper'){   $json | Add-Member -NotePropertyName 'paper'   -NotePropertyValue (@{}) }
-          if (-not $json.PSObject.Properties.Name -contains 'trading'){ $json | Add-Member -NotePropertyName 'trading' -NotePropertyValue (@{}) }
-          if (-not $json.PSObject.Properties.Name -contains 'Risk'){    $json | Add-Member -NotePropertyName 'Risk'    -NotePropertyValue (@{}) }
-          if (-not $json.PSObject.Properties.Name -contains 'simulation'){ $json | Add-Member -NotePropertyName 'simulation' -NotePropertyValue (@{}) }
-          if (-not $json.PSObject.Properties.Name -contains 'execution'){ $json | Add-Member -NotePropertyName 'execution' -NotePropertyValue (@{}) }
-          
-          $json.Mode = 'paper'
-          $json.simulation.enabled = $false
-
-          # Ã‰p equity = 200 theo 3 "Ä‘Æ°á»ng" thÆ°á»ng gáº·p
-          $json.account.initial_equity_usd = 200
-          $json.paper.initial_balance = 200
-          $json.trading.starting_balance_usd = 200
-
-          # Risk giá»¯ Ä‘Ãºng chuáº©n
-          $json.Risk.R_usd = 10
-          $json.Risk.daily_stop_R = -3
-          $json.Risk.weekly_stop_R = -6
-
-          # PhÃ­ & spread thá»±c táº¿
-          $json.execution.spread_pips_min = 0.6
-          $json.execution.spread_pips_fallback = 1.0
-          $json.execution.commission_roundtrip_usd_per_lot = 7
-          $json.execution.commission_roundturn_usd_per_lot = 7
-          $json.execution.fee_roundturn_usd_per_lot = 7
-
-          # Ghi Ä‘Ã¨ NGAY lÃªn file nguá»“n (UTF-8, no BOM)
-          $out = $json | ConvertTo-Json -Depth 100
-          [System.IO.File]::WriteAllText($src, $out, (New-Object System.Text.UTF8Encoding($false)))
-
-          Write-Output ("=== MODIFIED CONFIG (first 120 lines) ===")
-          Get-Content -Path $src -TotalCount 120 | ForEach-Object { $_ | Out-Host }
-
-          # --- 2) Copy vÃ o 4 Ä‘Æ°á»ng dáº«n gá»‘c ---
-          $rootTargets = @(
-            'appsettings.json',
-            'appsettings.paper.json',
-            'config\trading.json',
-            'config\paper.json'
-          )
-          foreach ($t in $rootTargets) {
+          if (!(Test-Path $src)) { throw "Missing config.runtime.json at $src" }
+          Write-Host "=== USING CONFIG: $src ==="
+          Get-Content $src -TotalCount 40 | ForEach-Object { Write-Host $_ }
+          $targets = @('appsettings.json','appsettings.paper.json','config\trading.json','config\paper.json')
+          foreach ($t in $targets) {
             $dst = Join-Path $env:GITHUB_WORKSPACE $t
-            New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
-            Copy-Item -Force -Path $src -Destination $dst
+            $dir = Split-Path $dst
+            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+            Copy-Item -Force $src $dst
           }
-
-          # --- 3) Copy vÃ o Táº¤T Cáº¢ output dirs (bin/**/net*) ---
-          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Directory -Filter "bin" |
-            ForEach-Object {
-              Get-ChildItem -Path $_.FullName -Recurse -Directory -Filter "net*" |
-                ForEach-Object {
-                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'config.runtime.json')
-                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.json')
-                  Copy-Item -Force -Path $src -Destination (Join-Path $_.FullName 'appsettings.paper.json')
-                }
-            }
 
       - name: Run Gate24h workload
         id: runbot
@@ -206,38 +151,37 @@ jobs:
           if (-not (Test-Path -LiteralPath $orders)) { throw "orders.csv not found" }
           $file = Get-Item -LiteralPath $orders
           $ageMinutes = (Get-Date).ToUniversalTime().Subtract($file.LastWriteTimeUtc).TotalMinutes
-          if ($ageMinutes -gt 5) { throw "orders.csv last write ${ageMinutes}m ago (expected â‰¤5m)" }
+          if ($ageMinutes -gt 5) { throw "orders.csv last write ${ageMinutes}m ago (expected ≤5m)" }
           $lineCount = (Get-Content -LiteralPath $orders | Measure-Object -Line).Lines
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
-      - name: Install portable Python 3.11 (no registry)
+      - name: Setup Python 3.11
+        id: setup_py
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
+        uses: actions/setup-python@v5
+        continue-on-error: true
+        with:
+          python-version: '3.11'
+
+      - name: Fallback - Install portable Python 3.11 (no registry)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
+        shell: pwsh
         run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
 
       - name: Verify Python availability
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
+        shell: pwsh
         run: |
-          $exe = & python -c "import sys; print(sys.executable)" 2>$null
-          if (-not $exe) { throw 'Python is NOT available.' }
-          python --version
-          Write-Output "Executable: $exe"
+          $v = (python --version) 2>$null
+          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
+          Write-Host "Using: $v"
 
       - name: Postrun collect and validate
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
-        env:
-          RUN_HOURS: ${{ inputs.hours }}
         run: |
-          $hours  = if ($env:RUN_HOURS) { [double]$env:RUN_HOURS } else { 24 }
-          $smoke  = $hours -le 0.1
-          if ($smoke) {
-            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours -SmokeLite
-          } else {
-            .\scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR" -RunHours $hours
-          }
+          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR"
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
@@ -255,7 +199,6 @@ jobs:
 
       - name: Upload run metadata (early)
         if: ${{ steps.assert.outputs.assert_fail == 'true' }}
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run_metadata
@@ -281,4 +224,3 @@ jobs:
           name: run_metadata
           path: ${{ steps.assert.outputs.run_meta_dir }}/run_metadata.json
           retention-days: 30
-
