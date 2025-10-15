@@ -1,7 +1,11 @@
 name: workflow-lint
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
 
 jobs:
   lint:
@@ -9,8 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
       cancel-in-progress: true
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,8 +27,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.sha }}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
           files="$(git diff --name-only "$base" "$head" || true)"
           echo "$files" > changed_files.txt
           if echo "$files" | grep -E '^(Tools/workflow_lint\.ps1|\.github/workflows/.*\.ya?ml)$' >/dev/null; then
@@ -37,12 +47,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p path_issues/triage/workflow_lint_noop_${{ github.run_id }}
-          {
-            echo "NOOP PASS"
-            echo "No workflow or Tools/workflow_lint.ps1 changes detected."
-            echo "PR: #${{ github.event.pull_request.number }}"
-            echo "Run: ${{ github.run_id }}"
-          } | tee path_issues/triage/workflow_lint_noop_${{ github.run_id }}/summary.txt
+          { echo "NOOP PASS"; echo "Ref: $GITHUB_REF"; echo "Run: $GITHUB_RUN_ID"; } \
+            | tee path_issues/triage/workflow_lint_noop_${{ github.run_id }}/summary.txt
 
       - name: Run lint (pwsh)
         if: steps.diff.outputs.has_relevant == 'true'
