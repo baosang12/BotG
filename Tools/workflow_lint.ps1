@@ -1,83 +1,86 @@
-<# tools/workflow_lint.ps1 - ASCII only #>
 param(
   [string]$WorkflowsDir = ".github/workflows",
-  [string]$OutputDir = "path_issues/triage/workflow_lint_" + (Get-Date -f yyyyMMdd_HHmmss)
+  [string]$OutputDir = "path_issues/triage/workflow_lint_${env:GITHUB_RUN_ID}"
 )
+$ErrorActionPreference = "Stop"
+$issues = @()
 
-function New-Dir($p){ if(-not (Test-Path $p)){ [void](New-Item -ItemType Directory -Force -Path $p) } }
-function Read-Utf8NoBom($file){ [System.IO.File]::ReadAllText($file,[System.Text.UTF8Encoding]::new($false)) }
-function Has-Bom($file){ $fs=[System.IO.File]::OpenRead($file); try{ if($fs.Length -lt 3){return $false}; $b=New-Object byte[] 3; [void]$fs.Read($b,0,3); return ($b[0]-eq0xEF -and $b[1]-eq0xBB -and $b[2]-eq0xBF) } finally{ $fs.Dispose() } }
-
-New-Dir $OutputDir
-$issues=@(); $ok=@()
-$files = Get-ChildItem -LiteralPath $WorkflowsDir -Filter *.yml -File | Sort-Object Name
-if($files.Count -eq 0){ Write-Host "No workflow files found."; exit 0 }
-
-foreach($f in $files){
-  $name=$f.Name; $text=Read-Utf8NoBom $f.FullName; $lines=$text -split "`r?`n"
-
-  # Skip gate24h* files entirely
-  if($name -match '^gate24h'){ continue }
-
-  if(Has-Bom $f.FullName){ $issues += [pscustomobject]@{file=$name; rule="NoBOM"; msg="File has UTF-8 BOM"} }
-  if($text -match '(?im)^\s*-\s*run:\s*echo\s*"[^"]*[^\x00-\x7F][^"]*"'){
-    $issues += [pscustomobject]@{file=$name; rule="AsciiEcho"; msg="Unicode found in echo command"}
-  }
-
-  $pyHits = Select-String -InputObject $text -Pattern 'uses:\s*actions/setup-python@v(\d+)' -AllMatches
-  foreach($m in $pyHits.Matches){
-    if([int]$m.Groups[1].Value -ne 5){
-      $issues += [pscustomobject]@{file=$name; rule="PythonV5"; msg="actions/setup-python not @v5"}
-    }
-  }
-
-  for($i=0;$i -lt $lines.Count;$i++){
-    if($lines[$i] -match 'uses:\s*actions/upload-artifact@v4'){
-      $win = ($i-10)..($i-1) | Where-Object { $_ -ge 0 } | ForEach-Object { $lines[$_] }
-      $hasIfAlways = $false
-      foreach($l in $win){ if($l -match '^\s*if:\s*always\(\)\s*$'){ $hasIfAlways=$true; break } }
-      if(-not $hasIfAlways){
-        $issues += [pscustomobject]@{file=$name; rule="IfAlways"; msg="upload-artifact@v4 without if: always()"}
-      }
-    }
-  }
-
-  if($text -match '(?s)concurrency:\s*[\r\n]+.*?cancel-in-progress:\s*true'){
-    # ok
-  } elseif($text -match '(?m)^\s*concurrency:\s*$'){
-    $issues += [pscustomobject]@{file=$name; rule="ConcurrencyCancel"; msg="concurrency present but no cancel-in-progress: true"}
-  }
-
-  if($name -notmatch '^gate24h'){
-    $jobsMatch = [regex]::Match($text,'(?m)^jobs:\s*$')
-    if($jobsMatch.Success){
-      $jobsSection = $text.Substring($jobsMatch.Index + $jobsMatch.Length)
-      $jobMatches = [regex]::Matches($jobsSection,'(?m)^  ([A-Za-z0-9\-_]+):\s*$')
-      foreach($jm in $jobMatches){
-        $jobName=$jm.Groups[1].Value; $start=$jm.Index+$jm.Length; $tail=$jobsSection.Substring($start)
-        $next=[regex]::Match($tail,'(?m)^  [A-Za-z0-9\-_]+:\s*$')
-        $block= if($next.Success){ $tail.Substring(0,$next.Index) } else { $tail }
-        if($block -notmatch '(?m)^\s{4}timeout-minutes:\s*\d+\s*$'){
-          $issues += [pscustomobject]@{file=$name; rule="TimeoutPerJob"; msg="job '$jobName' missing timeout-minutes"}
-        }
-      }
-    }
-  }
-
-  if(-not ($issues | Where-Object { $_.file -eq $name })){ $ok += $name }
+function Add-Issue([string]$file, [string]$rule, [string]$msg){
+  $issues += [pscustomobject]@{ file=$file; rule=$rule; message=$msg }
 }
 
-$reportTxt = Join-Path $OutputDir "lint_report.txt"
-$reportJson= Join-Path $OutputDir "lint_report.json"
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-if($issues.Count -gt 0){
-  $issues | Sort-Object file,rule | Format-Table -AutoSize | Out-String | Set-Content -Path $reportTxt -Encoding utf8
-  $issues | ConvertTo-Json -Depth 5 | Set-Content -Path $reportJson -Encoding utf8
-  Write-Host "LINT FAIL - $($issues.Count) issue(s). See $reportTxt" -ForegroundColor Red
-  exit 1
-}else{
-  "All checks passed on {0} workflows`n- {1}" -f $ok.Count, ($ok -join ", ") | Set-Content -Path $reportTxt -Encoding utf8
-  @{"ok"=$ok} | ConvertTo-Json | Set-Content -Path $reportJson -Encoding utf8
-  Write-Host "LINT PASS - $($ok.Count) workflows clean." -ForegroundColor Green
+$files = Get-ChildItem -Path $WorkflowsDir -File -Recurse -Include *.yml, *.yaml |
+  Where-Object { $_.Name -notmatch '^gate24h.*' }
+
+foreach($f in $files){
+  $name = $f.FullName
+  $text = Get-Content $name -Raw -Encoding UTF8
+
+  # Rule 4: No BOM
+  $bytes = [System.IO.File]::ReadAllBytes($name)
+  if($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF){
+    Add-Issue $name "NoBOM" "File has UTF-8 BOM"
+  }
+
+  # Rule 1: timeout-minutes per job
+  if($text -notmatch '(?ms)jobs:\s*.+'){
+    Add-Issue $name "TimeoutPerJob" "No jobs block found"
+  } else {
+    $jobBlocks = [regex]::Matches($text, '(?ms)^[ \t]*[A-Za-z0-9_-]+:\s*\r?\n(?:[ \t].*\r?\n)+', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    foreach($jb in $jobBlocks){
+      $block = $jb.Value
+      if($block -notmatch '^\s*timeout-minutes:\s*\d+' ){
+        Add-Issue $name "TimeoutPerJob" "Job missing timeout-minutes"
+      }
+    }
+  }
+
+  # Rule 2: upload-artifact@v4 must have if: always()
+  $uploadMatches = [regex]::Matches($text, '(?mi)uses:\s*actions/upload-artifact@v4')
+  foreach($m in $uploadMatches){
+    $prefix = $text.Substring([Math]::Max($m.Index-500,0), [Math]::Min(500,$m.Index))
+    $after  = $text.Substring($m.Index, [Math]::Min(300, $text.Length-$m.Index))
+    $block  = ($prefix + $after)
+    if($block -notmatch '(?mi)^\s*if:\s*always\(\)\s*$'){
+      Add-Issue $name "IfAlwaysOnUpload" "upload-artifact@v4 without if: always()"
+    }
+  }
+
+  # Rule 3: Only actions/setup-python@v5
+  if($text -match '(?mi)uses:\s*actions/setup-python@v(?!5)\d+'){
+    Add-Issue $name "SetupPythonV5Only" "Only actions/setup-python@v5 is allowed"
+  }
+
+  # Rule 5: ASCII-only in echo commands
+  $echoMatches = [regex]::Matches($text, '(?mi)^\s*run:\s*(.+)$')
+  foreach($em in $echoMatches){
+    $line = $em.Groups[1].Value
+    if($line -match '(?i)\becho\b' -and $line -match '[^\x00-\x7F]'){
+      Add-Issue $name "ASCIIOnlyEcho" "Non-ASCII characters found in echo"
+    }
+  }
+
+  # Rule 6: concurrency -> cancel-in-progress: true
+  $concurrencyBlocks = [regex]::Matches($text, '(?ms)^\s*concurrency:\s*\r?\n(?:\s+.*\r?\n)+')
+  foreach($cb in $concurrencyBlocks){
+    if($cb.Value -notmatch '(?mi)^\s*cancel-in-progress:\s*true\s*$'){
+      Add-Issue $name "ConcurrencyCancelInProgress" "concurrency without cancel-in-progress: true"
+    }
+  }
+}
+
+$reportPath = Join-Path $OutputDir "lint_report.txt"
+$reportJson = Join-Path $OutputDir "lint_report.json"
+
+if($issues.Count -eq 0){
+  "LINT PASS - all workflows clean" | Out-File $reportPath -Encoding ASCII
+  @() | ConvertTo-Json | Out-File $reportJson -Encoding ASCII
   exit 0
+}else{
+  "LINT FAIL - $($issues.Count) issue(s) found" | Out-File $reportPath -Encoding ASCII
+  $issues | ConvertTo-Json -Depth 5 | Out-File $reportJson -Encoding ASCII
+  $issues | ForEach-Object { "$($_.file) [$($_.rule)]: $($_.message)" } | Out-File (Join-Path $OutputDir "violations.txt") -Encoding ASCII
+  exit 1
 }
