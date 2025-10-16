@@ -1,3 +1,7 @@
+defaults:
+  run:
+    shell: powershell
+
 name: Gate24h paper run
 
 on:
@@ -112,7 +116,7 @@ jobs:
         run: dotnet build BotG.sln -c Release --no-restore
 
       - name: Activate run config (equity=$200, fees/spread>0)
-        shell: pwsh
+  shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $src = Join-Path $env:GITHUB_WORKSPACE 'config.runtime.json'
@@ -166,12 +170,12 @@ jobs:
 
       - name: Fallback - Install portable Python 3.11 (no registry)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
-        shell: pwsh
+  shell: powershell
         run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
 
       - name: Verify Python availability
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: pwsh
+  shell: powershell
         run: |
           $v = (python --version) 2>$null
           if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
