@@ -9,10 +9,12 @@ namespace Telemetry
 {
     public class RiskSnapshotPersister
     {
+        private const double RiskUnitUsd = 10.0;
         private readonly string _filePath;
         private readonly object _lock = new object();
-        private double _equityPeak = 0.0;
         private double _closedPnl = 0.0;
+        private double? _sessionStartEquity = null;
+        private double _sessionPeakEquity = 0.0;
         
         // Time-aware closed P&L tracking (A/B-LEDGER-001)
         private readonly List<(DateTime closeTime, double pnl)> _pendingClosedPnl = new List<(DateTime, double)>();
@@ -20,9 +22,9 @@ namespace Telemetry
         // Paper mode equity model fields
         private double? _initialBalance = null;
         private readonly bool _isPaperMode;
-        private readonly Func<double> _getOpenPnlCallback;
+        private readonly Func<double>? _getOpenPnlCallback;
 
-        public RiskSnapshotPersister(string folder, string fileName, bool isPaperMode = false, Func<double> getOpenPnlCallback = null)
+        public RiskSnapshotPersister(string folder, string fileName, bool isPaperMode = false, Func<double>? getOpenPnlCallback = null)
         {
             Directory.CreateDirectory(folder);
             _filePath = Path.Combine(folder, fileName);
@@ -116,15 +118,21 @@ namespace Telemetry
                 double usedMargin = info.Margin;
                 double freeMargin = equity - usedMargin;
 
-                // Track equity peak for drawdown calculation
-                if (equity > _equityPeak)
+                if (!_sessionStartEquity.HasValue)
                 {
-                    _equityPeak = equity;
+                    _sessionStartEquity = equity;
+                    _sessionPeakEquity = equity;
                 }
-                double drawdown = _equityPeak - equity;
+                else if (equity > _sessionPeakEquity)
+                {
+                    _sessionPeakEquity = equity;
+                }
 
-                // Placeholder for R_used and exposure (0.0 until RiskManager integration)
-                double rUsed = 0.0;
+                double drawdown = SanitizeNonNegative(_sessionPeakEquity - equity);
+                double rUsed = SanitizeNonNegative(_sessionStartEquity.HasValue
+                    ? (_sessionStartEquity.Value - equity) / RiskUnitUsd
+                    : 0.0);
+
                 double exposure = 0.0;
 
                 var line = string.Join(",",
@@ -146,6 +154,16 @@ namespace Telemetry
                 }
             }
             catch { /* swallow for safety */ }
+        }
+
+        private static double SanitizeNonNegative(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return 0.0;
+            }
+
+            return value < 0.0 ? 0.0 : value;
         }
     }
 }
