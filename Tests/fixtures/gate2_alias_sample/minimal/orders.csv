@@ -1,0 +1,5 @@
+phase,timestamp_iso,epoch_ms,order_id,intended_price,stop_loss,exec_price,theoretical_lots,theoretical_units,requested_volume,filled_size,slippage,broker_msg,client_order_id,side,action,type,status,reason,latency_ms,price_requested,price_filled,size_requested,size_filled,session,host,timestamp_request,timestamp_ack,timestamp_fill
+REQUEST,2025-01-01T00:00:00Z,0,ORD-1,,,,,,,,,,ORD-1,BUY,REQUEST,Market,REQUEST,OK,100,1.2345,1.2345,1,0,,HARNESS,2025-01-01T00:00:00Z,2025-01-01T00:00:00Z,
+FILL,2025-01-01T00:00:01Z,1000,ORD-1,,,,,,,,,,ORD-1,BUY,FILL,Market,FILL,OK,110,1.2345,1.2347,1,1,,HARNESS,2025-01-01T00:00:00Z,2025-01-01T00:00:01Z,2025-01-01T00:00:01Z
+REQUEST,2025-01-01T00:05:00Z,300000,ORD-2,,,,,,,,,,ORD-2,SELL,REQUEST,Market,REQUEST,OK,90,1.1300,1.1298,1,0,,HARNESS,2025-01-01T00:05:00Z,2025-01-01T00:05:00Z,
+FILL,2025-01-01T00:05:01Z,301000,ORD-2,,,,,,,,,,ORD-2,SELL,FILL,Market,FILL,OK,95,1.1300,1.1299,1,1,,HARNESS,2025-01-01T00:05:00Z,2025-01-01T00:05:01Z,2025-01-01T00:05:01Z
