@@ -1,0 +1,48 @@
+name: gate2-preflight
+on:
+  workflow_dispatch:
+    inputs:
+      required_secrets:
+        description: 'CSV tên secrets bắt buộc (ví dụ: FOO,BAR) - để trống nếu không dùng'
+        required: false
+        default: ''
+jobs:
+  check:
+    name: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Echo runner info
+        run: |
+          echo "OS=$(uname -a)"
+          echo "pwsh=$(pwsh -v || true)"
+          echo "bash=$(bash --version | head -1)"
+      - name: Tools check
+        shell: bash
+        run: |
+          which git >/dev/null || { echo "git missing"; exit 1; }
+          which pwsh >/dev/null || echo "pwsh not found (ok if not required)"
+      - name: Required secrets presence (name checklist)
+        shell: bash
+        env:
+          NAMES: ${{ github.event.inputs.required_secrets }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NAMES" ]; then
+            echo "No secret list provided - skipping presence checks."
+            exit 0
+          fi
+          IFS=',' read -ra ARR <<< "$NAMES"
+          for n in "${ARR[@]}"; do
+            key=$(echo "$n" | tr -cd 'A-Za-z0-9_')
+            echo "NOTE: GitHub không cho phép đọc secrets động; xác nhận thủ công có tên: $key"
+          done
+      - name: Summary
+        if: always()
+        run: echo "Preflight complete." > preflight_summary.txt
+      - name: Upload preflight artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2-preflight-${{ github.run_id }}
+          path: preflight_summary.txt

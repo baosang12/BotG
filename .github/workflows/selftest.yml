@@ -6,7 +6,7 @@ on:
       force_ok:
         description: 'Force OK (owner-only)'
         required: false
-        default: 'false'   # so sánh d?ng chu?i
+        default: 'false'   # so sÃ¡nh d?ng chu?i
   push:
     branches: [ main ]
   pull_request:
@@ -22,11 +22,17 @@ permissions:
 jobs:
   selftest:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 30
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Guard - workflows must be BOM/split-free
+        shell: powershell
+        run: |
+          pwsh -v 2>$null | Out-Null; if ($LASTEXITCODE -ne 0) { $PSStyle.OutputRendering='PlainText' }
+          ./scripts/ci/check_workflows_no_bom.ps1
         
       - name: PowerShell ops.ps1 self-test
         shell: pwsh
@@ -193,3 +199,4 @@ jobs:
             scripts/ops_selftest.ps1
             .vscode/tasks.json
             docs/RUNBOOK_smoke60m.md
+

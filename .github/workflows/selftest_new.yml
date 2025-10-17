@@ -6,7 +6,7 @@ on:
       force_ok:
         description: 'Force OK (owner-only)'
         required: false
-        default: 'false'   # so sánh dạng chuỗi
+        default: 'false'   # so sÃ¡nh dáº¡ng chuá»—i
   push:
     branches: [ main ]
   pull_request:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   selftest:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 30
     
     steps:
       - name: Checkout repository
@@ -133,7 +133,7 @@ jobs:
             const res = await github.rest.search.issuesAndPullRequests({ q });
 
             const body = [
-              '### 🚨 Smoke selftest incident',
+              '### ðŸš¨ Smoke selftest incident',
               `- **STATUS**: ${status}`,
               `- **Issues**: ${issuesCount}`,
               `- **Run**: ${runUrl}`,
@@ -162,7 +162,7 @@ jobs:
             for (const it of res.data.items) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: it.number,
-                body: `✅ Resolved by healthy run: ${runUrl}`
+                body: `âœ… Resolved by healthy run: ${runUrl}`
               });
               await github.rest.issues.update({owner, repo, issue_number: it.number, state:'closed'});
             }

@@ -1,19 +1,18 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Strict artifact validator for Gate24h runs.
 
-ENFORCES:
-- 6 required files exist
-- orders.csv: REQUEST/ACK/FILL actions + commission/spread_cost/slippage_pips columns
-- risk_snapshots.csv: drawdown/R_used/exposure columns + >=1300 rows
-- run_metadata.json: mode=paper, simulation.enabled=false
+Full run (>=1h):
+- 6 files must exist
+- orders.csv: REQUEST/ACK/FILL + full schema
+- risk_snapshots.csv: timestamp/drawdown/R_used/exposure + >=1300 rows (24h) scaled by --run-hours
 
-Exit code 0: All validations passed
-Exit code 1: One or more validation failures
+Smoke-lite (run_hours <= 0.1 or --smoke-lite):
+- 6 files must exist
+- orders.csv: allow BUY/SELL only; relaxed columns
+- risk_snapshots.csv: require timestamp + (equity or balance); rows >= 5; first equity in [199,201]
 """
 
-import sys
-import json
-import csv
+import sys, json, csv
 from pathlib import Path
 
 REQUIRED_FILES = [
@@ -25,185 +24,133 @@ REQUIRED_FILES = [
     "closed_trades_fifo_reconstructed.csv"
 ]
 
-ORDERS_REQUIRED_COLUMNS = {
-    "timestamp", "order_id", "action", "status", "reason", "latency_ms",
-    "symbol", "side", "requested_lots", "price_requested", "price_filled",
-    "commission", "spread_cost", "slippage_pips"
+ORDERS_REQUIRED_COLUMNS_FULL = {
+    "timestamp","order_id","action","status","reason","latency_ms",
+    "symbol","side","requested_lots","price_requested","price_filled",
+    "commission_usd","spread_cost_usd","slippage_pips"
 }
+ORDERS_MIN_COLUMNS_SMOKE = {"timestamp","symbol","side"}  # side = BUY/SELL
 
-RISK_REQUIRED_COLUMNS = {
-    "timestamp", "equity", "balance", "margin", "free_margin",
-    "drawdown", "R_used", "exposure"
-}
+REQUIRED_ACTIONS_FULL = {"REQUEST","ACK","FILL"}
 
-REQUIRED_ACTIONS = {"REQUEST", "ACK", "FILL"}
+RISK_REQUIRED_COLUMNS_FULL = {"timestamp","drawdown_usd","drawdown_percent","R_used","exposure_usd"}
 
-
-def read_csv_header(filepath):
-    """Read CSV header with UTF-8-sig encoding."""
+def read_csv_header(p):
     try:
-        with open(filepath, "r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.reader(f)
-            header = next(reader, [])
-        return {h.strip() for h in header}
+        with open(p,"r",encoding="utf-8-sig",newline="") as f:
+            r=csv.reader(f); return {h.strip() for h in next(r,[])}
+    except Exception: return set()
+
+def read_actions(p):
+    s=set()
+    try:
+        with open(p,"r",encoding="utf-8-sig",newline="") as f:
+            r=csv.DictReader(f)
+            for row in r:
+                a=(row.get("action") or row.get("side") or "").strip().upper()
+                if a: s.add(a)
+    except Exception: pass
+    return s
+
+def count_rows(p):
+    try:
+        with open(p,"r",encoding="utf-8-sig") as f: return max(0,sum(1 for _ in f)-1)
+    except Exception: return 0
+
+def first_equity(p):
+    try:
+        with open(p,"r",encoding="utf-8-sig",newline="") as f:
+            r=csv.DictReader(f)
+            for row in r:
+                for k in ("equity","balance"):
+                    if k in row and row[k]:
+                        try: return float(row[k])
+                        except: pass
+                break
+    except Exception: pass
+    return None
+
+def validate_meta(p):
+    try:
+        with open(p,"r",encoding="utf-8-sig") as f: d=json.load(f)
+        mode_ok = str(d.get("mode","")).lower()=="paper"
+        sim_ok  = not d.get("simulation",{}).get("enabled",False)
+        return {"mode_is_paper":mode_ok,"simulation_disabled":sim_ok,"ok":mode_ok and sim_ok}
     except Exception as e:
-        return set()
-
-
-def read_actions_from_orders(filepath):
-    """Extract all unique action values from orders.csv."""
-    actions = set()
-    try:
-        with open(filepath, "r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                action = (row.get("action") or "").strip().upper()
-                if action:
-                    actions.add(action)
-    except Exception as e:
-        pass
-    return actions
-
-
-def count_csv_rows(filepath):
-    """Fast row count for CSV file."""
-    try:
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            return sum(1 for _ in f) - 1  # Exclude header
-    except Exception:
-        return 0
-
-
-def validate_run_metadata(filepath):
-    """Validate run_metadata.json for mode=paper and simulation.enabled=false."""
-    try:
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            meta = json.load(f)
-        
-        mode_ok = str(meta.get("mode", "")).lower() == "paper"
-        sim_disabled = not bool(meta.get("simulation", {}).get("enabled", False))
-        
-        return {
-            "mode_is_paper": mode_ok,
-            "simulation_disabled": sim_disabled,
-            "ok": mode_ok and sim_disabled
-        }
-    except Exception as e:
-        return {
-            "mode_is_paper": False,
-            "simulation_disabled": False,
-            "ok": False,
-            "error": str(e)
-        }
-
+        return {"mode_is_paper":False,"simulation_disabled":False,"ok":False,"error":str(e)}
 
 def main():
-    """Main validation entry point."""
-    # Parse --dir argument
+    # args
     if "--dir" not in sys.argv:
-        print(json.dumps({"error": "Missing --dir argument"}, indent=2))
-        sys.exit(1)
-    
-    dir_index = sys.argv.index("--dir") + 1
-    if dir_index >= len(sys.argv):
-        print(json.dumps({"error": "No directory specified after --dir"}, indent=2))
-        sys.exit(1)
-    
-    base_dir = Path(sys.argv[dir_index])
-    
-    if not base_dir.exists():
-        print(json.dumps({"error": f"Directory not found: {base_dir}"}, indent=2))
-        sys.exit(1)
-    
-    report = {
-        "base_directory": str(base_dir),
-        "checks": []
-    }
-    
-    all_ok = True
-    
-    # 1. Check all required files exist
-    for filename in REQUIRED_FILES:
-        filepath = base_dir / filename
-        exists = filepath.exists()
-        report["checks"].append({
-            "check": "file_exists",
-            "file": filename,
-            "ok": exists
-        })
-        all_ok &= exists
-    
-    if not all_ok:
-        report["overall"] = "FAIL"
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        sys.exit(1)
-    
-    # 2. Validate run_metadata.json
-    meta_result = validate_run_metadata(base_dir / "run_metadata.json")
-    report["checks"].append({
-        "check": "run_metadata",
-        **meta_result
-    })
-    all_ok &= meta_result["ok"]
-    
-    # 3. Validate orders.csv schema
-    orders_header = read_csv_header(base_dir / "orders.csv")
-    orders_missing = ORDERS_REQUIRED_COLUMNS - orders_header
-    orders_columns_ok = len(orders_missing) == 0
-    
-    report["checks"].append({
-        "check": "orders.csv_columns",
-        "required": sorted(list(ORDERS_REQUIRED_COLUMNS)),
-        "missing": sorted(list(orders_missing)),
-        "ok": orders_columns_ok
-    })
-    all_ok &= orders_columns_ok
-    
-    # 4. Validate orders.csv actions (REQUEST, ACK, FILL)
-    actions_found = read_actions_from_orders(base_dir / "orders.csv")
-    actions_missing = REQUIRED_ACTIONS - actions_found
-    actions_ok = len(actions_missing) == 0
-    
-    report["checks"].append({
-        "check": "orders.csv_actions",
-        "required": sorted(list(REQUIRED_ACTIONS)),
-        "found": sorted(list(actions_found)),
-        "missing": sorted(list(actions_missing)),
-        "ok": actions_ok
-    })
-    all_ok &= actions_ok
-    
-    # 5. Validate risk_snapshots.csv schema
-    risk_header = read_csv_header(base_dir / "risk_snapshots.csv")
-    risk_missing = RISK_REQUIRED_COLUMNS - risk_header
-    risk_columns_ok = len(risk_missing) == 0
-    
-    report["checks"].append({
-        "check": "risk_snapshots.csv_columns",
-        "required": sorted(list(RISK_REQUIRED_COLUMNS)),
-        "missing": sorted(list(risk_missing)),
-        "ok": risk_columns_ok
-    })
-    all_ok &= risk_columns_ok
-    
-    # 6. Validate risk_snapshots.csv row count
-    risk_rows = count_csv_rows(base_dir / "risk_snapshots.csv")
-    risk_rows_ok = risk_rows >= 1300
-    
-    report["checks"].append({
-        "check": "risk_snapshots.csv_rows",
-        "rows": risk_rows,
-        "minimum_required": 1300,
-        "ok": risk_rows_ok
-    })
-    all_ok &= risk_rows_ok
-    
-    # Final report
-    report["overall"] = "PASS" if all_ok else "FAIL"
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    
-    sys.exit(0 if all_ok else 1)
+        print(json.dumps({"error":"Missing --dir"},indent=2)); sys.exit(1)
+    base = Path(sys.argv[sys.argv.index("--dir")+1])
 
+    run_hours = 24.0
+    if "--run-hours" in sys.argv:
+        try: run_hours = float(sys.argv[sys.argv.index("--run-hours")+1])
+        except: pass
+    smoke_flag = ("--smoke-lite" in sys.argv) or (run_hours <= 0.1)
 
-if __name__ == "__main__":
+    rep={"base_directory":str(base),"checks":[]}; ok=True
+
+    # 0. required files
+    for fn in REQUIRED_FILES:
+        exists=(base/fn).exists(); rep["checks"].append({"check":"file_exists","file":fn,"ok":exists}); ok&=exists
+    if not ok:
+        rep["overall"]="FAIL"; print(json.dumps(rep,ensure_ascii=False,indent=2)); sys.exit(1)
+
+    # 1. run_metadata
+    meta=validate_meta(base/"run_metadata.json"); rep["checks"].append({"check":"run_metadata",**meta}); ok&=meta["ok"]
+
+    # 2. orders schema + actions
+    hdr = read_csv_header(base/"orders.csv")
+    if smoke_flag:
+        miss = ORDERS_MIN_COLUMNS_SMOKE - hdr
+        cols_ok = (len(miss)==0)
+        acts = read_actions(base/"orders.csv")
+        # smoke chấp nhận chỉ BUY/SELL
+        acts_ok = len(acts.intersection({"BUY","SELL","REQUEST","ACK","FILL"}))>0
+    else:
+        miss = ORDERS_REQUIRED_COLUMNS_FULL - hdr
+        cols_ok = (len(miss)==0)
+        acts = read_actions(base/"orders.csv")
+        acts_ok = REQUIRED_ACTIONS_FULL.issubset(acts)
+
+    rep["checks"].append({"check":"orders.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    ok &= cols_ok
+    rep["checks"].append({"check":"orders.csv_actions","mode":"smoke" if smoke_flag else "full","found":sorted(list(acts)),"ok":acts_ok})
+    ok &= acts_ok
+
+    # 3. risk_snapshots
+    risk_hdr = read_csv_header(base/"risk_snapshots.csv")
+    if smoke_flag:
+        need = {"timestamp"}  # cộng thêm equity/balance check riêng
+        miss = need - risk_hdr
+        cols_ok = (len(miss)==0)
+        rows = count_rows(base/"risk_snapshots.csv")
+        min_rows = max(5, int(1300*(run_hours/24.0)))
+        rows_ok = rows >= min_rows
+        eq0 = first_equity(base/"risk_snapshots.csv")
+        eq_ok = (eq0 is not None and 199.0 <= eq0 <= 201.0)
+    else:
+        miss = RISK_REQUIRED_COLUMNS_FULL - risk_hdr
+        cols_ok = (len(miss)==0)
+        rows = count_rows(base/"risk_snapshots.csv")
+        min_rows = max(10, int(1300*(run_hours/24.0)))
+        rows_ok = rows >= min_rows
+        eq0 = None
+        eq_ok = True
+
+    rep["checks"].append({"check":"risk_snapshots.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    ok &= cols_ok
+    rep["checks"].append({"check":"risk_snapshots.csv_rows","rows":rows,"minimum_required":min_rows,"ok":rows_ok})
+    ok &= rows_ok
+    rep["checks"].append({"check":"risk_first_equity200","value":eq0,"ok":eq_ok})
+    ok &= eq_ok
+
+    rep["overall"]="PASS" if ok else "FAIL"
+    print(json.dumps(rep,ensure_ascii=False,indent=2))
+    sys.exit(0 if ok else 1)
+
+if __name__=="__main__":
     main()

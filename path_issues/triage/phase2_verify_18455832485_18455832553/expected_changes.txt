@@ -1,0 +1,6 @@
+﻿EXPECT:
+- actions/checkout@v4
+- actions/upload-artifact@v4
+- actions/setup-python@v5
+- 'if: always()' trước upload-artifact
+- 'cancel-in-progress: true' trong concurrency blocks

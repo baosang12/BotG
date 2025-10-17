@@ -1,4 +1,4 @@
-﻿name: Alerts synthetic weekly (Gate24h dispatch + cancel)
+name: Alerts synthetic weekly (Gate24h dispatch + cancel)
 on:
   schedule:
     - cron: '5 2 * * 1'  # Thứ Hai 02:05 UTC
@@ -6,6 +6,7 @@ on:
 
 jobs:
   synth:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch Gate24h preflight (0.1h, paper)
@@ -46,3 +47,4 @@ jobs:
               core.setOutput("gate_run_id", run.id.toString());
               core.setOutput("gate_run_url", run.html_url);
             }
+

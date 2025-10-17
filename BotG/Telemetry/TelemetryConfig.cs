@@ -2,6 +2,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Telemetry
 {
@@ -21,9 +22,27 @@ namespace Telemetry
         public string TelemetryFile { get; set; } = "telemetry.csv";
     public SimulationConfig Simulation { get; set; } = new SimulationConfig();
     public ExecutionConfig Execution { get; set; } = new ExecutionConfig();
+    public AccountConfig? Account { get; set; }
+    public PaperConfig? Paper { get; set; }
+    public TradingConfig? Trading { get; set; }
 
     // Runtime, not from JSON: a per-run artifact folder under LogPath/artifacts/telemetry_run_yyyyMMdd_HHmmss
     public string? RunFolder { get; set; }
+
+    /// <summary>
+    /// Get initial equity from config with fallback chain:
+    /// account.initial_equity_usd → paper.initial_balance → trading.starting_balance_usd → 10000
+    /// </summary>
+    public double GetInitialEquity()
+    {
+        if (Account?.InitialEquityUsd != null && Account.InitialEquityUsd > 0)
+            return Account.InitialEquityUsd.Value;
+        if (Paper?.InitialBalance != null && Paper.InitialBalance > 0)
+            return Paper.InitialBalance.Value;
+        if (Trading?.StartingBalanceUsd != null && Trading.StartingBalanceUsd > 0)
+            return Trading.StartingBalanceUsd.Value;
+        return 10000.0; // fallback default
+    }
 
         public static string DefaultBasePath => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? "D:\\botg\\logs"
@@ -157,5 +176,23 @@ namespace Telemetry
         public double FeePercent { get; set; } = 0.0;
         // Spread in pips (will be converted using symbol TickSize if known)
         public double SpreadPips { get; set; } = 0.0;
+    }
+
+    public class AccountConfig
+    {
+        [JsonPropertyName("initial_equity_usd")]
+        public double? InitialEquityUsd { get; set; }
+    }
+
+    public class PaperConfig
+    {
+        [JsonPropertyName("initial_balance")]
+        public double? InitialBalance { get; set; }
+    }
+
+    public class TradingConfig
+    {
+        [JsonPropertyName("starting_balance_usd")]
+        public double? StartingBalanceUsd { get; set; }
     }
 }
