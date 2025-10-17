@@ -1,0 +1,2 @@
+open_order_id,close_order_id,volume,open_price,close_price,pnl
+ORD-1,ORD-2,1,1.2345,1.1299,-0.1046
