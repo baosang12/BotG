@@ -251,5 +251,71 @@ namespace BotG.Tests
             Assert.Equal(12500, equity);
             Assert.Equal(12000, balance);
         }
+
+        [Fact]
+        public void RiskTelemetry_NoLoss_DrawdownAndRUsedRemainZero()
+        {
+            var persister = new RiskSnapshotPersister(_testFolder, "risk.csv", isPaperMode: false);
+            var accountInfo = new AccountInfo { Balance = 10000, Equity = 10000, Margin = 0 };
+            var equities = new[] { 10000.0, 10020.0, 10050.0, 10030.0, 10060.0, 10060.0 };
+
+            foreach (var equity in equities)
+            {
+                accountInfo.Equity = equity;
+                accountInfo.Balance = equity;
+                persister.Persist(accountInfo);
+                System.Threading.Thread.Sleep(5);
+            }
+
+            var lines = File.ReadAllLines(Path.Combine(_testFolder, "risk.csv"));
+            Assert.Equal(equities.Length + 1, lines.Length);
+
+            var drawdowns = lines.Skip(1).Select(l => double.Parse(l.Split(',')[7])).ToArray();
+            var rUsedValues = lines.Skip(1).Select(l => double.Parse(l.Split(',')[8])).ToArray();
+
+            var expectedDrawdowns = new[] { 0.0, 0.0, 0.0, 20.0, 0.0, 0.0 };
+            Assert.Equal(expectedDrawdowns.Length, drawdowns.Length);
+
+            for (int i = 0; i < drawdowns.Length; i++)
+            {
+                Assert.Equal(expectedDrawdowns[i], drawdowns[i], 6);
+                Assert.Equal(0.0, rUsedValues[i], 6);
+            }
+        }
+
+        [Fact]
+        public void RiskTelemetry_LossSequence_UpdatesDrawdownAndRUsed()
+        {
+            var persister = new RiskSnapshotPersister(_testFolder, "risk.csv", isPaperMode: false);
+            var accountInfo = new AccountInfo { Balance = 10000, Equity = 10000, Margin = 0 };
+            var equities = new[] { 10000.0, 10030.0, 9980.0, 9970.0, 10010.0 };
+
+            foreach (var equity in equities)
+            {
+                accountInfo.Equity = equity;
+                accountInfo.Balance = equity;
+                persister.Persist(accountInfo);
+                System.Threading.Thread.Sleep(5);
+            }
+
+            var lines = File.ReadAllLines(Path.Combine(_testFolder, "risk.csv"));
+            Assert.Equal(equities.Length + 1, lines.Length);
+
+            var drawdowns = lines.Skip(1).Select(l => double.Parse(l.Split(',')[7])).ToArray();
+            var rUsedValues = lines.Skip(1).Select(l => double.Parse(l.Split(',')[8])).ToArray();
+
+            var expectedDrawdowns = new[] { 0.0, 0.0, 50.0, 60.0, 20.0 };
+            var expectedRUsed = new[] { 0.0, 0.0, 2.0, 3.0, 0.0 };
+
+            for (int i = 0; i < drawdowns.Length; i++)
+            {
+                Assert.Equal(expectedDrawdowns[i], drawdowns[i], 6);
+                Assert.Equal(expectedRUsed[i], rUsedValues[i], 6);
+                Assert.True(drawdowns[i] >= 0.0, $"Drawdown[{i}] should be non-negative");
+                Assert.True(rUsedValues[i] >= 0.0, $"R_used[{i}] should be non-negative");
+            }
+
+            Assert.Contains(rUsedValues, value => value >= 3.0);
+        }
     }
 }
