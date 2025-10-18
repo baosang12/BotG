@@ -1,4 +1,5 @@
 using System;
+using Connectivity;
 using Strategies;
 using Telemetry; // added
 namespace TradeManager
@@ -7,7 +8,9 @@ namespace TradeManager
     {
         private int _tradeCountToday = 0;
         private int _maxTradesPerDay = 5;
-        private Execution.ExecutionModule _executionModule;
+    private Execution.ExecutionModule _executionModule;
+    private readonly IMarketDataProvider? _marketData;
+    private readonly IOrderExecutor? _orderExecutor;
 
         // Existing constructor: accepts a pre-built ExecutionModule (backwards compatible)
         public TradeManager(Execution.ExecutionModule executionModule)
@@ -18,8 +21,10 @@ namespace TradeManager
 
         // Convenience constructor: accept dependencies and construct ExecutionModule internally.
         // This allows composition roots to pass an optional RiskManager instance so sizing will be used.
-    public TradeManager(System.Collections.Generic.List<Strategies.IStrategy<Strategies.TradeSignal>> strategies, cAlgo.API.Robot bot, RiskManager.RiskManager riskManager = null)
+        public TradeManager(System.Collections.Generic.List<Strategies.IStrategy<Strategies.TradeSignal>> strategies, cAlgo.API.Robot bot, RiskManager.RiskManager? riskManager = null, IMarketDataProvider? marketData = null, IOrderExecutor? orderExecutor = null)
         {
+            _marketData = marketData;
+            _orderExecutor = orderExecutor;
             _executionModule = new Execution.ExecutionModule(strategies, bot, riskManager);
             TelemetryContext.InitOnce();
         }

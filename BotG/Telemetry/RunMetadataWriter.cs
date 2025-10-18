@@ -1,7 +1,7 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Telemetry
 {
@@ -23,6 +23,35 @@ namespace Telemetry
                 File.WriteAllText(_filePath, line);
             }
             catch { }
+        }
+
+        public void UpsertSourceMetadata(string dataSource, string brokerName, string server, string accountId)
+        {
+            try
+            {
+                JsonObject root;
+                if (File.Exists(_filePath))
+                {
+                    var json = File.ReadAllText(_filePath);
+                    root = JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+                }
+                else
+                {
+                    root = new JsonObject();
+                }
+
+                root["data_source"] = dataSource;
+                root["broker_name"] = brokerName;
+                root["server"] = server;
+                root["account_id"] = accountId;
+                root["timestamp_connect"] = DateTime.UtcNow.ToString("o");
+
+                File.WriteAllText(_filePath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch
+            {
+                // swallow to avoid interrupting trading runtime
+            }
         }
     }
 }

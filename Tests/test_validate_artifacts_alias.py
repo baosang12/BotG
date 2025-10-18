@@ -36,7 +36,7 @@ class TestValidateArtifactsAlias(unittest.TestCase):
         self.assertEqual(used_aliases["ts_request"], "timestamp_request")
 
         self.assertTrue(result["warnings"])
-        self.assertIn("risk_snapshots", result["warnings"][0])
+        self.assertIn("missing-symbol-or-bidask", result["warnings"])
 
     def test_validator_would_fail_without_alias_support(self):
         """Removing the alias should revert to the legacy failure behaviour."""
@@ -69,7 +69,7 @@ class TestValidateArtifactsAlias(unittest.TestCase):
         self.assertGreaterEqual(
             result["telemetry_span_hours"], validator.MIN_TELEMETRY_SPAN_HOURS
         )
-        self.assertFalse(result["warnings"])
+        self.assertIn("missing-symbol-or-bidask", result["warnings"])
 
     def test_cli_writes_utf8_without_bom_and_exit_code(self):
         """CLI should exit 0 and emit UTF-8 JSON without BOM for valid artifacts."""

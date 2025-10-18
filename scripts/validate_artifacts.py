@@ -90,6 +90,22 @@ def resolve_columns(header: Iterable[str], alias_map: Mapping[str, Sequence[str]
     return ColumnResolution(mapping=mapping, missing=missing)
 
 
+def _try_float(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _is_number(value: Optional[str]) -> bool:
+    return _try_float(value) is not None
+
+
 def parse_timestamp(value: Optional[str]) -> Optional[datetime]:
     """Parse an ISO-8601 timestamp that may end with Z."""
     if value is None:
@@ -160,7 +176,7 @@ def iter_csv_column(path: Path, column: str) -> Iterator[Optional[str]]:
             yield row.get(column)
 
 
-def analyze_orders(path: Path, column_map: Mapping[str, str]) -> Dict[str, Optional[float]]:
+def analyze_orders(path: Path, column_map: Mapping[str, str]) -> Dict[str, object]:
     """Compute KPI statistics from orders.csv."""
     requests = 0
     fills = 0
@@ -195,7 +211,97 @@ def analyze_orders(path: Path, column_map: Mapping[str, str]) -> Dict[str, Optio
         "fill_rate_percent": fill_rate_percent,
         "latency_ms_p50": median_latency,
         "latency_ms_p95": p95_latency,
+        "latency_samples": latencies,
     }
+
+
+def evaluate_order_enrichment(path: Path, column_map: Mapping[str, str]) -> Dict[str, object]:
+    fills = 0
+    missing_symbol_or_bidask = 0
+    slippage_pips: List[float] = []
+    latency_ms: List[float] = []
+
+    status_col = column_map.get("status", "status")
+    side_col = column_map.get("side", "side")
+    price_req_col = column_map.get("price_requested")
+    price_fill_col = column_map.get("price_filled")
+    latency_col = column_map.get("latency_ms")
+
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            status = (row.get(status_col, "") or "").strip().upper()
+            if status != "FILL":
+                continue
+            fills += 1
+
+            symbol = (row.get("symbol") or "").strip()
+            bid_req_raw = row.get("bid_at_request")
+            ask_req_raw = row.get("ask_at_request")
+            bid_fill_raw = row.get("bid_at_fill")
+            ask_fill_raw = row.get("ask_at_fill")
+
+            has_request_quote = _is_number(bid_req_raw) and _is_number(ask_req_raw)
+            has_fill_quote = _is_number(bid_fill_raw) and _is_number(ask_fill_raw)
+
+            if not symbol or not has_request_quote or not has_fill_quote:
+                missing_symbol_or_bidask += 1
+
+            if latency_col:
+                lat_val = _try_float(row.get(latency_col))
+                if lat_val is not None:
+                    latency_ms.append(lat_val)
+
+            pip_size = None
+            if has_request_quote:
+                spread_price = float(ask_req_raw) - float(bid_req_raw)
+                spread_pips_req = _try_float(row.get("spread_pips_at_request"))
+                if spread_pips_req and spread_pips_req > 0 and spread_price > 0:
+                    pip_size = spread_price / spread_pips_req
+
+            if pip_size is None and has_fill_quote:
+                spread_price_fill = float(ask_fill_raw) - float(bid_fill_raw)
+                spread_pips_fill = _try_float(row.get("spread_pips_at_fill"))
+                if spread_pips_fill and spread_pips_fill > 0 and spread_price_fill > 0:
+                    pip_size = spread_price_fill / spread_pips_fill
+
+            if pip_size and pip_size > 0:
+                price_requested = _try_float(row.get(price_req_col)) if price_req_col else _try_float(row.get("price_requested"))
+                price_filled = _try_float(row.get(price_fill_col)) if price_fill_col else _try_float(row.get("price_filled"))
+                side = (row.get(side_col, "") or "").strip().upper()
+                ask_req_val = _try_float(ask_req_raw)
+                bid_req_val = _try_float(bid_req_raw)
+
+                slip_pips: Optional[float] = None
+                if side == "BUY" and price_filled is not None and ask_req_val is not None:
+                    slip_pips = (price_filled - ask_req_val) / pip_size
+                elif side == "SELL" and price_filled is not None and bid_req_val is not None:
+                    slip_pips = (bid_req_val - price_filled) / pip_size
+
+                if slip_pips is not None:
+                    slippage_pips.append(abs(slip_pips))
+
+    return {
+        "fills": fills,
+        "missing_symbol_or_bidask": missing_symbol_or_bidask,
+        "slippage_pips": slippage_pips,
+        "latency_samples": latency_ms,
+    }
+
+
+def detect_constant_tps(path: Path) -> bool:
+    values: List[float] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            val = _try_float(row.get("ticksPerSec"))
+            if val is not None:
+                values.append(val)
+
+    if len(values) < 10:
+        return False
+
+    return max(values) - min(values) <= 0.01
 
 
 def load_headers(path: Path) -> List[str]:
@@ -277,6 +383,9 @@ def validate_artifacts(artifacts_dir: Path, *, strict: bool = False) -> Dict[str
     if telemetry_span < MIN_TELEMETRY_SPAN_HOURS:
         result["reasons"].append(f"telemetry_span_hours={telemetry_span} (<{MIN_TELEMETRY_SPAN_HOURS})")
 
+    if detect_constant_tps(telemetry_path):
+        result["warnings"].append("constant-tps")
+
     # KPI calculations when schema ok
     if orders_resolution.ok:
         orders_stats = analyze_orders(base_path / "orders.csv", orders_resolution.mapping)
@@ -294,6 +403,29 @@ def validate_artifacts(artifacts_dir: Path, *, strict: bool = False) -> Dict[str
             result["reasons"].append(
                 f"orders.fill_rate_percent={orders_stats['fill_rate_percent']} (<99.5)"
             )
+
+        enrichment = evaluate_order_enrichment(base_path / "orders.csv", orders_resolution.mapping)
+        fills = enrichment["fills"] or 0
+        if fills:
+            missing_ratio = enrichment["missing_symbol_or_bidask"] / fills  # type: ignore[arg-type]
+            if missing_ratio > 0.05:
+                result["warnings"].append("missing-symbol-or-bidask")
+
+        slippage_samples: List[float] = enrichment["slippage_pips"]  # type: ignore[assignment]
+        latency_samples: List[float] = orders_stats.get("latency_samples", [])  # type: ignore[assignment]
+        if not latency_samples:
+            latency_samples = enrichment["latency_samples"]  # type: ignore[assignment]
+
+        slippage_p95 = percentile(slippage_samples, 0.95) if slippage_samples else None
+        latency_p95 = percentile(latency_samples, 0.95) if latency_samples else None
+        if (
+            orders_stats["fill_rate_percent"] >= 99.9
+            and slippage_p95 is not None
+            and latency_p95 is not None
+            and slippage_p95 < 0.1
+            and latency_p95 < 10.0
+        ):
+            result["warnings"].append("suspiciously-perfect-execution")
     else:
         result["schema_ok"] = False
 

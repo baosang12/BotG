@@ -6,6 +6,8 @@ using Telemetry;
 using DataFetcher.Models;
 using RiskManager;
 using System.Collections.Generic;
+using Connectivity;
+using Connectivity.Synthetic;
 
 // Simple harness to exercise telemetry without cTrader runtime
 class Program
@@ -28,6 +30,11 @@ class Program
                 var p = args[a + 1]; if (!string.IsNullOrWhiteSpace(p)) { Directory.CreateDirectory(p); cfg.RunFolder = p; }
             }
         }
+        // Allow harness symbol override to mimic real instruments
+        var symbol = Environment.GetEnvironmentVariable("BOTG_SYMBOL");
+        if (string.IsNullOrWhiteSpace(symbol)) symbol = "XAUUSD";
+        symbol = symbol!.Trim().ToUpperInvariant();
+
         // Init telemetry and write run metadata with extra context
         TelemetryContext.InitOnce(cfg);
         var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg, new {
@@ -39,6 +46,33 @@ class Program
             use_simulation = cfg.UseSimulation,
             fill_probability = cfg.Simulation?.FillProbability
         });
+
+        // Wire synthetic connectivity so metadata + quote capture behave like production wiring
+        var modeEnv = Environment.GetEnvironmentVariable("DATASOURCE__MODE");
+        var connectorMode = string.IsNullOrWhiteSpace(modeEnv) ? "synthetic" : modeEnv;
+        ConnectorBundle connector;
+        try
+        {
+            connector = ConnectorBundle.Create(connectorMode);
+        }
+        catch (InvalidOperationException)
+        {
+            connector = ConnectorBundle.Create("synthetic");
+        }
+        connector.MarketData.Start();
+        connector.MarketData.Subscribe(symbol);
+        TelemetryContext.AttachConnectivity(connector.Mode, connector.MarketData, connector.OrderExecutor, 2);
+        TelemetryContext.QuoteTelemetry?.TrackSymbol(symbol);
+        var syntheticMd = connector.MarketData as SyntheticMarketDataProvider;
+
+        static void PublishQuote(SyntheticMarketDataProvider? provider, string sym, double mid, double spread)
+        {
+            if (provider == null) return;
+            var half = spread / 2.0;
+            var bid = mid - half;
+            var ask = mid + half;
+            provider.PublishQuote(sym, bid, ask, DateTime.UtcNow);
+        }
 
         // Provide a fake symbol so RiskManager can auto-compute PointValuePerUnit (e.g., XAUUSD-like)
         try
@@ -61,7 +95,7 @@ class Program
         }
 
         // Simulate ticks/signals/orders
-        var collector = TelemetryContext.Collector!;
+    var collector = TelemetryContext.Collector!;
         var start = DateTime.UtcNow;
         var duration = TimeSpan.FromSeconds(60); // use 60s if environment is constrained
         if (args.Length > 0 && int.TryParse(args[0], out var sec0) && sec0 > 0) duration = TimeSpan.FromSeconds(sec0);
@@ -78,6 +112,7 @@ class Program
     // simple queues to pair buy/sell for closed trades
     var buyStack = new List<(string orderId, DateTime ts, double size, double price)>();
     var sellStack = new List<(string orderId, DateTime ts, double size, double price)>();
+        double midPrice = 100.0;
         while (DateTime.UtcNow - start < duration)
         {
             collector.IncTick();
@@ -85,19 +120,23 @@ class Program
             if (i % 15 == 0)
             {
                 collector.IncOrderRequested();
-                double entry = 100.0 + i * 0.01;
+                midPrice += Math.Sin(i / 25.0) * 0.02;
+                var spreadPips = 0.0006;
+                PublishQuote(syntheticMd, symbol, midPrice, spreadPips);
+                double entry = midPrice + i * 0.0001;
                 double? stop = (i % 30 == 0) ? entry - 0.05 : (double?)null; // add stop every 30 ticks as example
                 var side = (i % 30 == 0) ? "Buy" : "Sell";
                 var oid = $"ORD-{i}";
-                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "REQUEST", null, "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "ACK", null, "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "REQUEST", null, symbol);
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, null, null, null, 1, null, "ACK", null, symbol);
                 // simulated fill
                 bool willFill = rng.NextDouble() <= fillProb;
                 if (willFill)
                 {
                     collector.IncOrderFilled();
                     double exec = entry + ((side == "Buy") ? 0.0005 : -0.0005);
-                    TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, exec, null, null, 1, 1, "FILL", "filled", "HARNESS");
+                    PublishQuote(syntheticMd, symbol, exec, spreadPips);
+                    TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, side, side.ToUpperInvariant(), "Market", entry, stop, exec, null, null, 1, 1, "FILL", "filled", symbol);
                     var ts = DateTime.UtcNow;
                     if (side == "Buy") buyStack.Add((oid, ts, 1, exec)); else sellStack.Add((oid, ts, 1, exec));
                     // if we have both sides, close one trade FIFO-style
@@ -117,7 +156,7 @@ class Program
                         try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
                         double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
                         double net = gross - fee;
-                        TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, s.orderId, b.ts, s.ts, "BUY-SELL", 1.0, b.price, s.price, net, fee, "harness", gross);
+                        TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, s.orderId, b.ts, s.ts, "BUY-SELL", 1.0, b.price, s.price, net, fee, symbol, gross);
                     }
                 }
             }
@@ -147,11 +186,12 @@ class Program
                 try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
-            TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
+        PublishQuote(syntheticMd, symbol, fakeSellPrice, 0.0006);
+        TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
         // Also log the synthetic exit order lifecycle to ensure latency_ms is derivable
-        TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "REQUEST", "drain", "HARNESS");
-        TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "ACK", "drain", "HARNESS");
-        TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+    TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "REQUEST", "drain", symbol);
+    TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "ACK", "drain", symbol);
+    TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", symbol);
             }
             else if (sellStack.Count > 0 && buyStack.Count == 0)
             {
@@ -168,10 +208,11 @@ class Program
                 try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
+                PublishQuote(syntheticMd, symbol, fakeBuyPrice, 0.0006);
                 TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{s.orderId}", "DRAIN-BUY", s.orderId, s.ts, now, "BUY-SELL", 1.0, fakeBuyPrice, s.price, net, fee, "drain_close", gross);
-                TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "REQUEST", "drain", "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "ACK", "drain", "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, fakeBuyPrice, null, null, 1, 1, "FILL", "drain", "HARNESS");
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "REQUEST", "drain", symbol);
+                TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, null, null, null, 1, null, "ACK", "drain", symbol);
+                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-BUY", "DRAIN-BUY", "Buy", "BUY", "Market", fakeBuyPrice, null, fakeBuyPrice, null, null, 1, 1, "FILL", "drain", symbol);
             }
             else
             {
@@ -204,9 +245,10 @@ class Program
                 var b = buyStack[0]; buyStack.RemoveAt(0);
                 var oid = $"ORD-DRAIN-S-{i + (++drainSeq)}"; // synthetic sell to close the buy
                 double exec = b.price + 0.0003; // small offset
-                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "REQUEST", null, "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "ACK", null, "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Sell", "SELL", "Market", b.price, null, exec, null, null, 1, 1, "FILL", "drain", "HARNESS");
+                PublishQuote(syntheticMd, symbol, b.price, 0.0006);
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "REQUEST", null, symbol);
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Sell", "SELL", "Market", b.price, null, null, null, null, 1, null, "ACK", null, symbol);
+                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Sell", "SELL", "Market", b.price, null, exec, null, null, 1, 1, "FILL", "drain", symbol);
                 var closeTs = DateTime.UtcNow;
                 double pipValue = 0.0001; // simplistic default
                 var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
@@ -224,9 +266,10 @@ class Program
                 var s = sellStack[0]; sellStack.RemoveAt(0);
                 var oid = $"ORD-DRAIN-B-{i + (++drainSeq)}"; // synthetic buy to close the sell
                 double exec = s.price - 0.0003; // small offset
-                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "REQUEST", null, "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "ACK", null, "HARNESS");
-                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Buy", "BUY", "Market", s.price, null, exec, null, null, 1, 1, "FILL", "drain", "HARNESS");
+                PublishQuote(syntheticMd, symbol, s.price, 0.0006);
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "REQUEST", null, symbol);
+                TelemetryContext.OrderLogger?.LogV2("ACK", oid, oid, "Buy", "BUY", "Market", s.price, null, null, null, null, 1, null, "ACK", null, symbol);
+                TelemetryContext.OrderLogger?.LogV2("FILL", oid, oid, "Buy", "BUY", "Market", s.price, null, exec, null, null, 1, 1, "FILL", "drain", symbol);
                 var closeTs = DateTime.UtcNow;
                 double pipValue = 0.0001;
                 var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
