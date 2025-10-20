@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Telemetry
 {
@@ -24,44 +25,64 @@ namespace Telemetry
                     string commit = Environment.GetEnvironmentVariable("GIT_COMMIT") ?? string.Empty;
                     try
                     {
-                        var gitHead = System.Environment.GetEnvironmentVariable("GIT_COMMIT");
+                        var gitHead = Environment.GetEnvironmentVariable("GIT_COMMIT");
                         if (string.IsNullOrWhiteSpace(commit) && !string.IsNullOrWhiteSpace(gitHead)) commit = gitHead;
                     }
                     catch { }
-                    var meta = new
+
+                    var meta = new JsonObject
                     {
-                        run_id = Path.GetFileName(runDir),
-                        start_time_iso = DateTime.UtcNow.ToString("o"),
-                        host = Environment.MachineName,
-                        git_commit = commit,
-                        mode = cfg.Mode,
-                        hours = cfg.Hours,
-                        seconds_per_hour = cfg.SecondsPerHour,
-                        simulation = new
+                        ["run_id"] = Path.GetFileName(runDir),
+                        ["start_time_iso"] = DateTime.UtcNow.ToString("o"),
+                        ["host"] = Environment.MachineName,
+                        ["git_commit"] = commit,
+                        ["mode"] = cfg.Mode,
+                        ["hours"] = cfg.Hours,
+                        ["seconds_per_hour"] = cfg.SecondsPerHour,
+                        ["simulation"] = new JsonObject
                         {
-                            enabled = cfg.UseSimulation,
-                            fill_probability = cfg.Simulation?.FillProbability,
-                            simulate_partial_fills = cfg.Simulation?.SimulatePartialFills
+                            ["enabled"] = cfg.UseSimulation,
+                            ["fill_probability"] = cfg.Simulation?.FillProbability,
+                            ["simulate_partial_fills"] = cfg.Simulation?.SimulatePartialFills
                         },
-                        config_snapshot = new
+                        ["config_snapshot"] = new JsonObject
                         {
-                            simulation = new
+                            ["simulation"] = new JsonObject
                             {
-                                enabled = cfg.UseSimulation,
-                                fill_probability = cfg.Simulation?.FillProbability,
-                                simulate_partial_fills = cfg.Simulation?.SimulatePartialFills
+                                ["enabled"] = cfg.UseSimulation,
+                                ["fill_probability"] = cfg.Simulation?.FillProbability,
+                                ["simulate_partial_fills"] = cfg.Simulation?.SimulatePartialFills
                             },
-                            execution = new { fee_per_trade = cfg.Execution?.FeePerTrade, fee_percent = cfg.Execution?.FeePercent, spread_pips = cfg.Execution?.SpreadPips },
-                            log_path = cfg.LogPath,
-                            hours = cfg.Hours,
-                            seconds_per_hour = cfg.SecondsPerHour,
-                            drain_seconds = cfg.DrainSeconds,
-                            graceful_shutdown_wait_seconds = cfg.GracefulShutdownWaitSeconds
+                            ["execution"] = new JsonObject
+                            {
+                                ["fee_per_trade"] = cfg.Execution?.FeePerTrade,
+                                ["fee_percent"] = cfg.Execution?.FeePercent,
+                                ["spread_pips"] = cfg.Execution?.SpreadPips
+                            },
+                            ["log_path"] = cfg.LogPath,
+                            ["hours"] = cfg.Hours,
+                            ["seconds_per_hour"] = cfg.SecondsPerHour,
+                            ["drain_seconds"] = cfg.DrainSeconds,
+                            ["graceful_shutdown_wait_seconds"] = cfg.GracefulShutdownWaitSeconds
                         },
-                        log_paths = new { run = runDir, base_log = cfg.LogPath },
-                        extra
+                        ["log_paths"] = new JsonObject
+                        {
+                            ["run"] = runDir,
+                            ["base_log"] = cfg.LogPath
+                        }
                     };
-                    File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }));
+
+                    if (extra != null)
+                    {
+                        try
+                        {
+                            meta["extra"] = JsonNode.Parse(JsonSerializer.Serialize(extra));
+                        }
+                        catch { }
+                    }
+
+                    TelemetryContext.InvokeMetadataHook(meta);
+                    File.WriteAllText(metaPath, meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                 }
                 else if (extra != null)
                 {
@@ -77,6 +98,7 @@ namespace Telemetry
                         }
                         // Overwrite or create the "extra" node
                         root["extra"] = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(extra));
+                        TelemetryContext.InvokeMetadataHook(root);
                         File.WriteAllText(metaPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                     }
                     catch { }

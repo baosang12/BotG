@@ -176,6 +176,27 @@ namespace Telemetry
         public double FeePercent { get; set; } = 0.0;
         // Spread in pips (will be converted using symbol TickSize if known)
         public double SpreadPips { get; set; } = 0.0;
+
+        [JsonPropertyName("spread_pips_fallback")]
+        public double SpreadPipsFallback { get; set; } = 0.0;
+
+        [JsonPropertyName("spread_pips_min")]
+        public double SpreadPipsMin { get; set; } = 0.0;
+
+        [JsonPropertyName("min_lot")]
+        public double MinLot { get; set; } = 0.0;
+
+        [JsonPropertyName("lot_step")]
+        public double LotStep { get; set; } = 0.0;
+
+        [JsonPropertyName("commission_roundturn_usd_per_lot")]
+        public double CommissionRoundturnUsdPerLot { get; set; } = 0.0;
+
+        [JsonPropertyName("commission_roundtrip_usd_per_lot")]
+        public double CommissionRoundtripUsdPerLot { get; set; } = 0.0;
+
+        [JsonPropertyName("fee_roundturn_usd_per_lot")]
+        public double FeeRoundturnUsdPerLot { get; set; } = 0.0;
     }
 
     public class AccountConfig
