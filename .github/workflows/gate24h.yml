@@ -33,14 +33,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run 60s connectivity proof
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force -Path path_issues/ctrader_connect_proof | Out-Null
-          if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-            pwsh -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+          $pwsh7 = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+          if (Test-Path $pwsh7) {
+            & $pwsh7 -NoLogo -NoProfile -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
           } else {
-            powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+            & (Join-Path $PSHOME 'powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
           }
 
       - name: Verify proof files

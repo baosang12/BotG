@@ -2,7 +2,8 @@ param(
   [string]$OutDir = "path_issues/ctrader_connect_proof",
   [int]$Seconds = 60,
   [string]$LogRoot = "D:\botg\logs",
-  [string]$TelemetryFilePattern = "telemetry.csv"
+  [string]$TelemetryFilePattern = "telemetry.csv",
+  [switch]$RequireBidAsk = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +50,44 @@ if(-not $win -or $win.Count -lt 3){
 $tpCol = @('ticksPerSec','ticks_per_sec','tickRate','tick_rate') | Where-Object { $_ -in $win[0].PSObject.Properties.Name } | Select-Object -First 1
 if(-not $tpCol){ Write-Error "Thiếu cột ticksPerSec/tickRate"; exit 1 }
 
+# 6b) Dò cột bid/ask (không bắt buộc cho Gate2)
+$candidateProps = $win[0].PSObject.Properties.Name
+$bidCol = @('bid','Bid','bidPrice','bestBid','best_bid') | Where-Object { $_ -in $candidateProps } | Select-Object -First 1
+$askCol = @('ask','Ask','askPrice','bestAsk','best_ask') | Where-Object { $_ -in $candidateProps } | Select-Object -First 1
+$hasBidAsk = [bool]($bidCol -and $askCol)
+
+if($RequireBidAsk -and -not $hasBidAsk){
+  Write-Error "Thiếu cột bid/ask khi RequireBidAsk bật"
+  exit 1
+}
+
+$spreadMedian = $null
+if($hasBidAsk){
+  $spreads = foreach($row in $win){
+    $bidRaw = $row.$bidCol
+    $askRaw = $row.$askCol
+    if($null -ne $bidRaw -and $null -ne $askRaw -and $bidRaw -ne '' -and $askRaw -ne ''){
+      try{
+        $bidVal = [double]$bidRaw
+        $askVal = [double]$askRaw
+        $spread = $askVal - $bidVal
+        if($spread -gt 0){ $spread }
+      } catch { }
+    }
+  }
+  $spreads = @($spreads | Where-Object { $_ -ne $null })
+  if($spreads.Count -gt 0){
+    $sortedSpreads = $spreads | Sort-Object
+    $mid = [int]($sortedSpreads.Count / 2)
+    if($sortedSpreads.Count % 2){
+      $spreadMedian = $sortedSpreads[$mid]
+    } else {
+      $spreadMedian = ($sortedSpreads[$mid-1] + $sortedSpreads[$mid]) / 2
+    }
+    $spreadMedian = [math]::Round($spreadMedian,5)
+  }
+}
+
 # 7) Tính chỉ số
 $ticks = $win | ForEach-Object { [double]($_.$tpCol) }
 $total  = $ticks.Count
@@ -64,9 +103,20 @@ $ok = ($lastAgeSec -le 5) -and ($ratio -ge 0.7) -and ($avg -ge 0.5)
 $reason = if($ok){"ok"}else{"freshness=$lastAgeSec; active_ratio=$ratio; tick_rate_avg=$avg"}
 
 # 9) Xuất l1_sample.csv (cột thiết yếu)
-$l1 = $win | Select-Object @{N=$tsCol;E={[string]($_.$tsCol)}},
-                      @{N=$tpCol;E={[double]($_.$tpCol)}},
-                      ordersRequestedLastMinute, ordersFilledLastMinute, errorsLastMinute
+$selectColumns = @(
+  @{Name=$tsCol;Expression={ [string]($_.$tsCol) }},
+  @{Name=$tpCol;Expression={ [double]($_.$tpCol) }},
+  'ordersRequestedLastMinute',
+  'ordersFilledLastMinute',
+  'errorsLastMinute'
+)
+
+if($hasBidAsk){
+  $selectColumns += @{Name=$bidCol;Expression={ if($_.$bidCol -ne $null -and $_.$bidCol -ne ''){ [double]($_.$bidCol) } else { $null } }}
+  $selectColumns += @{Name=$askCol;Expression={ if($_.$askCol -ne $null -and $_.$askCol -ne ''){ [double]($_.$askCol) } else { $null } }}
+}
+
+$l1 = $win | Select-Object -Property $selectColumns
 $l1Path = Join-Path $OutDir "l1_sample.csv"
 $l1 | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $l1Path
 
@@ -84,6 +134,11 @@ $proof = [pscustomobject]@{
   tick_rate_avg = $avg
   last_timestamp_iso = ([datetime]$lastTs).ToUniversalTime().ToString("o")
   last_age_sec = $lastAgeSec
+  has_bid_ask = $hasBidAsk
+  spread_median = $spreadMedian
+  bid_col = if($hasBidAsk){ $bidCol } else { $null }
+  ask_col = if($hasBidAsk){ $askCol } else { $null }
+  bid_ask_gate_note = "Gate3 requires bid/ask; Gate2 optional"
   ok = $ok
   reason = $reason
   generated_at_iso = (Get-Date).ToUniversalTime().ToString("o")
