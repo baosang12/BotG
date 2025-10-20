@@ -25,8 +25,42 @@ on:
         default: 'false'
 
 jobs:
+  preflight-ctrader:
+    name: Preflight - cTrader connectivity (60s)
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run 60s connectivity proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path path_issues/ctrader_connect_proof | Out-Null
+          if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+            pwsh -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+          } else {
+            powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+          }
+
+      - name: Verify proof files
+        shell: pwsh
+        run: |
+          if (!(Test-Path "path_issues/ctrader_connect_proof/connection_ok.json")) { throw "Missing connection_ok.json" }
+          if (!(Test-Path "path_issues/ctrader_connect_proof/l1_sample.csv"))     { throw "Missing l1_sample.csv" }
+          $j = Get-Content "path_issues/ctrader_connect_proof/connection_ok.json" | ConvertFrom-Json
+          if (-not $j.ok) { throw "Connectivity check failed: $($j.reason)" }
+
+      - name: Upload ctrader_connect_proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctrader_connect_proof
+          path: path_issues/ctrader_connect_proof/**
+          if-no-files-found: error
+
   gate24h:
     runs-on: [self-hosted, Windows]
+    needs: preflight-ctrader
     timeout-minutes: 1500
     env:
       BOTG_MODE: paper
