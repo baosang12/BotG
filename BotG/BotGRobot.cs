@@ -22,6 +22,7 @@ public class BotGRobot : Robot
     private readonly Encoding _utf8NoBom = new UTF8Encoding(false);
     private const string DefaultTelemetryDirectory = @"D:\botg\logs";
     private const string TelemetryFileName = "telemetry.csv";
+    private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
 
     protected override void OnStart()
@@ -188,7 +189,7 @@ public class BotGRobot : Robot
                 using (var stream = new FileStream(_telemetryPath, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite))
                 using (var writer = new StreamWriter(stream, _utf8NoBom) { AutoFlush = true })
                 {
-                    writer.WriteLine("timestamp_iso,symbol,bid,ask,tick_rate");
+                    writer.WriteLine(ExpectedTelemetryHeader);
                 }
                 Print("[TLM] Header created at {0}", _telemetryPath);
             }
@@ -218,15 +219,30 @@ public class BotGRobot : Robot
             using (var reader = new StreamReader(stream, _utf8NoBom, false, 1024, true))
             {
                 var header = reader.ReadLine();
-                if (string.IsNullOrEmpty(header))
+                if (header == null)
                 {
+                    header = string.Empty;
+                }
+
+                if (!string.Equals(header, ExpectedTelemetryHeader, StringComparison.Ordinal))
+                {
+                    var remainder = reader.ReadToEnd();
                     stream.SetLength(0);
                     stream.Position = 0;
+
                     using (var writer = new StreamWriter(stream, _utf8NoBom, 1024, true) { AutoFlush = true })
                     {
-                        writer.WriteLine("timestamp_iso,symbol,bid,ask,tick_rate");
+                        writer.WriteLine(ExpectedTelemetryHeader);
+                        if (!string.IsNullOrEmpty(remainder))
+                        {
+                            writer.Write(remainder);
+                        }
                     }
-                    Print("[TLM] Header repaired at {0}", _telemetryPath);
+
+                    Print(
+                        "[TLM] Telemetry header repaired: \"{0}\" -> \"{1}\"",
+                        header,
+                        ExpectedTelemetryHeader);
                 }
             }
         }
