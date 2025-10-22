@@ -45,7 +45,7 @@ jobs:
           }
 
       - name: Verify proof files
-        shell: pwsh
+        shell: powershell
         run: |
           if (!(Test-Path "path_issues/ctrader_connect_proof/connection_ok.json")) { throw "Missing connection_ok.json" }
           if (!(Test-Path "path_issues/ctrader_connect_proof/l1_sample.csv"))     { throw "Missing l1_sample.csv" }
@@ -63,6 +63,9 @@ jobs:
     runs-on: [self-hosted, windows]
     needs: preflight-ctrader
     timeout-minutes: 1500
+    defaults:
+      run:
+        shell: powershell
     env:
       BOTG_MODE: paper
       SIM_ENABLED: false
@@ -75,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check BOM (defensive)
-        shell: pwsh
+        shell: powershell
         run: |
           $wf = ".github/workflows/gate24h.yml"
           $bytes = [IO.File]::ReadAllBytes($wf)
@@ -213,14 +216,14 @@ jobs:
 
       - name: Install Python dependencies
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: pwsh
+        shell: powershell
         run: |
           python -V
           pip install -r scripts/requirements.txt
 
       - name: Postrun collect (L1 slippage)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: pwsh
+        shell: powershell
         run: |
           $artDir = Join-Path $env:RUNNER_TEMP 'postrun'
           ./scripts/postrun_collect.ps1 -RunDir "$env:RUN_DIR" -ArtifactsDir "$artDir" -WithL1
