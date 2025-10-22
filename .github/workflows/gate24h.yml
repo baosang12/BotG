@@ -221,6 +221,68 @@ jobs:
           python -V
           pip install -r scripts/requirements.txt
 
+      - name: Preflight connectivity (retry+p95 for verify, strict for main)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          $src = "${{ github.event.inputs.source }}"
+          $isVerify = ($src -eq "verify-l1")
+          $seconds = if ($isVerify) { 90 } else { 60 }
+          $maxTries = if ($isVerify) { 3 } else { 1 }
+          $ok = $false
+          $last = $null
+
+          for ($i = 1; $i -le $maxTries -and -not $ok; $i++) {
+            Write-Host "== Probe attempt $i/$maxTries (window ${seconds}s) =="
+            $OUT = Join-Path $env:RUNNER_TEMP ("probe_" + $i)
+            New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+
+            Start-Sleep -Seconds 10
+
+            powershell -File scripts\preflight\ctrader_connect.ps1 -Seconds $seconds -OutDir $OUT -SummaryOut "$OUT\summary.json"
+
+            if (Test-Path "$OUT\summary.json") {
+              $s = Get-Content "$OUT\summary.json" -Raw | ConvertFrom-Json
+              $last = $s
+              if (-not $s.PSObject.Properties.Name.Contains('p95_last_age_sec') -and $s.last_age_sec_series) {
+                $arr = @($s.last_age_sec_series) | ForEach-Object { [double]$_ } | Sort-Object
+                if ($arr.Count -gt 0) {
+                  $idx = [math]::Ceiling([double]$arr.Count * 0.95) - 1
+                  if ($idx -lt 0) { $idx = 0 }
+                  $p95 = $arr[$idx]
+                } else {
+                  $p95 = [double]::PositiveInfinity
+                }
+              } else {
+                $p95 = [double]$s.p95_last_age_sec
+              }
+
+              Write-Host ("active_ratio={0}  tick_rate_avg={1}  p95_last_age={2}s  last_age={3}s" -f $s.active_ratio, $s.tick_rate_avg, $p95, $s.last_age_sec)
+              if ($isVerify) {
+                if (($p95 -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true }
+              } else {
+                if (($s.last_age_sec -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true }
+              }
+            } elseif (Test-Path "$OUT\connection_ok.json") {
+              $c = Get-Content "$OUT\connection_ok.json" -Raw | ConvertFrom-Json
+              $last = $c
+              if ($isVerify) {
+                if (($c.p95_last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true }
+              } else {
+                if (($c.last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true }
+              }
+            } else {
+              Write-Host "Preflight summary not found; will retry if allowed."
+            }
+
+            if (-not $ok -and $i -lt $maxTries) { Start-Sleep -Seconds 30 }
+          }
+
+          if (-not $ok) {
+            if ($last) { Write-Host ("Last summary: " + ($last | ConvertTo-Json -Depth 5)) }
+            throw "Preflight connectivity failed (verify=$isVerify)."
+          }
+
       - name: Postrun collect (L1 slippage)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
