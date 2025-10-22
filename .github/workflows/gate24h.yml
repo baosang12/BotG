@@ -207,19 +207,49 @@ jobs:
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
-      - name: Setup Python 3.11
+      # Ưu tiên actions/setup-python; cho phép fail để fallback portable
+      - name: Setup Python 3.11 (prefer actions/setup-python)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        id: setup_py
+        continue-on-error: true
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Python dependencies
+      # Nếu setup-python không để lại 'python' hợp lệ, fallback micromamba portable (no registry)
+      - name: Ensure Python available (fallback to micromamba portable)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
         run: |
-          python -V
-          pip install -r scripts/requirements.txt
+          $ErrorActionPreference='Stop'
+          $py = $null
+          try { $py = (Get-Command python -ErrorAction Stop).Path } catch { $py = $null }
+          if(-not $py){
+            Write-Host "No system python found. Using micromamba portable fallback."
+            $root = "$env:RUNNER_TEMP\mamba"; $env:MAMBA_ROOT_PREFIX = $root
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            $mm = "$env:RUNNER_TEMP\micromamba.exe"
+            Invoke-WebRequest -Uri https://micro.mamba.pm/api/micromamba/win-64/latest -OutFile $mm
+            & $mm create -y -p "$env:RUNNER_TEMP\pyenv" python=3.11 pandas numpy python-dateutil
+            if($LASTEXITCODE -ne 0){ throw "micromamba create failed" }
+            $py = "$env:RUNNER_TEMP\pyenv\python.exe"
+            # Persist PATH cho các step sau
+            ($py | Split-Path)        | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+            ("$((Split-Path $py))\Scripts") | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+          }
+          "PYTHON_EXE=$py" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          & $py -V
+
+      - name: Install Python deps (pip if available; micromamba already has libs)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        run: |
+          $py = $env:PYTHON_EXE
+          & $py -m pip --version *> $null
+          if($LASTEXITCODE -eq 0){
+            & $py -m pip install -r scripts/requirements.txt
+          } else {
+            Write-Host "pip not found; dependencies satisfied by micromamba env."
+          }
 
       - name: Preflight connectivity (retry+p95 for verify, strict for main)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
