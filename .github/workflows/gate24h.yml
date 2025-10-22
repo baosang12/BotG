@@ -8,26 +8,26 @@ on:
   workflow_dispatch:
     inputs:
       hours:
-        description: 'Number of hours to run the gate'
+        description: "Number of hours to run the gate"
         required: true
-        default: '24'
+        default: "24"
       source:
-        description: 'Trigger source label'
+        description: "Trigger source label"
         required: false
-        default: 'manual'
+        default: "manual"
       mode:
-        description: 'Execution mode (forced to paper at runtime)'
+        description: "Execution mode (forced to paper at runtime)"
         required: false
-        default: 'paper'
+        default: "paper"
       force_misconfig:
-        description: 'Force a misconfiguration to trip the guard (for proof)'
+        description: "Force a misconfiguration to trip the guard (for proof)"
         required: false
-        default: 'false'
+        default: "false"
 
 jobs:
   preflight-ctrader:
     name: Preflight - cTrader connectivity (60s)
-    runs-on: [self-hosted, Windows]
+    runs-on: [self-hosted, windows]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +60,7 @@ jobs:
           if-no-files-found: error
 
   gate24h:
-    runs-on: [self-hosted, Windows]
+    runs-on: [self-hosted, windows]
     needs: preflight-ctrader
     timeout-minutes: 1500
     env:
@@ -73,6 +73,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check BOM (defensive)
+        shell: pwsh
+        run: |
+          $wf = ".github/workflows/gate24h.yml"
+          $bytes = [IO.File]::ReadAllBytes($wf)
+          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            throw "BOM detected in $wf. Please save without BOM."
+          }
 
       - name: Assert-PaperMode
         id: assert
@@ -196,31 +205,33 @@ jobs:
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
       - name: Setup Python 3.11
-        id: setup_py
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         uses: actions/setup-python@v5
-        continue-on-error: true
         with:
           python-version: '3.11'
+          cache: 'pip'
 
-      - name: Fallback - Install portable Python 3.11 (no registry)
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
-        shell: powershell
-        run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
-
-      - name: Verify Python availability
+      - name: Install Python dependencies
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
+        shell: pwsh
         run: |
-          $v = (python --version) 2>$null
-          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
-          Write-Host "Using: $v"
+          python -V
+          pip install -r scripts/requirements.txt
 
-      - name: Postrun collect and validate
+      - name: Postrun collect (L1 slippage)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        shell: powershell
+        shell: pwsh
         run: |
-          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR"
+          $artDir = Join-Path $env:RUNNER_TEMP 'postrun'
+          ./scripts/postrun_collect.ps1 -RunDir "$env:RUN_DIR" -ArtifactsDir "$artDir" -WithL1
+
+      - name: Upload postrun artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: postrun_reports
+          path: ${{ runner.temp }}\postrun\
+          if-no-files-found: error
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
