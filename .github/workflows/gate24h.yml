@@ -262,15 +262,17 @@ jobs:
           & $py $pyfile
 
       # (TÙY CHỌN) Nếu vẫn muốn pip extras từ requirements.txt
-      - name: Install extra Python deps (pip optional)
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        run: |
-          $py = $env:PYTHON_EXE
-          & $py -m pip --version *> $null
-          if($LASTEXITCODE -eq 0 -and (Test-Path "scripts/requirements.txt")){
-            & $py -m pip install -r scripts/requirements.txt
-          } else { Write-Host "pip not found or no extra requirements — skipped." }
-
+    - name: Install extra Python deps (pip optional)
+    shell: powershell
+    run: |
+      $ErrorActionPreference='Stop'
+      $py = $env:PYTHON_EXE
+      & "$py" -m pip --version *> $null
+      if ($LASTEXITCODE -eq 0 -and (Test-Path "scripts/requirements.txt")) {
+        & "$py" -m pip install -r scripts/requirements.txt
+      } else {
+        Write-Host "pip not found or no extra requirements -> skipped."
+      }
       - name: Preflight connectivity (retry+p95 for verify, strict for main)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
