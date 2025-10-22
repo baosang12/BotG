@@ -213,56 +213,63 @@ jobs:
         run: |
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-      - name: Setup portable Python 3.11 (micromamba)
+      - name: Setup portable Python 3.11 (micromamba, conda-forge)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         run: |
-          $ErrorActionPreference='Stop'
-          $root = "$env:RUNNER_TEMP\mamba"
-          $env:MAMBA_ROOT_PREFIX = $root
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          $mm = "$env:RUNNER_TEMP\micromamba.exe"
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
 
-          # Try official CDN, then GitHub mirror
+          # Folders & env
+          $root = Join-Path $env:RUNNER_TEMP 'mamba'
+          $env:MAMBA_ROOT_PREFIX = $root
+          $env:CONDA_PKGS_DIRS = Join-Path $env:RUNNER_TEMP 'condapkgs'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:CONDA_PKGS_DIRS | Out-Null
+
+          # Download micromamba (2 mirrors)
+          $mm = Join-Path $env:RUNNER_TEMP 'micromamba.exe'
           $urls = @(
             'https://micro.mamba.pm/api/micromamba/win-64/latest',
             'https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64'
           )
           $ok = $false
-          foreach($u in $urls){
+          foreach ($u in $urls) {
             try {
-              Invoke-WebRequest -Uri $u -OutFile $mm -UseBasicParsing -TimeoutSec 120
-              if((Get-Item $mm).Length -gt 1000000){ $ok=$true; break }
+              curl.exe -L $u -o $mm
+              if ((Test-Path $mm) -and ((Get-Item $mm).Length -gt 1000000)) { $ok = $true; break }
             } catch {
-              Write-Host "Download failed from $u — will try next mirror."
+              Write-Host "Download failed from $u — try next mirror."
             }
           }
-          if(-not $ok){ throw "Failed to download micromamba from all mirrors." }
+          if (-not $ok) { throw "Failed to download micromamba from all mirrors." }
 
-          $envDir = "$env:RUNNER_TEMP\pyenv311"
-          & $mm create -y -p $envDir python=3.11 pandas numpy python-dateutil
-          if($LASTEXITCODE -ne 0){ throw "micromamba create failed ($LASTEXITCODE)" }
+          # Create env with python + libs (conda-forge)
+          & $mm --version
+          $envDir = Join-Path $env:RUNNER_TEMP 'pyenv311'
+          & $mm create -y -p $envDir -c conda-forge python=3.11 pandas numpy python-dateutil pip
+          if ($LASTEXITCODE -ne 0) { throw "micromamba create failed: $LASTEXITCODE" }
 
-          $py = Join-Path $envDir 'python.exe'
-          if(-not (Test-Path $py)){ throw "python.exe not found in $envDir" }
+          # Export PATH & env
+          $pyPath = Join-Path $envDir 'python.exe'
+          if (-not (Test-Path $pyPath)) { throw "python.exe not found in $envDir" }
+          "PYTHON_EXE=$pyPath" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          $envDir | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+          (Join-Path $envDir 'Scripts') | Out-File -Append -Encoding ascii $env:GITHUB_PATH
+          $env:Path = "$envDir;$envDir\Scripts;" + $env:Path
 
-          # Export PATH & env for subsequent steps
-          ($envDir) | Out-File -Append -Encoding ascii $env:GITHUB_PATH
-          (Join-Path $envDir Scripts) | Out-File -Append -Encoding ascii $env:GITHUB_PATH
-          "PYTHON_EXE=$py" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          # Sanity check
+          python -V
+          python -c "import sys, importlib; [importlib.import_module(m) for m in ('pandas','numpy','dateutil')]; print('OK: core libs present', sys.version)"
 
-          & $py -V
-          & $py -c "import pandas, numpy, dateutil, sys; print('OK: core libs present', sys.version)"
-
-      - name: Install extra Python deps (optional)
+      # (TÙY CHỌN) Nếu vẫn muốn pip extras từ requirements.txt
+      - name: Install extra Python deps (pip optional)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         run: |
           $py = $env:PYTHON_EXE
           & $py -m pip --version *> $null
           if($LASTEXITCODE -eq 0 -and (Test-Path "scripts/requirements.txt")){
             & $py -m pip install -r scripts/requirements.txt
-          } else {
-            Write-Host "pip not found or no extra requirements — skipped."
-          }
+          } else { Write-Host "pip not found or no extra requirements — skipped." }
 
       - name: Preflight connectivity (retry+p95 for verify, strict for main)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
