@@ -213,52 +213,53 @@ jobs:
         run: |
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
       - name: Setup portable Python 3.11 (micromamba only)
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $ProgressPreference = 'SilentlyContinue'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-          # Folders & env
-          $root = Join-Path $env:RUNNER_TEMP 'mamba'
-          $env:MAMBA_ROOT_PREFIX = $root
-          $env:CONDA_PKGS_DIRS = Join-Path $env:RUNNER_TEMP 'condapkgs'
-          New-Item -ItemType Directory -Force -Path $root | Out-Null
-          New-Item -ItemType Directory -Force -Path $env:CONDA_PKGS_DIRS | Out-Null
-
-          # Download micromamba (2 mirrors)
-          $mm = Join-Path $env:RUNNER_TEMP 'micromamba.exe'
-          $urls = @(
-            'https://micro.mamba.pm/api/micromamba/win-64/latest',
-            'https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64'
-          )
-          $ok = $false
-          foreach ($u in $urls) {
-            try {
-              curl.exe -L $u -o $mm
-              if ((Test-Path $mm) -and ((Get-Item $mm).Length -gt 1000000)) { $ok = $true; break }
-            } catch {
-              Write-Host "Download failed from $u — try next mirror."
+          $tmp = "$env:RUNNER_TEMP"
+          $mm = Join-Path $tmp 'micromamba.exe'
+          if (-not (Test-Path $mm)) {
+            $urls = @(
+              'https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64.exe',
+              'https://micro.mamba.pm/api/micromamba/win-64/latest'
+            )
+            foreach ($u in $urls) {
+              try {
+                Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $mm -TimeoutSec 90
+                if ((Test-Path $mm) -and ((Get-Item $mm).Length -gt 0)) { break }
+              } catch {
+                Remove-Item -ErrorAction SilentlyContinue $mm
+              }
             }
           }
-          if (-not $ok) { throw "Failed to download micromamba from all mirrors." }
+          if (-not (Test-Path $mm)) { throw "micromamba download failed" }
 
-          # Create env with python + libs (conda-forge)
-          & $mm --version
-          $envDir = Join-Path $env:RUNNER_TEMP 'pyenv311'
-          & $mm create -y -p $envDir -c conda-forge python=3.11 pandas numpy python-dateutil pip
-          if ($LASTEXITCODE -ne 0) { throw "micromamba create failed: $LASTEXITCODE" }
+          $prefix = Join-Path $tmp 'pyenv311'
+          & $mm create -y -p $prefix -c conda-forge python=3.11 pandas numpy python-dateutil pip | Write-Output
 
-          # Export PATH & env
-          $pyPath = Join-Path $envDir 'python.exe'
-          if (-not (Test-Path $pyPath)) { throw "python.exe not found in $envDir" }
-          "PYTHON_EXE=$pyPath" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
-          $envDir | Out-File -Append -Encoding ascii $env:GITHUB_PATH
-          (Join-Path $envDir 'Scripts') | Out-File -Append -Encoding ascii $env:GITHUB_PATH
-          $env:Path = "$envDir;$envDir\Scripts;" + $env:Path
+          $py = Join-Path $prefix 'python.exe'
+          if (-not (Test-Path $py)) { throw "python.exe not found in $prefix" }
 
-          # Sanity check
-          python -V
-          python -c "import sys, importlib; [importlib.import_module(m) for m in ('pandas','numpy','dateutil')]; print('OK: core libs present', sys.version)"
+          Add-Content -Path $env:GITHUB_ENV -Value "PYTHON_EXE=$py"
+          @(
+            $prefix
+            (Join-Path $prefix 'Scripts')
+            (Join-Path $prefix 'Library\bin')
+            (Join-Path $prefix 'bin')
+          ) | ForEach-Object { Add-Content -Path $env:GITHUB_PATH -Value $_ }
+
+          $checkLines = @(
+            'import sys, importlib'
+            'for m in ("pandas","numpy","dateutil"):'
+            '    importlib.import_module(m)'
+            'print("OK: core libs present", sys.version)'
+          )
+          $pyfile = Join-Path $tmp 'py_check.py'
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllLines($pyfile, $checkLines, $utf8NoBom)
+          & $py $pyfile
 
       # (TÙY CHỌN) Nếu vẫn muốn pip extras từ requirements.txt
       - name: Install extra Python deps (pip optional)
