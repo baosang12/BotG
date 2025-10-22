@@ -212,8 +212,7 @@ jobs:
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         run: |
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-      - name: Setup portable Python 3.11 (micromamba, conda-forge)
+      - name: Setup portable Python 3.11 (micromamba only)
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         run: |
           $ErrorActionPreference = 'Stop'
