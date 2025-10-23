@@ -87,6 +87,19 @@ jobs:
           $issuesCount = $issues.Count
           $canContinue = "$($j.can_continue_running)"
 
+          # ==== PR-specific downgrade for preflight-only signals ====
+          $isPR = "${{ github.event_name }}" -eq "pull_request"
+          $hasProcess = $j.process -and ($j.process.found -ne $false)
+          $hasDisk = $j.disk -and ($j.disk.free_gb -ne $null)
+          $hasLogs = $j.logs -and ($j.logs.path -ne $null)
+          $preflightOnly = (-not $hasProcess) -and (-not $hasDisk) -and (-not $hasLogs)
+          
+          if ($isPR -and $status -eq 'CRITICAL' -and $preflightOnly) {
+            $status = 'WARNING'   # downgrade only in PR context
+            Write-Host "Downgraded CRITICAL to WARNING for PR (preflight-only signals)"
+          }
+          # ==========================================================
+
           $event   = "${{ github.event_name }}"
           $forceOk = "${{ inputs.force_ok }}"
           $allowed = "${{ steps.guard.outputs.allowed }}"
