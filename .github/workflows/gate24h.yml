@@ -24,6 +24,10 @@ on:
         required: false
         default: "false"
 
+concurrency:
+  group: gate24h-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   preflight-ctrader:
     name: Preflight - cTrader connectivity (60s)
