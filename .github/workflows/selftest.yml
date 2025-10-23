@@ -83,6 +83,7 @@ jobs:
           # 2) Initial status
           $status = $j.STATUS
           $isPR   = $env:GITHUB_EVENT_NAME -eq 'pull_request'
+          $issuesCount = if ($j.issues) { @($j.issues).Count } else { 0 }
 
           # 3) Identify "preflight-only": no process/disk/logs (typical on PR)
           $hasProcess = ($null -ne $j.process) -and ($j.process.found -eq $true)
