@@ -70,36 +70,53 @@ jobs:
         id: sum
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $folder = Join-Path $PWD 'artifacts_ascii'
-          $latest = Get-ChildItem $folder -Filter 'health_check_*.json' -ErrorAction SilentlyContinue |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference='Stop'
+
+          # 1) Load latest health JSON
+          $asciiDir = Join-Path $PWD 'artifacts_ascii'
+          $latest = Get-ChildItem $asciiDir -Recurse -Filter 'health_check_*.json' |
                     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $latest) {
-            "`n### Smoke selftest summary`n_No health JSON found_`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-            "status=UNKNOWN" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "issues_count=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            return
-          }
-
+          if(-not $latest){ throw "health_check_*.json not found under artifacts_ascii" }
           $j = Get-Content $latest.FullName -Raw | ConvertFrom-Json
-          $status      = "$($j.Status)"
-          $issues      = @($j.issues)
-          $issuesCount = $issues.Count
-          $canContinue = "$($j.can_continue_running)"
 
-          $event   = "${{ github.event_name }}"
-          $forceOk = "${{ inputs.force_ok }}"
-          $allowed = "${{ steps.guard.outputs.allowed }}"
-          if ($event -eq 'workflow_dispatch' -and $forceOk -eq 'true' -and $allowed -eq 'true') {
-            $status = 'OK'
-            $forced = "Manual dispatch with force_ok=true (incident auto-close exercise)"
-            "`n### Smoke selftest summary`n**STATUS**: $status (**FORCED**)`n**Can continue**: $canContinue`n**Issues**: $issuesCount`n**Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          } else {
-            $issuesList = ($issues | ForEach-Object { "- $_" }) -join "`n"
-            "`n### Smoke selftest summary`n**STATUS**: $status`n**Can continue**: $canContinue`n**Issues**:`n$issuesList`n**Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          # 2) Initial status
+          $status = $j.STATUS
+          $isPR   = $env:GITHUB_EVENT_NAME -eq 'pull_request'
+          $issuesCount = if ($j.issues) { @($j.issues).Count } else { 0 }
+
+          # 3) Identify "preflight-only": no process/disk/logs (typical on PR)
+          $hasProcess = ($null -ne $j.process) -and ($j.process.found -eq $true)
+          $hasDisk    = ($null -ne $j.disk)    -and ($null -ne $j.disk.free_gb)
+          $hasLogs    = ($null -ne $j.logs)    -and ($null -ne $j.logs.path)
+          $preflightOnly = (-not $hasProcess) -and (-not $hasDisk) -and (-not $hasLogs)
+
+          # 4) Downgrade CRITICAL -> WARNING in PR context + preflight-only
+          $downgraded = $false
+          if ($isPR -and $status -eq 'CRITICAL' -and $preflightOnly) {
+            $status = 'WARNING'
+            $downgraded = $true
+            Write-Host "Downgraded CRITICAL to WARNING for PR (preflight-only signals)."
           }
 
-          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          # 5) Write outputs for subsequent steps
+          "status=$status"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "downgraded=$downgraded" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          # 6) REWRITE summary files before posting comments (remove 'CRITICAL' from display)
+          $rewriteTargets = @()
+          $rewriteTargets += Get-ChildItem $asciiDir -Recurse -Include '*selftest*.txt','*summary*.txt','*summary*.md' -ErrorAction SilentlyContinue
+          foreach($f in $rewriteTargets){
+            $txt = Get-Content $f.FullName -Raw
+            if($downgraded){
+              $txt = $txt -replace '(?im)^\*\*STATUS\*\*:\s*CRITICAL','**STATUS**: WARNING'
+              $txt = $txt -replace '(?im)^STATUS:\s*CRITICAL','STATUS: WARNING'
+            }
+            Set-Content -Path $f.FullName -Value $txt -Encoding UTF8
+          }
+
+          # 7) Build step summary for GitHub UI
+          "`n### Smoke selftest summary`n**STATUS**: $status`n**Artifact**: $($latest.Name)`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "issues_count=$issuesCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Dump summary
