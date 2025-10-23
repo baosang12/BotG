@@ -5,8 +5,6 @@ defaults:
 name: Gate24h paper run
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       hours:
@@ -30,6 +28,8 @@ jobs:
   preflight-ctrader:
     name: Preflight - cTrader connectivity (60s)
     runs-on: [self-hosted, windows]
+    # Safety guard: skip on pull_request even if trigger accidentally re-added
+    if: github.event_name != 'pull_request'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +64,8 @@ jobs:
   gate24h:
     runs-on: [self-hosted, windows]
     needs: preflight-ctrader
+    # Safety guard: skip on pull_request even if trigger accidentally re-added
+    if: github.event_name != 'pull_request'
     timeout-minutes: 1500
     defaults:
       run:
