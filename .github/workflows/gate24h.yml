@@ -277,12 +277,17 @@ jobs:
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
           $src = "${{ github.event.inputs.source }}"
           $isVerify = ($src -eq "verify-l1")
           $seconds = if ($isVerify) { 90 } else { 60 }
           $maxTries = if ($isVerify) { 3 } else { 1 }
           $ok = $false
           $last = $null
+          $successOut = $null
+          $proofDir = Join-Path $env:RUNNER_TEMP 'connect_proof'
+          New-Item -ItemType Directory -Force -Path $proofDir | Out-Null
 
           for ($i = 1; $i -le $maxTries -and -not $ok; $i++) {
             Write-Host "== Probe attempt $i/$maxTries (window ${seconds}s) =="
@@ -311,17 +316,17 @@ jobs:
 
               Write-Host ("active_ratio={0}  tick_rate_avg={1}  p95_last_age={2}s  last_age={3}s" -f $s.active_ratio, $s.tick_rate_avg, $p95, $s.last_age_sec)
               if ($isVerify) {
-                if (($p95 -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true }
+                if (($p95 -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
               } else {
-                if (($s.last_age_sec -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true }
+                if (($s.last_age_sec -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
               }
             } elseif (Test-Path "$OUT\connection_ok.json") {
               $c = Get-Content "$OUT\connection_ok.json" -Raw | ConvertFrom-Json
               $last = $c
               if ($isVerify) {
-                if (($c.p95_last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true }
+                if (($c.p95_last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
               } else {
-                if (($c.last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true }
+                if (($c.last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
               }
             } else {
               Write-Host "Preflight summary not found; will retry if allowed."
@@ -335,19 +340,95 @@ jobs:
             throw "Preflight connectivity failed (verify=$isVerify)."
           }
 
-      - name: Postrun collect (L1 slippage)
+          if ($successOut) {
+            $files = @('connection_ok.json','l1_sample.csv','summary.json')
+            foreach ($name in $files) {
+              $candidate = Join-Path $successOut $name
+              if (Test-Path $candidate) {
+                Copy-Item -LiteralPath $candidate -Destination (Join-Path $proofDir $name) -Force
+              }
+            }
+            if (Test-Path (Join-Path $proofDir 'connection_ok.json')) {
+              "CONNECT_PROOF_DIR=$proofDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
+            }
+          }
+
+      - name: Verify connectivity proof
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
-          $artDir = Join-Path $env:RUNNER_TEMP 'postrun'
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CONNECT_PROOF_DIR) { throw 'CONNECT_PROOF_DIR not set' }
+          $required = @('connection_ok.json','l1_sample.csv')
+          foreach ($name in $required) {
+            $target = Join-Path $env:CONNECT_PROOF_DIR $name
+            if (!(Test-Path -LiteralPath $target)) { throw "missing $target" }
+            Get-Item -LiteralPath $target | Select-Object FullName,Length
+          }
+
+      - name: Upload preflight connectivity proof
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctrader-connect-proof
+          path: |
+            ${{ runner.temp }}\connect_proof\connection_ok.json
+            ${{ runner.temp }}\connect_proof\l1_sample.csv
+          if-no-files-found: error
+
+      - name: Prepare L1 output dir
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'l1'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          "L1_OUT_DIR=$out" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
+
+      - name: Run L1 slippage/fees calc
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $artDir = $env:L1_OUT_DIR
+          if (-not $artDir) { throw 'L1_OUT_DIR not set' }
           ./scripts/postrun_collect.ps1 -RunDir "$env:RUN_DIR" -ArtifactsDir "$artDir" -WithL1
+          if (!(Test-Path -LiteralPath (Join-Path $artDir 'kpi_slippage.json'))) { throw "missing kpi_slippage.json" }
+          if (!(Test-Path -LiteralPath (Join-Path $artDir 'fees_slippage.csv'))) { throw "missing fees_slippage.csv" }
+
+      - name: Verify L1 slippage artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:L1_OUT_DIR) { throw 'L1_OUT_DIR not set' }
+          $kpi = Join-Path $env:L1_OUT_DIR 'kpi_slippage.json'
+          $fees = Join-Path $env:L1_OUT_DIR 'fees_slippage.csv'
+          if (!(Test-Path -LiteralPath $kpi)) { throw "missing $kpi" }
+          if (!(Test-Path -LiteralPath $fees)) { throw "missing $fees" }
+          Get-Item -LiteralPath $kpi | Select-Object FullName,Length
+          Get-Item -LiteralPath $fees | Select-Object FullName,Length
+
+      - name: Upload L1 slippage artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: l1-slippage-fees
+          path: |
+            ${{ runner.temp }}\l1\kpi_slippage.json
+            ${{ runner.temp }}\l1\fees_slippage.csv
+          if-no-files-found: error
 
       - name: Upload postrun artifacts
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: postrun_reports
-          path: ${{ runner.temp }}\postrun\
+          path: ${{ runner.temp }}\l1\
           if-no-files-found: error
 
       - name: Gate2 postrun validation
