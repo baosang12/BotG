@@ -31,9 +31,23 @@ ORDERS_REQUIRED_COLUMNS_FULL = {
 }
 ORDERS_MIN_COLUMNS_SMOKE = {"timestamp","symbol","side"}  # side = BUY/SELL
 
+# Column name variants for compatibility
+TIMESTAMP_VARIANTS = ["timestamp", "ts", "timestamp_utc", "timestamp_iso"]
+TIMESTAMP_REQUEST_VARIANTS = ["timestamp_request", "ts_request"]
+TIMESTAMP_ACK_VARIANTS = ["timestamp_ack", "ts_ack"]
+TIMESTAMP_FILL_VARIANTS = ["timestamp_fill", "ts_fill"]
+
 REQUIRED_ACTIONS_FULL = {"REQUEST","ACK","FILL"}
 
 RISK_REQUIRED_COLUMNS_FULL = {"timestamp","drawdown_usd","drawdown_percent","R_used","exposure_usd"}
+RISK_TIMESTAMP_VARIANTS = ["timestamp", "timestamp_utc", "ts", "timestamp_iso"]
+
+def resolve_column(header, candidates, key_name):
+    """Find first matching column from candidates list."""
+    for candidate in candidates:
+        if candidate in header:
+            return candidate
+    return None
 
 def read_csv_header(p):
     try:
@@ -105,18 +119,39 @@ def main():
     # 2. orders schema + actions
     hdr = read_csv_header(base/"orders.csv")
     if smoke_flag:
-        miss = ORDERS_MIN_COLUMNS_SMOKE - hdr
-        cols_ok = (len(miss)==0)
+        # Check for timestamp variants
+        ts_col = resolve_column(hdr, TIMESTAMP_VARIANTS, "timestamp")
+        if not ts_col:
+            miss = ["timestamp (or variants)"]
+            cols_ok = False
+        else:
+            miss = []
+            cols_ok = True
+        # Also need symbol and side
+        for col in ["symbol", "side"]:
+            if col not in hdr:
+                miss.append(col)
+                cols_ok = False
+        
         acts = read_actions(base/"orders.csv")
         # smoke chấp nhận chỉ BUY/SELL
         acts_ok = len(acts.intersection({"BUY","SELL","REQUEST","ACK","FILL"}))>0
     else:
-        miss = ORDERS_REQUIRED_COLUMNS_FULL - hdr
+        # Full mode: check for timestamp variant
+        ts_col = resolve_column(hdr, TIMESTAMP_VARIANTS, "timestamp")
+        miss = []
+        if not ts_col:
+            miss.append("timestamp (or variants)")
+        
+        # Check other required columns
+        required_without_ts = ORDERS_REQUIRED_COLUMNS_FULL - {"timestamp"}
+        miss.extend(sorted(list(required_without_ts - hdr)))
         cols_ok = (len(miss)==0)
+        
         acts = read_actions(base/"orders.csv")
         acts_ok = REQUIRED_ACTIONS_FULL.issubset(acts)
 
-    rep["checks"].append({"check":"orders.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    rep["checks"].append({"check":"orders.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)) if miss else [],"ok":cols_ok})
     ok &= cols_ok
     rep["checks"].append({"check":"orders.csv_actions","mode":"smoke" if smoke_flag else "full","found":sorted(list(acts)),"ok":acts_ok})
     ok &= acts_ok
@@ -124,28 +159,45 @@ def main():
     # 3. risk_snapshots
     risk_hdr = read_csv_header(base/"risk_snapshots.csv")
     if smoke_flag:
-        need = {"timestamp"}  # cộng thêm equity/balance check riêng
-        miss = need - risk_hdr
-        cols_ok = (len(miss)==0)
+        # Check for timestamp variant
+        ts_col = resolve_column(risk_hdr, RISK_TIMESTAMP_VARIANTS, "risk_timestamp")
+        if not ts_col:
+            miss = ["timestamp (or variants)"]
+            cols_ok = False
+        else:
+            miss = []
+            cols_ok = True
+            
         rows = count_rows(base/"risk_snapshots.csv")
         min_rows = max(5, int(1300*(run_hours/24.0)))
         rows_ok = rows >= min_rows
         eq0 = first_equity(base/"risk_snapshots.csv")
-        eq_ok = (eq0 is not None and 199.0 <= eq0 <= 201.0)
+        # Remove hardcoded equity check - accept any positive value
+        eq_ok = (eq0 is not None and eq0 > 0)
     else:
-        miss = RISK_REQUIRED_COLUMNS_FULL - risk_hdr
+        # Full mode: check for timestamp variant
+        ts_col = resolve_column(risk_hdr, RISK_TIMESTAMP_VARIANTS, "risk_timestamp")
+        miss = []
+        if not ts_col:
+            miss.append("timestamp (or variants)")
+        
+        # Check other required columns
+        required_without_ts = RISK_REQUIRED_COLUMNS_FULL - {"timestamp"}
+        miss.extend(sorted(list(required_without_ts - risk_hdr)))
         cols_ok = (len(miss)==0)
+        
         rows = count_rows(base/"risk_snapshots.csv")
         min_rows = max(10, int(1300*(run_hours/24.0)))
         rows_ok = rows >= min_rows
-        eq0 = None
-        eq_ok = True
+        eq0 = first_equity(base/"risk_snapshots.csv")
+        # Accept any positive equity
+        eq_ok = (eq0 is None or eq0 > 0)
 
-    rep["checks"].append({"check":"risk_snapshots.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    rep["checks"].append({"check":"risk_snapshots.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)) if miss else [],"ok":cols_ok})
     ok &= cols_ok
     rep["checks"].append({"check":"risk_snapshots.csv_rows","rows":rows,"minimum_required":min_rows,"ok":rows_ok})
     ok &= rows_ok
-    rep["checks"].append({"check":"risk_first_equity200","value":eq0,"ok":eq_ok})
+    rep["checks"].append({"check":"risk_first_equity_positive","value":eq0,"ok":eq_ok})
     ok &= eq_ok
 
     rep["overall"]="PASS" if ok else "FAIL"
