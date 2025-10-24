@@ -4,7 +4,9 @@ param(
   [switch]$WithL1,
   [string]$ArtifactsDir = "$env:RUNNER_TEMP\postrun",
   [double]$RunHours = 24,
-  [switch]$SmokeLite
+  [switch]$SmokeLite,
+  [ValidateSet('strict','smoke')]
+  [string]$ValidateMode = 'strict'
 )
 
 Set-StrictMode -Version Latest
@@ -88,12 +90,7 @@ $fifoOut = Join-Path $artifactsPath 'closed_trades_fifo_reconstructed.csv'
 Invoke-PythonCommand @('-X','utf8','./path_issues/reconstruct_fifo.py','--orders',(Join-Path $artifactsPath 'orders.csv'),'--closes',(Join-Path $artifactsPath 'trade_closes.log'),'--meta',(Join-Path $artifactsPath 'run_metadata.json'),'--out',$fifoOut) "FIFO reconstruction failed"
 Copy-Item -LiteralPath $fifoOut -Destination (Join-Path $rd 'closed_trades_fifo_reconstructed.csv') -Force
 
-Write-Host "[2/5] Validate artifacts..." -ForegroundColor Cyan
-$validateArgs = @('-X','utf8','./path_issues/validate_artifacts.py','--dir',$artifactsPath,'--run-hours',$RunHours)
-if ($SmokeLite) { $validateArgs += '--smoke-lite' }
-Invoke-PythonCommand $validateArgs "Artifact validation failed"
-
-Write-Host "[3/5] Ensure analysis_summary_stats.json..." -ForegroundColor Cyan
+Write-Host "[2/5] Ensure analysis_summary_stats.json..." -ForegroundColor Cyan
 $stats = Join-Path $artifactsPath 'analysis_summary_stats.json'
 if (-not (Test-Path -LiteralPath $stats)) {
   $tradeLines = (Get-Content -LiteralPath $fifoOut | Measure-Object -Line).Lines
@@ -103,12 +100,25 @@ if (-not (Test-Path -LiteralPath $stats)) {
 Copy-Item -LiteralPath $stats -Destination (Join-Path $rd 'analysis_summary_stats.json') -Force
 
 if ($WithL1) {
-  Write-Host "[4/5] Compute fees & slippage..." -ForegroundColor Cyan
+  Write-Host "[3/5] Compute fees & slippage..." -ForegroundColor Cyan
   $feesOut = Join-Path $artifactsPath 'fees_slippage.csv'
   $kpiOut = Join-Path $artifactsPath 'kpi_slippage.json'
   Invoke-PythonCommand @('-X','utf8','scripts/analyzers/join_l1_fills.py','--orders',(Join-Path $artifactsPath 'orders.csv'),'--l1',(Join-Path $artifactsPath 'l1_stream.csv'),'--out-fees',$feesOut,'--out-kpi',$kpiOut) "Slippage analyzer failed"
   Copy-Item -LiteralPath $feesOut -Destination (Join-Path $rd 'fees_slippage.csv') -Force
   Copy-Item -LiteralPath $kpiOut -Destination (Join-Path $rd 'kpi_slippage.json') -Force
+}
+
+Write-Host "[4/5] Validate artifacts..." -ForegroundColor Cyan
+$validateArgs = @('-X','utf8','./path_issues/validate_artifacts.py','--dir',$artifactsPath,'--run-hours',$RunHours)
+if ($SmokeLite) { $validateArgs += '--smoke-lite' }
+try {
+  Invoke-PythonCommand $validateArgs "Artifact validation failed"
+} catch {
+  if ($ValidateMode -eq 'strict') {
+    throw
+  } else {
+    Write-Warning "[validator] failed in smoke mode; continuing - $_"
+  }
 }
 
 Write-Host "[5/5] Zip artifacts..." -ForegroundColor Cyan
