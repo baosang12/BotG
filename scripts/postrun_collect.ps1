@@ -19,11 +19,25 @@ if (-not $RunDir) {
   }
 }
 
+# === Normalize RUN_DIR safely ===
 $rd = (Resolve-Path -LiteralPath $RunDir -ErrorAction Stop).Path
-$rd = $rd.TrimEnd('\\','/')
+# Trim trailing separators and spaces using char[]
+$rd = $rd.TrimEnd([char[]]@(
+    [IO.Path]::DirectorySeparatorChar,    # '\'
+    [IO.Path]::AltDirectorySeparatorChar, # '/'
+    ' '                                    # trailing spaces
+))
 
 $artifactsDirInfo = New-Item -ItemType Directory -Force -Path $ArtifactsDir
 $artifactsPath = (Resolve-Path -LiteralPath $artifactsDirInfo.FullName).Path
+# Normalize artifacts path too
+$artifactsPath = $artifactsPath.TrimEnd([char[]]@(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar,
+    ' '
+))
+
+Write-Host "[postrun] RUN_DIR=$rd -> ArtifactsDir=$artifactsPath"
 
 function Get-RequiredFile([string]$basePath, [string]$name) {
   $candidate = Join-Path $basePath $name
