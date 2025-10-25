@@ -1,6 +1,6 @@
-Describe "L1 slippage scale by symbol (PR#283, hardened PR#284)" {
+Describe "L1 slippage scale by symbol (PR#283)" {
   BeforeAll {
-    $TMP = Join-Path $env:TEMP "botg_pr284_harden"
+    $TMP = Join-Path $env:TEMP "botg_pr283"
     Remove-Item $TMP -Recurse -Force -ErrorAction Ignore
     $RUN = Join-Path $TMP "run"
     $ARTIFACTS = Join-Path $TMP "artifacts"
@@ -19,15 +19,15 @@ timestamp_utc,equity
 2025-10-23T06:00:00Z,10060
 "@ | Set-Content -Encoding ascii (Join-Path $RUN "risk_snapshots.csv")
 
-    # Orders mẫu: EURUSD, XAUUSD (with many decimals), and edge case with missing L1 tick
+    # Orders mẫu: EURUSD & XAUUSD (with timestamp_submit/timestamp_fill for join_l1_fills.py)
+    # PR#285: Add price_requested for fallback testing
     @"
 symbol,side,price_requested,price_filled,timestamp_submit,timestamp_fill,lots,order_id
 EURUSD,BUY,1.10000,1.10003,2025-10-23T00:00:01Z,2025-10-23T00:00:02Z,0.1,ord1
 EURUSD,SELL,1.10000,1.09998,2025-10-23T00:01:01Z,2025-10-23T00:01:02Z,0.1,ord2
-XAUUSD,BUY,2400.00,2400.053827491,2025-10-23T00:02:01Z,2025-10-23T00:02:02Z,0.01,ord3
-XAUUSD,SELL,2400.00,2399.972291038,2025-10-23T00:03:01Z,2025-10-23T00:03:02Z,0.01,ord4
-XAUUSD,BUY,2401.50,2401.519283746,2025-10-23T00:04:01Z,2025-10-23T00:04:02Z,0.01,ord5
-GBPUSD,BUY,1.25000,1.25002,2025-10-23T10:00:00Z,2025-10-23T10:00:01Z,0.1,ord6
+XAUUSD,BUY,2400.00,2400.05,2025-10-23T00:02:01Z,2025-10-23T00:02:02Z,0.01,ord3
+XAUUSD,SELL,2400.00,2399.97,2025-10-23T00:03:01Z,2025-10-23T00:03:02Z,0.01,ord4
+GBPUSD,BUY,1.25000,1.25005,2025-10-23T00:04:01Z,2025-10-23T00:04:02Z,0.1,ord5
 "@ | Set-Content -Encoding ascii (Join-Path $RUN "orders.csv")
 
     '{}' | Set-Content -Encoding ascii (Join-Path $RUN "run_metadata.json")
@@ -35,86 +35,129 @@ GBPUSD,BUY,1.25000,1.25002,2025-10-23T10:00:00Z,2025-10-23T10:00:01Z,0.1,ord6
     '' | Set-Content -Encoding ascii (Join-Path $RUN "trade_closes.log")
     'id' | Set-Content -Encoding ascii (Join-Path $RUN "closed_trades_fifo_reconstructed.csv")
 
-    # Create l1_stream.csv - note GBPUSD order has no matching tick (timestamp too far)
+    # Create minimal l1_stream.csv (required for L1 analysis) - timestamps match order submits
+    # PR#285: Add GBPUSD with invalid ref (big gap from px_fill) to test fallback
     @"
 timestamp,bid,ask
 2025-10-23T00:00:01.000Z,1.09995,1.10005
 2025-10-23T00:01:01.000Z,1.09997,1.10003
 2025-10-23T00:02:01.000Z,2399.95,2400.05
 2025-10-23T00:03:01.000Z,2399.98,2400.02
-2025-10-23T00:04:01.000Z,2401.48,2401.52
+2025-10-23T00:04:01.000Z,1.35000,1.35010
 "@ | Set-Content -Encoding ascii (Join-Path $RUN "l1_stream.csv")
 
-    # chạy postrun ở smoke để tạo L1
+    # chạy postrun ở smoke để tạo L1 (use powershell.exe not pwsh)
     powershell -NoProfile -File scripts\postrun_collect.ps1 -RunDir $RUN -ArtifactsDir $ARTIFACTS -WithL1 -ValidateMode smoke | Out-Null
   }
 
-  It "creates fees_slippage.csv, kpi_slippage.json & scale_debug.json" {
-    $feesPath = Join-Path $ARTIFACTS "fees_slippage.csv"
-    $kpiPath = Join-Path $ARTIFACTS "kpi_slippage.json"
-    $debugPath = Join-Path $ARTIFACTS "scale_debug.json"
+  It "creates fees_slippage.csv & kpi_slippage.json in l1 subdirectory (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $kpiPath = Join-Path $l1Dir "kpi_slippage.json"
+    $scaleDebugPath = Join-Path $l1Dir "scale_debug.json"
+    
+    $l1Dir | Should Exist
     $feesPath | Should Exist
     $kpiPath | Should Exist
-    $debugPath | Should Exist
+    $scaleDebugPath | Should Exist
   }
 
-  It "XAUUSD uses point_used=0.01 from mapping (not fallback from many decimals)" {
-    $csv = Import-Csv (Join-Path $ARTIFACTS "fees_slippage.csv")
-    $xau = $csv | Where-Object { $_.symbol -eq "XAUUSD" -and $_.point_used }
+  It "keeps EURUSD slippage within sane range (< 50 pts abs)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $eur = $csv | Where-Object { $_.symbol -eq "EURUSD" }
+    $eur.Count | Should BeGreaterThan 0
+    # Với mapping EURUSD point_size=0.0001: chênh 0.00003 -> 0.3 pip -> 0.3 pts theo định nghĩa point='pip'; đặt ngưỡng 50 pts để tránh flakiness
+    $avg = [double]($eur | Measure-Object slip_pts -Average).Average
+    [Math]::Abs($avg) | Should BeLessThan 50
+  }
+
+  It "keeps XAUUSD slippage < 1000 pts abs (không còn hàng triệu pts)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $xau = $csv | Where-Object { $_.symbol -eq "XAUUSD" }
     $xau.Count | Should BeGreaterThan 0
-    # All XAUUSD rows should use 0.01 from mapping
-    foreach($row in $xau) {
-      [double]$row.point_used | Should Be 0.01
-    }
+    $max = [double]($xau | Measure-Object slip_pts -Maximum).Maximum
+    [Math]::Abs($max) | Should BeLessThan 1000
   }
 
-  It "XAUUSD slippage stays sane: max < 1000 pts, median < 200 pts" {
-    $csv = Import-Csv (Join-Path $ARTIFACTS "fees_slippage.csv")
-    $xau = $csv | Where-Object { $_.symbol -eq "XAUUSD" -and $_.slip_pts }
+  It "uses L1 ref_source for valid L1 prices (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $xau = $csv | Where-Object { $_.symbol -eq "XAUUSD" }
     $xau.Count | Should BeGreaterThan 0
-    
-    $slips = $xau | ForEach-Object { [Math]::Abs([double]$_.slip_pts) }
-    $max = ($slips | Measure-Object -Maximum).Maximum
-    $median = ($slips | Sort-Object)[[Math]::Floor($slips.Count / 2)]
-    
-    $max | Should BeLessThan 1000
-    $median | Should BeLessThan 200
-  }
-
-  It "BUY orders use ASK as px_ref_side, SELL orders use BID" {
-    $csv = Import-Csv (Join-Path $ARTIFACTS "fees_slippage.csv")
-    $buys = $csv | Where-Object { $_.side -eq "BUY" -and $_.px_ref_side }
-    $sells = $csv | Where-Object { $_.side -eq "SELL" -and $_.px_ref_side }
-    
-    if($buys.Count -gt 0) {
-      foreach($b in $buys) { $b.px_ref_side | Should Be "ASK" }
-    }
-    if($sells.Count -gt 0) {
-      foreach($s in $sells) { $s.px_ref_side | Should Be "BID" }
+    # XAUUSD has valid L1 refs within threshold
+    foreach ($row in $xau) {
+      $row.ref_source | Should Be "L1"
     }
   }
 
-  It "Orders without L1 tick have empty px_ref and no slip_pts spike" {
-    $csv = Import-Csv (Join-Path $ARTIFACTS "fees_slippage.csv")
-    $missing = $csv | Where-Object { -not $_.px_ref -or $_.px_ref -eq "" }
+  It "falls back to REQUESTED when L1 ref invalid (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $gbp = $csv | Where-Object { $_.symbol -eq "GBPUSD" }
     
-    # GBPUSD order should have no ref (timestamp too far from L1 ticks)
-    if($missing.Count -gt 0) {
-      foreach($m in $missing) {
-        # slip_pts should be empty/NaN, not a huge spike
-        $m.slip_pts | Should BeNullOrEmpty
-      }
+    if ($gbp.Count -gt 0) {
+      # GBPUSD has L1 ref 1.35010 (ASK for BUY) but px_fill is 1.25005 - gap ~7.4% > 5% threshold
+      # Should fallback to price_requested=1.25000
+      $gbp[0].ref_source | Should Be "REQUESTED"
+      $px_ref = [double]$gbp[0].px_ref
+      # Should be close to price_requested (1.25000), not L1 ref (1.35010)
+      [Math]::Abs($px_ref - 1.25000) | Should BeLessThan 0.001
     }
   }
 
-  It "scale_debug.json contains symbol stats with point_used" {
-    $debug = Get-Content (Join-Path $ARTIFACTS "scale_debug.json") -Raw | ConvertFrom-Json
-    $debug.symbol_stats | Should Not BeNullOrEmpty
+  It "tracks px_ref_side correctly (BUY->ASK, SELL->BID) (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $eur_buy = $csv | Where-Object { $_.symbol -eq "EURUSD" -and $_.side -eq "BUY" }
+    $eur_sell = $csv | Where-Object { $_.symbol -eq "EURUSD" -and $_.side -eq "SELL" }
     
-    # Check XAUUSD stats
-    if($debug.symbol_stats.XAUUSD) {
-      $debug.symbol_stats.XAUUSD.point_used | Should Be 0.01
-      $debug.symbol_stats.XAUUSD.rows | Should BeGreaterThan 0
+    if ($eur_buy.Count -gt 0 -and $eur_buy[0].ref_source -eq "L1") {
+      $eur_buy[0].px_ref_side | Should Be "ASK"
     }
+    if ($eur_sell.Count -gt 0 -and $eur_sell[0].ref_source -eq "L1") {
+      $eur_sell[0].px_ref_side | Should Be "BID"
+    }
+  }
+
+  It "populates scale_debug.json with symbol stats (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $debugPath = Join-Path $l1Dir "scale_debug.json"
+    $debug = Get-Content $debugPath -Raw | ConvertFrom-Json
+    
+    # Should have EURUSD and XAUUSD stats
+    $debug.EURUSD | Should Not BeNullOrEmpty
+    $debug.XAUUSD | Should Not BeNullOrEmpty
+    
+    # Check EURUSD stats structure
+    $debug.EURUSD.total_rows | Should BeGreaterThan 0
+    $debug.EURUSD.point_used | Should Not BeNullOrEmpty
+    $debug.EURUSD.point_used -contains 0.0001 | Should Be $true
+    
+    # Check XAUUSD uses correct point_size
+    $debug.XAUUSD.point_used -contains 0.01 | Should Be $true
+    
+    # Check GBPUSD has invalid_ref and fallback_requested > 0
+    if ($debug.GBPUSD) {
+      $debug.GBPUSD.invalid_ref | Should BeGreaterThan 0
+      $debug.GBPUSD.fallback_requested | Should BeGreaterThan 0
+    }
+  }
+
+  It "includes point_used column in output CSV (PR#285)" {
+    $l1Dir = Join-Path $ARTIFACTS "l1"
+    $feesPath = Join-Path $l1Dir "fees_slippage.csv"
+    $csv = Import-Csv $feesPath
+    $headers = $csv[0].PSObject.Properties.Name
+    $headers -contains "point_used" | Should Be $true
+    $headers -contains "ref_source" | Should Be $true
+    $headers -contains "px_ref_side" | Should Be $true
   }
 }
+

@@ -101,11 +101,20 @@ Copy-Item -LiteralPath $stats -Destination (Join-Path $rd 'analysis_summary_stat
 
 if ($WithL1) {
   Write-Host "[3/5] Compute fees & slippage..." -ForegroundColor Cyan
-  $feesOut = Join-Path $artifactsPath 'fees_slippage.csv'
-  $kpiOut = Join-Path $artifactsPath 'kpi_slippage.json'
+  $l1Dir = Join-Path $artifactsPath 'l1'
+  if (-not (Test-Path -LiteralPath $l1Dir)) {
+    New-Item -ItemType Directory -Path $l1Dir -Force | Out-Null
+  }
+  $feesOut = Join-Path $l1Dir 'fees_slippage.csv'
+  $kpiOut = Join-Path $l1Dir 'kpi_slippage.json'
   Invoke-PythonCommand @('-X','utf8','scripts/analyzers/join_l1_fills.py','--orders',(Join-Path $artifactsPath 'orders.csv'),'--l1',(Join-Path $artifactsPath 'l1_stream.csv'),'--out-fees',$feesOut,'--out-kpi',$kpiOut) "Slippage analyzer failed"
   Copy-Item -LiteralPath $feesOut -Destination (Join-Path $rd 'fees_slippage.csv') -Force
   Copy-Item -LiteralPath $kpiOut -Destination (Join-Path $rd 'kpi_slippage.json') -Force
+  # Copy scale_debug.json if it exists
+  $scaleDebugPath = Join-Path $l1Dir 'scale_debug.json'
+  if (Test-Path -LiteralPath $scaleDebugPath) {
+    Copy-Item -LiteralPath $scaleDebugPath -Destination (Join-Path $rd 'scale_debug.json') -Force
+  }
 }
 
 Write-Host "[4/5] Validate artifacts..." -ForegroundColor Cyan
