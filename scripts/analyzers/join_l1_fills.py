@@ -5,6 +5,35 @@ from typing import Optional
 
 import pandas as pd
 
+# === L1 SCALE HELPERS (PR#283) ===
+def _load_symbol_specs():
+    path = os.path.join(os.path.dirname(__file__), "symbol_specs.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+_SYMBOL_SPECS = _load_symbol_specs()
+
+def get_point_size_for_symbol(sym: str, prices: list) -> float:
+    """Get point_size for symbol from mapping or infer from price decimals."""
+    sym = (sym or "").upper()
+    if sym in _SYMBOL_SPECS and "point_size" in _SYMBOL_SPECS[sym]:
+        return float(_SYMBOL_SPECS[sym]["point_size"])
+    
+    # Fallback: infer from decimals of observed prices
+    decs = 0
+    for p in prices:
+        s = str(p)
+        if "." in s:
+            decs = max(decs, len(s.split(".")[-1]))
+    if decs <= 0:
+        # conservative fallback
+        return 0.0001
+    return 10 ** (-decs)
+# === /L1 SCALE HELPERS ===
+
 POINT = float(os.getenv("POINT_VALUE", "0.0001"))
 POINT_VALUE_PER_LOT = float(os.getenv("POINT_VALUE_PER_LOT", "10.0"))
 MAX_MATCH_MILLIS = int(os.getenv("L1_MATCH_MAX_MS", "500"))
@@ -76,6 +105,7 @@ def main(
     rows = []
     for _, order in orders.iterrows():
         side = str(order.get("side", "")).upper()
+        symbol = str(order.get("symbol", ""))
         lots = float(order.get("lots", 0))
         px_fill = float(order.get("price_filled", 0))
         ts_submit = order.get("timestamp_submit")
@@ -95,8 +125,15 @@ def main(
         px_ref = ask_submit if side == "BUY" else bid_submit
         s = 1 if side == "BUY" else -1
 
-        slip_pts = s * (px_fill - px_ref) / POINT if POINT else 0.0
+        # SLIPPAGE_COMPUTE_START (PR#283)
+        # Get point_size for this symbol
+        point_size = get_point_size_for_symbol(symbol, [px_fill, px_ref])
+        if point_size <= 0:
+            point_size = 0.0001  # Safety fallback
+        
+        slip_pts = s * (px_fill - px_ref) / point_size
         slip_cost = max(slip_pts, 0.0) * POINT_VALUE_PER_LOT * lots
+        # SLIPPAGE_COMPUTE_END
 
         commission = commission_per_lot_side_usd * lots
         swap = (swap_long if side == "BUY" else swap_short) * lots * 0
@@ -104,7 +141,7 @@ def main(
         rows.append(
             {
                 "order_id": order.get("order_id", ""),
-                "symbol": order.get("symbol", ""),
+                "symbol": symbol,
                 "side": side,
                 "lots": lots,
                 "timestamp_submit": ts_submit,
