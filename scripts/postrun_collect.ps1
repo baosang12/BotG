@@ -49,6 +49,18 @@ function Get-RequiredFile([string]$basePath, [string]$name) {
   return (Get-Item -LiteralPath $candidate)
 }
 
+function Resolve-ArtifactPath([string]$ArtifactsDir, [string]$Name) {
+  # Try l1 subdirectory first (priority after PR#285)
+  $p1 = Join-Path $ArtifactsDir "l1\$Name"
+  if (Test-Path -LiteralPath $p1) { return $p1 }
+  
+  # Fallback to root for backward compatibility
+  $p2 = Join-Path $ArtifactsDir $Name
+  if (Test-Path -LiteralPath $p2) { return $p2 }
+  
+  return $null
+}
+
 $orders = Get-RequiredFile $rd 'orders.csv'
 $closes = Get-RequiredFile $rd 'trade_closes.log'
 $meta   = Get-RequiredFile $rd 'run_metadata.json'
@@ -101,11 +113,20 @@ Copy-Item -LiteralPath $stats -Destination (Join-Path $rd 'analysis_summary_stat
 
 if ($WithL1) {
   Write-Host "[3/5] Compute fees & slippage..." -ForegroundColor Cyan
-  $feesOut = Join-Path $artifactsPath 'fees_slippage.csv'
-  $kpiOut = Join-Path $artifactsPath 'kpi_slippage.json'
+  $l1Dir = Join-Path $artifactsPath 'l1'
+  if (-not (Test-Path -LiteralPath $l1Dir)) {
+    New-Item -ItemType Directory -Path $l1Dir -Force | Out-Null
+  }
+  $feesOut = Join-Path $l1Dir 'fees_slippage.csv'
+  $kpiOut = Join-Path $l1Dir 'kpi_slippage.json'
   Invoke-PythonCommand @('-X','utf8','scripts/analyzers/join_l1_fills.py','--orders',(Join-Path $artifactsPath 'orders.csv'),'--l1',(Join-Path $artifactsPath 'l1_stream.csv'),'--out-fees',$feesOut,'--out-kpi',$kpiOut) "Slippage analyzer failed"
   Copy-Item -LiteralPath $feesOut -Destination (Join-Path $rd 'fees_slippage.csv') -Force
   Copy-Item -LiteralPath $kpiOut -Destination (Join-Path $rd 'kpi_slippage.json') -Force
+  # Copy scale_debug.json if it exists
+  $scaleDebugPath = Join-Path $l1Dir 'scale_debug.json'
+  if (Test-Path -LiteralPath $scaleDebugPath) {
+    Copy-Item -LiteralPath $scaleDebugPath -Destination (Join-Path $rd 'scale_debug.json') -Force
+  }
 }
 
 Write-Host "[4/5] Validate artifacts..." -ForegroundColor Cyan
@@ -131,11 +152,24 @@ $requiredOutputs = @(
   'closed_trades_fifo_reconstructed.csv',
   'analysis_summary_stats.json'
 )
+
+# Validate L1 outputs using Resolve-ArtifactPath (supports both l1\ and root)
 if ($WithL1) {
-  $requiredOutputs += 'fees_slippage.csv'
-  $requiredOutputs += 'kpi_slippage.json'
+  $feesPath = Resolve-ArtifactPath $artifactsPath 'fees_slippage.csv'
+  $kpiPath = Resolve-ArtifactPath $artifactsPath 'kpi_slippage.json'
+  
+  if (-not $feesPath -or -not $kpiPath) {
+    throw "Postrun missing L1 outputs (searched in root and l1\): fees=$feesPath; kpi=$kpiPath"
+  }
+  
+  # Optional: scale_debug.json (not required, just info)
+  $scaleDebugPath = Resolve-ArtifactPath $artifactsPath 'scale_debug.json'
+  if ($scaleDebugPath) {
+    Write-Host "[info] Found scale_debug.json at: $scaleDebugPath" -ForegroundColor Gray
+  }
 }
 
+# Validate other required outputs in root
 $missingOutputs = $requiredOutputs | Where-Object { -not (Test-Path -LiteralPath (Join-Path $artifactsPath $_)) }
 if ($missingOutputs) {
   throw "Postrun missing outputs: $($missingOutputs -join ', ')"
@@ -143,5 +177,14 @@ if ($missingOutputs) {
 
 $zip = Join-Path (Split-Path $artifactsPath -Parent) ("artifacts_" + (Split-Path $rd -Leaf) + ".zip")
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $artifactsPath '*') -DestinationPath $zip -Force
+
+# Zip includes both root and l1 subdirectory
+$zipSrc = @()
+$zipSrc += (Join-Path $artifactsPath '*')
+$l1SubDir = Join-Path $artifactsPath 'l1'
+if (Test-Path -LiteralPath $l1SubDir) {
+  $zipSrc += $l1SubDir
+}
+
+Compress-Archive -Path $zipSrc -DestinationPath $zip -Force
 Write-Host "ARTIFACT_ZIP=$zip" -ForegroundColor Green
