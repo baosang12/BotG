@@ -49,6 +49,18 @@ function Get-RequiredFile([string]$basePath, [string]$name) {
   return (Get-Item -LiteralPath $candidate)
 }
 
+function Resolve-ArtifactPath([string]$ArtifactsDir, [string]$Name) {
+  # Try l1 subdirectory first (priority after PR#285)
+  $p1 = Join-Path $ArtifactsDir "l1\$Name"
+  if (Test-Path -LiteralPath $p1) { return $p1 }
+  
+  # Fallback to root for backward compatibility
+  $p2 = Join-Path $ArtifactsDir $Name
+  if (Test-Path -LiteralPath $p2) { return $p2 }
+  
+  return $null
+}
+
 $orders = Get-RequiredFile $rd 'orders.csv'
 $closes = Get-RequiredFile $rd 'trade_closes.log'
 $meta   = Get-RequiredFile $rd 'run_metadata.json'
@@ -140,11 +152,24 @@ $requiredOutputs = @(
   'closed_trades_fifo_reconstructed.csv',
   'analysis_summary_stats.json'
 )
+
+# Validate L1 outputs using Resolve-ArtifactPath (supports both l1\ and root)
 if ($WithL1) {
-  $requiredOutputs += 'fees_slippage.csv'
-  $requiredOutputs += 'kpi_slippage.json'
+  $feesPath = Resolve-ArtifactPath $artifactsPath 'fees_slippage.csv'
+  $kpiPath = Resolve-ArtifactPath $artifactsPath 'kpi_slippage.json'
+  
+  if (-not $feesPath -or -not $kpiPath) {
+    throw "Postrun missing L1 outputs (searched in root and l1\): fees=$feesPath; kpi=$kpiPath"
+  }
+  
+  # Optional: scale_debug.json (not required, just info)
+  $scaleDebugPath = Resolve-ArtifactPath $artifactsPath 'scale_debug.json'
+  if ($scaleDebugPath) {
+    Write-Host "[info] Found scale_debug.json at: $scaleDebugPath" -ForegroundColor Gray
+  }
 }
 
+# Validate other required outputs in root
 $missingOutputs = $requiredOutputs | Where-Object { -not (Test-Path -LiteralPath (Join-Path $artifactsPath $_)) }
 if ($missingOutputs) {
   throw "Postrun missing outputs: $($missingOutputs -join ', ')"
@@ -152,5 +177,14 @@ if ($missingOutputs) {
 
 $zip = Join-Path (Split-Path $artifactsPath -Parent) ("artifacts_" + (Split-Path $rd -Leaf) + ".zip")
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $artifactsPath '*') -DestinationPath $zip -Force
+
+# Zip includes both root and l1 subdirectory
+$zipSrc = @()
+$zipSrc += (Join-Path $artifactsPath '*')
+$l1SubDir = Join-Path $artifactsPath 'l1'
+if (Test-Path -LiteralPath $l1SubDir) {
+  $zipSrc += $l1SubDir
+}
+
+Compress-Archive -Path $zipSrc -DestinationPath $zip -Force
 Write-Host "ARTIFACT_ZIP=$zip" -ForegroundColor Green
