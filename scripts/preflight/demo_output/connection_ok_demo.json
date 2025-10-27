@@ -1,0 +1,27 @@
+﻿{
+    "ok":  true,
+    "mode":  "gate2",
+    "min_last_age_sec":  4.8,
+    "probes":  [
+                   {
+                       "ts_utc":  "2025-10-27T05:18:33.8203559Z",
+                       "last_age_sec":  5.2,
+                       "active_ratio":  0.85,
+                       "tick_rate":  1.45
+                   },
+                   {
+                       "ts_utc":  "2025-10-27T05:18:35.8319607Z",
+                       "last_age_sec":  4.8,
+                       "active_ratio":  0.79,
+                       "tick_rate":  1.38
+                   },
+                   {
+                       "ts_utc":  "2025-10-27T05:18:37.8408165Z",
+                       "last_age_sec":  4.9,
+                       "active_ratio":  0.83,
+                       "tick_rate":  1.48
+                   }
+               ],
+    "note":  "pass",
+    "generated_at_iso":  "2025-10-27T05:18:37.8542438Z"
+}
