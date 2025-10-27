@@ -8,43 +8,50 @@ on:
   workflow_dispatch:
     inputs:
       hours:
-        description: 'Number of hours to run the gate'
+        description: "Number of hours to run the gate"
         required: true
-        default: '24'
+        default: "24"
       source:
-        description: 'Trigger source label'
+        description: "Trigger source label"
         required: false
-        default: 'manual'
+        default: "manual"
       mode:
-        description: 'Execution mode (forced to paper at runtime)'
+        description: "Execution mode (forced to paper at runtime)"
         required: false
-        default: 'paper'
+        default: "paper"
       force_misconfig:
-        description: 'Force a misconfiguration to trip the guard (for proof)'
+        description: "Force a misconfiguration to trip the guard (for proof)"
         required: false
-        default: 'false'
+        default: "false"
+
+concurrency:
+  group: gate24h-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   preflight-ctrader:
     name: Preflight - cTrader connectivity (60s)
-    runs-on: [self-hosted, Windows]
+    runs-on: [self-hosted, windows]
+    # Safety guard: skip on pull_request even if trigger accidentally re-added
+    if: github.event_name != 'pull_request'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Run 60s connectivity proof
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force -Path path_issues/ctrader_connect_proof | Out-Null
-          if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-            pwsh -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+          $pwsh7 = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+          if (Test-Path $pwsh7) {
+            & $pwsh7 -NoLogo -NoProfile -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
           } else {
-            powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
+            & (Join-Path $PSHOME 'powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/preflight/ctrader_connect.ps1 -OutDir "path_issues/ctrader_connect_proof" -Seconds 60
           }
 
       - name: Verify proof files
-        shell: pwsh
+        shell: powershell
         run: |
           if (!(Test-Path "path_issues/ctrader_connect_proof/connection_ok.json")) { throw "Missing connection_ok.json" }
           if (!(Test-Path "path_issues/ctrader_connect_proof/l1_sample.csv"))     { throw "Missing l1_sample.csv" }
@@ -59,9 +66,14 @@ jobs:
           if-no-files-found: error
 
   gate24h:
-    runs-on: [self-hosted, Windows]
+    runs-on: [self-hosted, windows]
     needs: preflight-ctrader
+    # Safety guard: skip on pull_request even if trigger accidentally re-added
+    if: github.event_name != 'pull_request'
     timeout-minutes: 1500
+    defaults:
+      run:
+        shell: powershell
     env:
       BOTG_MODE: paper
       SIM_ENABLED: false
@@ -72,6 +84,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check BOM (defensive)
+        shell: powershell
+        run: |
+          $wf = ".github/workflows/gate24h.yml"
+          $bytes = [IO.File]::ReadAllBytes($wf)
+          if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            throw "BOM detected in $wf. Please save without BOM."
+          }
 
       - name: Assert-PaperMode
         id: assert
@@ -194,32 +215,231 @@ jobs:
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
-      - name: Setup Python 3.11
-        id: setup_py
+      # === Python portable via micromamba (no registry writes) ===
+      - name: Ensure TLS 1.2
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
-        uses: actions/setup-python@v5
-        continue-on-error: true
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      - name: Setup portable Python 3.11 (micromamba only)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          $tmp = "$env:RUNNER_TEMP"
+          $mm = Join-Path $tmp 'micromamba.exe'
+          if (-not (Test-Path $mm)) {
+            $urls = @(
+              'https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64.exe',
+              'https://micro.mamba.pm/api/micromamba/win-64/latest'
+            )
+            foreach ($u in $urls) {
+              try {
+                Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $mm -TimeoutSec 90
+                if ((Test-Path $mm) -and ((Get-Item $mm).Length -gt 0)) { break }
+              } catch {
+                Remove-Item -ErrorAction SilentlyContinue $mm
+              }
+            }
+          }
+          if (-not (Test-Path $mm)) { throw "micromamba download failed" }
+
+          $prefix = Join-Path $tmp 'pyenv311'
+          & $mm create -y -p $prefix -c conda-forge python=3.11 pandas numpy python-dateutil pip | Write-Output
+
+          $py = Join-Path $prefix 'python.exe'
+          if (-not (Test-Path $py)) { throw "python.exe not found in $prefix" }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "PYTHON_EXE=$py"
+          @(
+            $prefix
+            (Join-Path $prefix 'Scripts')
+            (Join-Path $prefix 'Library\bin')
+            (Join-Path $prefix 'bin')
+          ) | ForEach-Object { Add-Content -Path $env:GITHUB_PATH -Value $_ }
+
+          $checkLines = @(
+            'import sys, importlib'
+            'for m in ("pandas","numpy","dateutil"):'
+            '    importlib.import_module(m)'
+            'print("OK: core libs present", sys.version)'
+          )
+          $pyfile = Join-Path $tmp 'py_check.py'
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllLines($pyfile, $checkLines, $utf8NoBom)
+          & $py $pyfile
+
+      # (TÙY CHỌN) Nếu vẫn muốn pip extras từ requirements.txt
+      - name: Install extra Python deps (pip optional)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $py = $env:PYTHON_EXE
+          & "$py" -m pip --version *> $null
+          if ($LASTEXITCODE -eq 0 -and (Test-Path "scripts/requirements.txt")) {
+            & "$py" -m pip install -r scripts/requirements.txt
+          } else {
+            Write-Host "pip not found or no extra requirements -> skipped."
+          }
+
+      - name: Preflight connectivity (retry+p95 for verify, strict for main)
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $src = "${{ github.event.inputs.source }}"
+          $isVerify = ($src -eq "verify-l1")
+          $seconds = if ($isVerify) { 90 } else { 60 }
+          $maxTries = if ($isVerify) { 3 } else { 1 }
+          $ok = $false
+          $last = $null
+          $successOut = $null
+          $proofDir = Join-Path $env:RUNNER_TEMP 'connect_proof'
+          New-Item -ItemType Directory -Force -Path $proofDir | Out-Null
+
+          for ($i = 1; $i -le $maxTries -and -not $ok; $i++) {
+            Write-Host "== Probe attempt $i/$maxTries (window ${seconds}s) =="
+            $OUT = Join-Path $env:RUNNER_TEMP ("probe_" + $i)
+            New-Item -ItemType Directory -Force -Path $OUT | Out-Null
+
+            Start-Sleep -Seconds 10
+
+            powershell -File scripts\preflight\ctrader_connect.ps1 -Seconds $seconds -OutDir $OUT -SummaryOut "$OUT\summary.json"
+
+            if (Test-Path "$OUT\summary.json") {
+              $s = Get-Content "$OUT\summary.json" -Raw | ConvertFrom-Json
+              $last = $s
+              if (-not $s.PSObject.Properties.Name.Contains('p95_last_age_sec') -and $s.last_age_sec_series) {
+                $arr = @($s.last_age_sec_series) | ForEach-Object { [double]$_ } | Sort-Object
+                if ($arr.Count -gt 0) {
+                  $idx = [math]::Ceiling([double]$arr.Count * 0.95) - 1
+                  if ($idx -lt 0) { $idx = 0 }
+                  $p95 = $arr[$idx]
+                } else {
+                  $p95 = [double]::PositiveInfinity
+                }
+              } else {
+                $p95 = [double]$s.p95_last_age_sec
+              }
+
+              Write-Host ("active_ratio={0}  tick_rate_avg={1}  p95_last_age={2}s  last_age={3}s" -f $s.active_ratio, $s.tick_rate_avg, $p95, $s.last_age_sec)
+              if ($isVerify) {
+                if (($p95 -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
+              } else {
+                if (($s.last_age_sec -le 5.0) -and ($s.active_ratio -ge 0.7) -and ($s.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
+              }
+            } elseif (Test-Path "$OUT\connection_ok.json") {
+              $c = Get-Content "$OUT\connection_ok.json" -Raw | ConvertFrom-Json
+              $last = $c
+              if ($isVerify) {
+                if (($c.p95_last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
+              } else {
+                if (($c.last_age_sec -le 5.0) -and ($c.active_ratio -ge 0.7) -and ($c.tick_rate_avg -ge 0.5)) { $ok = $true; $successOut = $OUT }
+              }
+            } else {
+              Write-Host "Preflight summary not found; will retry if allowed."
+            }
+
+            if (-not $ok -and $i -lt $maxTries) { Start-Sleep -Seconds 30 }
+          }
+
+          if (-not $ok) {
+            if ($last) { Write-Host ("Last summary: " + ($last | ConvertTo-Json -Depth 5)) }
+            throw "Preflight connectivity failed (verify=$isVerify)."
+          }
+
+          if ($successOut) {
+            $files = @('connection_ok.json','l1_sample.csv','summary.json')
+            foreach ($name in $files) {
+              $candidate = Join-Path $successOut $name
+              if (Test-Path $candidate) {
+                Copy-Item -LiteralPath $candidate -Destination (Join-Path $proofDir $name) -Force
+              }
+            }
+            if (Test-Path (Join-Path $proofDir 'connection_ok.json')) {
+              "CONNECT_PROOF_DIR=$proofDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
+            }
+          }
+
+      - name: Verify connectivity proof
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:CONNECT_PROOF_DIR) { throw 'CONNECT_PROOF_DIR not set' }
+          $required = @('connection_ok.json','l1_sample.csv')
+          foreach ($name in $required) {
+            $target = Join-Path $env:CONNECT_PROOF_DIR $name
+            if (!(Test-Path -LiteralPath $target)) { throw "missing $target" }
+            Get-Item -LiteralPath $target | Select-Object FullName,Length
+          }
+
+      - name: Upload preflight connectivity proof
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
         with:
-          python-version: '3.11'
+          name: ctrader-connect-proof
+          path: |
+            ${{ runner.temp }}\connect_proof\connection_ok.json
+            ${{ runner.temp }}\connect_proof\l1_sample.csv
+          if-no-files-found: error
 
-      - name: Fallback - Install portable Python 3.11 (no registry)
-        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' && steps.setup_py.outcome == 'failure' }}
-        shell: powershell
-        run: .\.github\scripts\install_python_portable.ps1 -Version 3.11.9
-
-      - name: Verify Python availability
+      - name: Prepare L1 output dir
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
-          $v = (python --version) 2>$null
-          if (-not $v) { throw 'Python is NOT available after setup & fallback.' }
-          Write-Host "Using: $v"
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'l1'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          "L1_OUT_DIR=$out" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
 
-      - name: Postrun collect and validate
+      - name: Run L1 slippage/fees calc
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
         shell: powershell
         run: |
-          & scripts\postrun_collect.ps1 -RunDir "$env:RUN_DIR"
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $artDir = $env:L1_OUT_DIR
+          if (-not $artDir) { throw 'L1_OUT_DIR not set' }
+          ./scripts/postrun_collect.ps1 -RunDir "$env:RUN_DIR" -ArtifactsDir "$artDir" -WithL1
+          if (!(Test-Path -LiteralPath (Join-Path $artDir 'kpi_slippage.json'))) { throw "missing kpi_slippage.json" }
+          if (!(Test-Path -LiteralPath (Join-Path $artDir 'fees_slippage.csv'))) { throw "missing fees_slippage.csv" }
+
+      - name: Verify L1 slippage artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:L1_OUT_DIR) { throw 'L1_OUT_DIR not set' }
+          $kpi = Join-Path $env:L1_OUT_DIR 'kpi_slippage.json'
+          $fees = Join-Path $env:L1_OUT_DIR 'fees_slippage.csv'
+          if (!(Test-Path -LiteralPath $kpi)) { throw "missing $kpi" }
+          if (!(Test-Path -LiteralPath $fees)) { throw "missing $fees" }
+          Get-Item -LiteralPath $kpi | Select-Object FullName,Length
+          Get-Item -LiteralPath $fees | Select-Object FullName,Length
+
+      - name: Upload L1 slippage artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: l1-slippage-fees
+          path: |
+            ${{ runner.temp }}\l1\kpi_slippage.json
+            ${{ runner.temp }}\l1\fees_slippage.csv
+          if-no-files-found: error
+
+      - name: Upload postrun artifacts
+        if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: postrun_reports
+          path: ${{ runner.temp }}\l1\
+          if-no-files-found: error
 
       - name: Gate2 postrun validation
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
@@ -262,4 +482,5 @@ jobs:
           name: run_metadata
           path: ${{ steps.assert.outputs.run_meta_dir }}/run_metadata.json
           retention-days: 30
+
 

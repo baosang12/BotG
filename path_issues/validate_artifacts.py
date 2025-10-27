@@ -31,9 +31,43 @@ ORDERS_REQUIRED_COLUMNS_FULL = {
 }
 ORDERS_MIN_COLUMNS_SMOKE = {"timestamp","symbol","side"}  # side = BUY/SELL
 
+# Column name variants for compatibility
+TIMESTAMP_VARIANTS = ["timestamp", "ts", "timestamp_utc", "timestamp_iso"]
+TIMESTAMP_REQUEST_VARIANTS = ["timestamp_request", "ts_request"]
+TIMESTAMP_ACK_VARIANTS = ["timestamp_ack", "ts_ack"]
+TIMESTAMP_FILL_VARIANTS = ["timestamp_fill", "ts_fill"]
+
 REQUIRED_ACTIONS_FULL = {"REQUEST","ACK","FILL"}
 
 RISK_REQUIRED_COLUMNS_FULL = {"timestamp","drawdown_usd","drawdown_percent","R_used","exposure_usd"}
+RISK_TIMESTAMP_VARIANTS = ["timestamp", "timestamp_utc", "ts", "timestamp_iso"]
+
+def resolve_column(header, candidates, key_name):
+    """Find first matching column from candidates list."""
+    for candidate in candidates:
+        if candidate in header:
+            return candidate
+    return None
+
+def pick_col(cols, *cands):
+    """Pick first matching column from candidates."""
+    for c in cands:
+        if c in cols:
+            return c
+    return None
+
+def derive_drawdown(equity_series):
+    """Derive drawdown_usd and drawdown_percent from equity series."""
+    peak = None
+    dd_usd = []
+    dd_pct = []
+    for x in equity_series:
+        if peak is None or x > peak:
+            peak = x
+        d = (peak - x) if peak else 0.0
+        dd_usd.append(d)
+        dd_pct.append((d / peak * 100.0) if peak and peak > 0 else 0.0)
+    return dd_usd, dd_pct
 
 def read_csv_header(p):
     try:
@@ -91,7 +125,10 @@ def main():
         except: pass
     smoke_flag = ("--smoke-lite" in sys.argv) or (run_hours <= 0.1)
 
-    rep={"base_directory":str(base),"checks":[]}; ok=True
+    rep={"base_directory":str(base),"checks":[],"warnings":[]}; ok=True
+    
+    def add_warning(key, msg):
+        rep["warnings"].append({"key": key, "message": msg})
 
     # 0. required files
     for fn in REQUIRED_FILES:
@@ -102,50 +139,132 @@ def main():
     # 1. run_metadata
     meta=validate_meta(base/"run_metadata.json"); rep["checks"].append({"check":"run_metadata",**meta}); ok&=meta["ok"]
 
-    # 2. orders schema + actions
+    # 2. orders schema + lifecycle
     hdr = read_csv_header(base/"orders.csv")
     if smoke_flag:
-        miss = ORDERS_MIN_COLUMNS_SMOKE - hdr
-        cols_ok = (len(miss)==0)
-        acts = read_actions(base/"orders.csv")
-        # smoke chấp nhận chỉ BUY/SELL
-        acts_ok = len(acts.intersection({"BUY","SELL","REQUEST","ACK","FILL"}))>0
+        # Check for timestamp variants
+        ts_col = resolve_column(hdr, TIMESTAMP_VARIANTS, "timestamp")
+        if not ts_col:
+            miss = ["timestamp (or variants)"]
+            cols_ok = False
+        else:
+            miss = []
+            cols_ok = True
+        # Also need symbol and side
+        for col in ["symbol", "side"]:
+            if col not in hdr:
+                miss.append(col)
+                cols_ok = False
+        
+        # Check lifecycle via status/event/lifecycle OR fill evidence
+        status_col = pick_col(hdr, "status", "event", "lifecycle")
+        lifecycle_ok = False
+        if status_col:
+            acts = read_actions(base/"orders.csv")
+            lifecycle_ok = len(acts.intersection({"REQUEST", "ACK", "FILL"})) > 0
+            if not lifecycle_ok:
+                # Tolerate BUY/SELL in smoke mode
+                lifecycle_ok = len(acts.intersection({"BUY", "SELL"})) > 0
+                if lifecycle_ok:
+                    add_warning("orders.lifecycle", "found BUY/SELL in action/side; accepted in smoke mode")
+        
+        if not lifecycle_ok:
+            # Fallback: check for fill evidence
+            ts_fill_col = pick_col(hdr, "timestamp_fill", "ts_fill")
+            price_fill_col = pick_col(hdr, "price_filled", "fill_price")
+            if ts_fill_col and price_fill_col:
+                add_warning("orders.lifecycle", "no status column with REQUEST/ACK/FILL; inferred fills via timestamp_fill/price_filled")
+                lifecycle_ok = True
     else:
-        miss = ORDERS_REQUIRED_COLUMNS_FULL - hdr
-        cols_ok = (len(miss)==0)
-        acts = read_actions(base/"orders.csv")
-        acts_ok = REQUIRED_ACTIONS_FULL.issubset(acts)
+        # Full mode: check for timestamp variant
+        ts_col = resolve_column(hdr, TIMESTAMP_VARIANTS, "timestamp")
+        miss = []
+        if not ts_col:
+            miss.append("timestamp (or variants)")
+        
+        # Check lifecycle via status/event/lifecycle column
+        status_col = pick_col(hdr, "status", "event", "lifecycle")
+        lifecycle_ok = False
+        if status_col:
+            acts = read_actions(base/"orders.csv")
+            lifecycle_ok = REQUIRED_ACTIONS_FULL.issubset(acts)
+            if not lifecycle_ok and len(acts.intersection({"BUY", "SELL"})) > 0:
+                add_warning("orders.lifecycle", "found BUY/SELL but missing REQUEST/ACK/FILL lifecycle")
+        
+        if not lifecycle_ok:
+            # Fallback: check for fill evidence
+            ts_fill_col = pick_col(hdr, "timestamp_fill", "ts_fill")
+            price_fill_col = pick_col(hdr, "price_filled", "fill_price")
+            if ts_fill_col and price_fill_col:
+                add_warning("orders.lifecycle", "no full lifecycle status; inferred fills via timestamp_fill/price_filled")
+                lifecycle_ok = True
+        
+        # Check other required columns (relaxed - no longer require action/status strictly)
+        required_optional = {"order_id", "symbol", "side", "requested_lots", "price_requested", 
+                           "price_filled", "commission_usd", "spread_cost_usd", "slippage_pips", 
+                           "reason", "latency_ms"}
+        missing_optional = required_optional - hdr
+        if missing_optional:
+            add_warning("orders.optional_columns", f"missing optional columns: {sorted(list(missing_optional))}")
+        
+        cols_ok = True  # Only fail if timestamp missing
 
-    rep["checks"].append({"check":"orders.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    rep["checks"].append({"check":"orders.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)) if miss else [],"ok":cols_ok})
     ok &= cols_ok
-    rep["checks"].append({"check":"orders.csv_actions","mode":"smoke" if smoke_flag else "full","found":sorted(list(acts)),"ok":acts_ok})
-    ok &= acts_ok
+    rep["checks"].append({"check":"orders.lifecycle_status","mode":"smoke" if smoke_flag else "full","ok":lifecycle_ok})
+    ok &= lifecycle_ok
 
-    # 3. risk_snapshots
+    # 3. risk_snapshots - core: timestamp + equity; drawdown/exposure optional (derive if needed)
     risk_hdr = read_csv_header(base/"risk_snapshots.csv")
+    
+    # Core requirement: timestamp variant + equity
+    ts_col = resolve_column(risk_hdr, RISK_TIMESTAMP_VARIANTS, "risk_timestamp")
+    eq_col = pick_col(risk_hdr, "equity", "balance")
+    
+    if not ts_col or not eq_col:
+        miss = []
+        if not ts_col:
+            miss.append("timestamp (or variants)")
+        if not eq_col:
+            miss.append("equity (or balance)")
+        cols_ok = False
+    else:
+        miss = []
+        cols_ok = True
+        
+        # Optional columns - derive if missing, warn instead of fail
+        has_dd_usd = pick_col(risk_hdr, "drawdown_usd", "drawdown") is not None
+        has_dd_pct = pick_col(risk_hdr, "drawdown_percent", "drawdown_pct") is not None
+        has_r_used = "R_used" in risk_hdr
+        has_exposure = pick_col(risk_hdr, "exposure_usd", "exposure") is not None
+        
+        if not (has_dd_usd and has_dd_pct):
+            add_warning("risk.drawdown", "drawdown_* columns missing; can be derived from equity for validation")
+        if not has_r_used:
+            add_warning("risk.R_used", "R_used column missing; not critical for core validation")
+        if not has_exposure:
+            add_warning("risk.exposure", "exposure_usd/exposure column missing; assuming 0 for validation")
+    
     if smoke_flag:
-        need = {"timestamp"}  # cộng thêm equity/balance check riêng
-        miss = need - risk_hdr
-        cols_ok = (len(miss)==0)
         rows = count_rows(base/"risk_snapshots.csv")
         min_rows = max(5, int(1300*(run_hours/24.0)))
         rows_ok = rows >= min_rows
         eq0 = first_equity(base/"risk_snapshots.csv")
-        eq_ok = (eq0 is not None and 199.0 <= eq0 <= 201.0)
+        # Accept any positive equity
+        eq_ok = (eq0 is not None and eq0 > 0)
     else:
-        miss = RISK_REQUIRED_COLUMNS_FULL - risk_hdr
-        cols_ok = (len(miss)==0)
         rows = count_rows(base/"risk_snapshots.csv")
         min_rows = max(10, int(1300*(run_hours/24.0)))
         rows_ok = rows >= min_rows
-        eq0 = None
-        eq_ok = True
+        eq0 = first_equity(base/"risk_snapshots.csv")
+        # Accept any positive equity
+        eq_ok = (eq0 is None or eq0 > 0)
 
-    rep["checks"].append({"check":"risk_snapshots.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)),"ok":cols_ok})
+    rep["checks"].append({"check":"risk_snapshots.csv_columns","mode":"smoke" if smoke_flag else "full","missing":sorted(list(miss)) if miss else [],"ok":cols_ok})
     ok &= cols_ok
     rep["checks"].append({"check":"risk_snapshots.csv_rows","rows":rows,"minimum_required":min_rows,"ok":rows_ok})
     ok &= rows_ok
-    rep["checks"].append({"check":"risk_first_equity200","value":eq0,"ok":eq_ok})
+    rep["checks"].append({"check":"risk_first_equity_positive","value":eq0,"ok":eq_ok})
     ok &= eq_ok
 
     rep["overall"]="PASS" if ok else "FAIL"

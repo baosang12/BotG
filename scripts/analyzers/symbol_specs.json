@@ -1,0 +1,22 @@
+{
+  "EURUSD": {
+    "point_size": 0.0001,
+    "pip_size": 0.0001,
+    "decimals": 5
+  },
+  "GBPUSD": {
+    "point_size": 0.0001,
+    "pip_size": 0.0001,
+    "decimals": 5
+  },
+  "USDJPY": {
+    "point_size": 0.01,
+    "pip_size": 0.01,
+    "decimals": 3
+  },
+  "XAUUSD": {
+    "point_size": 0.01,
+    "pip_size": 0.1,
+    "decimals": 2
+  }
+}
