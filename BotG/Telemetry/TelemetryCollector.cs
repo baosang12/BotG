@@ -30,7 +30,8 @@ namespace Telemetry
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "timestamp_iso,ticksPerSec,signalsLastMinute,ordersRequestedLastMinute,ordersFilledLastMinute,errorsLastMinute" + Environment.NewLine);
+                // Gate2 alias: timestamp = timestamp_iso (CHANGE-001)
+                File.AppendAllText(_filePath, "timestamp_iso,ticksPerSec,signalsLastMinute,ordersRequestedLastMinute,ordersFilledLastMinute,errorsLastMinute,timestamp" + Environment.NewLine);
             }
         }
 
@@ -50,16 +51,19 @@ namespace Telemetry
                 long filled = Interlocked.Exchange(ref _ordersFilled, 0);
                 long errs = Interlocked.Exchange(ref _errors, 0);
                 var ts = DateTime.UtcNow;
+                var tsIso = ts.ToString("o", CultureInfo.InvariantCulture);
                 // ticksPerSec approximate over flush window
                 // If flush interval != 60, column name still ticksPerSec for simplicity
                 double ticksPerSec = ticks / 60.0;
                 var line = string.Join(",",
-                    ts.ToString("o", CultureInfo.InvariantCulture),
+                    tsIso,
                     ticksPerSec.ToString(CultureInfo.InvariantCulture),
                     signals.ToString(CultureInfo.InvariantCulture),
                     req.ToString(CultureInfo.InvariantCulture),
                     filled.ToString(CultureInfo.InvariantCulture),
-                    errs.ToString(CultureInfo.InvariantCulture)
+                    errs.ToString(CultureInfo.InvariantCulture),
+                    // Gate2 alias: timestamp = timestamp_iso (CHANGE-001)
+                    tsIso
                 );
                 lock (_lock)
                 {

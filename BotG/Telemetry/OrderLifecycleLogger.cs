@@ -45,7 +45,9 @@ namespace Telemetry
             "client_order_id","side","action","type","status","reason","latency_ms","price_requested","price_filled","size_requested","size_filled","session","host",
             "order_id","timestamp_request","timestamp_ack","timestamp_fill",
             "symbol","bid_at_request","ask_at_request","spread_pips_at_request","bid_at_fill","ask_at_fill","spread_pips_at_fill","request_server_time","fill_server_time",
-            "timestamp","requested_lots","commission_usd","spread_cost_usd","slippage_pips"
+            "timestamp","requested_lots","commission_usd","spread_cost_usd","slippage_pips",
+            // Gate2 aliases (CHANGE-001)
+            "latency","request_id","ts_request","ts_ack","ts_fill"
         };
 
         private static readonly string ExpectedHeader = string.Join(",", HeaderColumns);
@@ -336,7 +338,13 @@ namespace Telemetry
                     F(state.RequestedLots),
                     F(state.CommissionUsd),
                     F(state.SpreadCostUsd),
-                    F(state.SlippagePips)
+                    F(state.SlippagePips),
+                    // Gate2 aliases (CHANGE-001)
+                    latencyMs.HasValue ? latencyMs.Value.ToString(CultureInfo.InvariantCulture) : string.Empty, // latency = latency_ms
+                    Escape(clientOrderId ?? orderId), // request_id = client_order_id ?? orderId
+                    Escape(state.TsRequest ?? string.Empty), // ts_request = timestamp_request
+                    Escape(state.TsAck ?? string.Empty), // ts_ack = timestamp_ack
+                    Escape(state.TsFill ?? string.Empty) // ts_fill = timestamp_fill
                 };
 
                 var line = string.Join(",", values);

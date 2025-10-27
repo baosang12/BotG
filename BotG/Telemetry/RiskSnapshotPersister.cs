@@ -37,7 +37,8 @@ namespace Telemetry
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "timestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure" + Environment.NewLine);
+                // Gate2 alias: ts = timestamp_utc (CHANGE-001)
+                File.AppendAllText(_filePath, "timestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure,ts" + Environment.NewLine);
             }
         }
 
@@ -135,8 +136,10 @@ namespace Telemetry
 
                 double exposure = 0.0;
 
+                var tsIso = ts.ToString("o", CultureInfo.InvariantCulture);
+
                 var line = string.Join(",",
-                    ts.ToString("o", CultureInfo.InvariantCulture),
+                    tsIso,
                     equity.ToString(CultureInfo.InvariantCulture),
                     balance.ToString(CultureInfo.InvariantCulture),
                     openPnl.ToString(CultureInfo.InvariantCulture),
@@ -145,7 +148,9 @@ namespace Telemetry
                     freeMargin.ToString(CultureInfo.InvariantCulture),
                     drawdown.ToString(CultureInfo.InvariantCulture),
                     rUsed.ToString(CultureInfo.InvariantCulture),
-                    exposure.ToString(CultureInfo.InvariantCulture)
+                    exposure.ToString(CultureInfo.InvariantCulture),
+                    // Gate2 alias: ts = timestamp_utc (CHANGE-001)
+                    tsIso
                 );
 
                 lock (_lock)
