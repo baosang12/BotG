@@ -18,11 +18,12 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 Write-Host "[INFO] Preflight Mode=$Mode, Probes=$Probes, IntervalSec=$IntervalSec" -ForegroundColor Cyan
 
 # CHANGE-002-REAL: Helper function to collect metrics for one probe
+# CHANGE-002B: Support missing tick_rate column (set to 0)
 function Get-TelemetryProbe {
   param(
     [string]$TeleFullName,
     [string]$TsCol,
-    [string]$TpCol,
+    [string]$TpCol,  # Can be $null if no tick_rate column
     [datetime]$WindowStart,
     [datetime]$WindowEnd
   )
@@ -76,13 +77,23 @@ function Get-TelemetryProbe {
     }
   }
 
-  # Calculate metrics
+  # CHANGE-002B: Calculate metrics (tick_rate=0 if column missing)
   $ticks = @()
-  foreach($r in $win){ $ticks += [double]($r."$TpCol") }
-  $total  = $ticks.Count
-  $active = ($ticks | Where-Object { $_ -gt 0 }).Count
-  $ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
-  $avg    = if($total){ [math]::Round(($ticks | Measure-Object -Average).Average,3) } else { 0 }
+  if ($TpCol) {
+    foreach($r in $win){ $ticks += [double]($r."$TpCol") }
+  }
+  
+  $total  = $win.Count
+  if ($ticks.Count -gt 0) {
+    $active = ($ticks | Where-Object { $_ -gt 0 }).Count
+    $ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
+    $avg    = [math]::Round(($ticks | Measure-Object -Average).Average,3)
+  } else {
+    # No tick_rate column - use presence of rows as "active"
+    $active = $total
+    $ratio  = if($total -gt 0) { 1 } else { 0 }
+    $avg    = 0
+  }
 
   $lastTs = [datetime](($win | Select-Object -Last 1)."$TsCol")
   $lastAgeSec = [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1)
@@ -108,11 +119,44 @@ if ($MockTelemetryPath) {
   Write-Host "[INFO] Using telemetry: $teleFullName"
 }
 
-# 2) Detect columns with alias support (Bid2/Ask2 from CHANGE-001)
-function Find-Col {
+# 2) CHANGE-002B: Robust column mapping with expanded aliases
+function Resolve-Col {
   param([string[]]$candidates, [string[]]$cols)
-  foreach($c in $candidates){ if($cols -contains $c){ return [string]$c }}
-  return [string]$null
+  foreach($c in $candidates){ 
+    if($cols -contains $c){ return [string]$c }
+  }
+  return $null
+}
+
+# Helper to emit JSON and exit
+function Exit-WithProof {
+  param(
+    [bool]$Ok,
+    [string]$Note,
+    [string]$Mode,
+    [object]$MinLastAgeSec,
+    [array]$ProbeResults,
+    [string]$TelemetryFile,
+    [object]$MedianSpread,
+    [int]$ExitCode
+  )
+  
+  $jsonObj = @{
+    ok = $Ok
+    mode = $Mode
+    min_last_age_sec = $MinLastAgeSec
+    probes = $ProbeResults
+    note = $Note
+    timestamp_utc = (Get-Date).ToUniversalTime().ToString('o')
+    telemetry_file = $TelemetryFile
+  }
+  if ($MedianSpread -ne $null) { $jsonObj.median_spread = $MedianSpread }
+  
+  $jsonPath = Join-Path $OutDir "connection_ok.json"
+  $jsonObj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding UTF8 -Force
+  Write-Host "[INFO] Proof written: $jsonPath"
+  
+  exit $ExitCode
 }
 
 $firstLine = $null
@@ -121,17 +165,42 @@ try {
   $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
   $firstLine = $sr.ReadLine()
 } finally { $sr.Close(); $fs.Close() }
-if (-not $firstLine) { throw "Cannot read header" }
+
+if (-not $firstLine) {
+  Write-Error "Cannot read header from telemetry file"
+  Exit-WithProof -Ok $false -Note "fail: cannot read header" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+}
 
 $cols = $firstLine -split ','
-$tsCol = Find-Col -candidates @('timestamp_iso','timestamp') -cols $cols
-$tpCol = Find-Col -candidates @('ticksPerSec','ticks_per_second','ticks') -cols $cols
-if(-not $tsCol -or -not $tpCol){ throw "Missing timestamp or ticksPerSec column" }
 
-$bidCol = Find-Col -candidates @('bid','Bid','Bid2') -cols $cols
-$askCol = Find-Col -candidates @('ask','Ask','Ask2') -cols $cols
+# Expanded column aliases for real-world feeds
+$tsCol = Resolve-Col -candidates @('timestamp_iso','timestamp','ts_utc','ts') -cols $cols
+if(-not $tsCol){ 
+  Write-Error "Missing timestamp column (tried: timestamp_iso, timestamp, ts_utc, ts)"
+  Exit-WithProof -Ok $false -Note "fail: missing timestamp column" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+}
+
+# CHANGE-002B: tick_rate is primary, ticksPerSec is legacy
+$tpCol = Resolve-Col -candidates @('tick_rate','ticksPerSec','tps','tickrate','ticks_per_second') -cols $cols
+$hasTicks = ($tpCol -ne $null)
+
+$bidCol = Resolve-Col -candidates @('bid','Bid','Bid2','bid_px') -cols $cols
+$askCol = Resolve-Col -candidates @('ask','Ask','Ask2','ask_px') -cols $cols
+$symbolCol = Resolve-Col -candidates @('symbol','instrument') -cols $cols
+
 if ($RequireBidAsk) {
-  if(-not $bidCol -or -not $askCol){ throw "Missing bid/ask columns (RequireBidAsk)" }
+  if(-not $bidCol -or -not $askCol){ 
+    Write-Error "Missing bid/ask columns (RequireBidAsk=true)"
+    Exit-WithProof -Ok $false -Note "fail: missing bid/ask (RequireBidAsk)" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+  }
+}
+
+# CHANGE-002B: Graceful degradation if no tick_rate but have bid/ask
+if (-not $hasTicks -and $bidCol -and $askCol) {
+  Write-Host "[WARN] No tick_rate column found, will use tick_rate=0 (bid/ask present)" -ForegroundColor Yellow
+} elseif (-not $hasTicks) {
+  Write-Error "Missing tick_rate column and no bid/ask fallback"
+  Exit-WithProof -Ok $false -Note "fail: missing tick_rate and no bid/ask" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
 }
 
 # 3) CHANGE-002-REAL: Multi-probe collection
@@ -222,23 +291,7 @@ if ($null -eq $minLastAgeSec) {
   }
 }
 
-# 7) Generate proof JSON
-$jsonObj = @{
-  ok = $ok
-  mode = $Mode
-  min_last_age_sec = $minLastAgeSec
-  probes = $probeResults
-  note = $note
-  timestamp_utc = (Get-Date).ToUniversalTime().ToString('o')
-  telemetry_file = $teleFullName
-}
-if ($medianSpread -ne $null) { $jsonObj.median_spread = $medianSpread }
-
-$jsonPath = Join-Path $OutDir "connection_ok.json"
-$jsonObj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding UTF8 -Force
-Write-Host "[INFO] Proof written: $jsonPath"
-
-# 8) Exit with appropriate code
+# 7) Exit with proof JSON (CHANGE-002B: centralized via Exit-WithProof)
 if ($ok) {
   if ($note -match 'warn') {
     Write-Host "[WARN] Preflight CONNECTIVITY: $note" -ForegroundColor Yellow
@@ -247,9 +300,9 @@ if ($ok) {
     Write-Host "[PASS] Preflight CONNECTIVITY ok=true" -ForegroundColor Green
     Write-Host "[INFO] min_last_age_sec=$minLastAgeSec, Mode=$Mode" -ForegroundColor Green
   }
-  exit 0
+  Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 0
 } else {
   Write-Error "Preflight CONNECTIVITY FAIL: $reason"
   Write-Host "[FAIL] min_last_age_sec=$minLastAgeSec, Mode=$Mode" -ForegroundColor Red
-  exit 1
+  Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 1
 }
