@@ -302,7 +302,7 @@ if ($ok) {
   }
   Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 0
 } else {
-  Write-Error "Preflight CONNECTIVITY FAIL: $reason"
+  Write-Host "Preflight CONNECTIVITY FAIL: $reason" -ForegroundColor Red
   Write-Host "[FAIL] min_last_age_sec=$minLastAgeSec, Mode=$Mode" -ForegroundColor Red
   Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 1
 }
