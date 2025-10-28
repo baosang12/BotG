@@ -3,232 +3,306 @@ param(
   [int]$Seconds = 60,
   [string]$LogRoot = "D:\botg\logs",
   [string]$TelemetryFilePattern = "telemetry.csv",
-  [switch]$RequireBidAsk
+  [switch]$RequireBidAsk,
+  # CHANGE-002-REAL: Retry + soft-pass parameters
+  [ValidateSet('gate2', 'gate3')]
+  [string]$Mode = 'gate2',
+  [int]$Probes = 3,
+  [int]$IntervalSec = 10,
+  [string]$MockTelemetryPath = $null
 )
 
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-# 1) Chọn telemetry.csv mới nhất
-$tele = Get-ChildItem $LogRoot -Recurse -Filter $TelemetryFilePattern |
-        Sort-Object LastWriteTime | Select-Object -Last 1
-if(-not $tele){
-  Write-Error "Không tìm thấy $TelemetryFilePattern dưới $LogRoot"
-  exit 1
+Write-Host "[INFO] Preflight Mode=$Mode, Probes=$Probes, IntervalSec=$IntervalSec" -ForegroundColor Cyan
+
+# CHANGE-002-REAL: Helper function to collect metrics for one probe
+# CHANGE-002B: Support missing tick_rate column (set to 0)
+function Get-TelemetryProbe {
+  param(
+    [string]$TeleFullName,
+    [string]$TsCol,
+    [string]$TpCol,  # Can be $null if no tick_rate column
+    [datetime]$WindowStart,
+    [datetime]$WindowEnd
+  )
+
+  # Read header with FileShare
+  $headerLine = $null
+  $fs = [System.IO.File]::Open($TeleFullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+  try {
+    $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
+    $headerLine = $sr.ReadLine()
+  } finally { $sr.Close(); $fs.Close() }
+  if (-not $headerLine) { throw "Cannot read header" }
+
+  # Get tail
+  $tailLines = 5000
+  $tail = Get-Content -LiteralPath $TeleFullName -Tail $tailLines -Encoding UTF8
+  $tailNoHeader = $tail | Where-Object {
+    $_ -and ($_ -ne $headerLine) -and ($_ -notmatch '^(timestamp_iso|timestamp|time|Time|Timestamp),')
+  }
+
+  $csvLines = @()
+  $csvLines += $headerLine
+  $csvLines += $tailNoHeader
+  if(-not $csvLines -or $csvLines.Count -lt 2) { throw "No telemetry data" }
+
+  $rows = @($csvLines | ConvertFrom-Csv)
+  if(-not $rows){ throw "Cannot parse CSV" }
+
+  # Filter window
+  $win = @($rows | Where-Object {
+    $t = $_."$TsCol"
+    if (-not $t) { return $false }
+    $dt = [datetime]$t
+    ($dt -ge $WindowStart) -and ($dt -le $WindowEnd)
+  })
+
+  if (-not $win -or $win.Count -lt 3) {
+    # Use last row if window empty
+    $lastTs = $null
+    if ($rows.Count -gt 0) {
+      try { $lastTs = [datetime]($rows[-1]."$TsCol") } catch { $lastTs = $null }
+    }
+    $lastAgeSec = if ($lastTs) { [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1) } else { $null }
+    
+    return @{
+      last_age_sec = $lastAgeSec
+      active_ratio = 0
+      tick_rate = 0
+      samples = 0
+      ts_utc = (Get-Date).ToUniversalTime().ToString('o')
+    }
+  }
+
+  # CHANGE-002B: Calculate metrics (tick_rate=0 if column missing)
+  $ticks = @()
+  if ($TpCol) {
+    foreach($r in $win){ $ticks += [double]($r."$TpCol") }
+  }
+  
+  $total  = $win.Count
+  if ($ticks.Count -gt 0) {
+    $active = ($ticks | Where-Object { $_ -gt 0 }).Count
+    $ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
+    $avg    = [math]::Round(($ticks | Measure-Object -Average).Average,3)
+  } else {
+    # No tick_rate column - use presence of rows as "active"
+    $active = $total
+    $ratio  = if($total -gt 0) { 1 } else { 0 }
+    $avg    = 0
+  }
+
+  $lastTs = [datetime](($win | Select-Object -Last 1)."$TsCol")
+  $lastAgeSec = [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1)
+
+  return @{
+    last_age_sec = $lastAgeSec
+    active_ratio = $ratio
+    tick_rate = $avg
+    samples = $total
+    ts_utc = (Get-Date).ToUniversalTime().ToString('o')
+  }
 }
 
-# 2) Ghi nhận mốc thời gian và chờ $Seconds
-$start = Get-Date
-Start-Sleep -Seconds $Seconds
-$end   = Get-Date
-
-# --- PS5-safe: luôn cung cấp header thật cho ConvertFrom-Csv ---
-
-# 1) Đọc header (dòng đầu) với FileShare ReadWrite để không khóa file
-$headerLine = $null
-$fs = [System.IO.File]::Open($tele.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-try {
-  $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
-  $headerLine = $sr.ReadLine()
-} finally { $sr.Close(); $fs.Close() }
-if (-not $headerLine) { Write-Error "Không đọc được header từ $($tele.FullName)"; exit 1 }
-
-# 2) Lấy tail (nhiều hơn 60–90s để dư mẫu)
-$tailLines = 5000
-$tail = Get-Content -LiteralPath $tele.FullName -Tail $tailLines -Encoding UTF8
-
-# 3) Loại bỏ mọi dòng header lặp ở phần tail (khi file rotate/append)
-$tailNoHeader = $tail | Where-Object {
-  $_ -and ($_ -ne $headerLine) -and ($_ -notmatch '^(timestamp_iso|timestamp|time|Time|Timestamp),')
+# 1) Find telemetry file (or use mock)
+if ($MockTelemetryPath) {
+  $teleFullName = (Resolve-Path $MockTelemetryPath).Path
+  Write-Host "[INFO] Using mock: $teleFullName" -ForegroundColor Yellow
+} else {
+  $pattern = Join-Path $LogRoot $TelemetryFilePattern
+  $cands = Get-ChildItem -LiteralPath (Split-Path $pattern) -Filter (Split-Path $pattern -Leaf) -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+  if(-not $cands){ throw "No $pattern" }
+  $teleFullName = $cands[0].FullName
+  Write-Host "[INFO] Using telemetry: $teleFullName"
 }
 
-# 4) Ghép header + tail và ConvertFrom-Csv
-$csvLines = @()
-$csvLines += $headerLine
-$csvLines += $tailNoHeader
-
-if(-not $csvLines -or $csvLines.Count -lt 2) {
-  Write-Error "File telemetry không có dữ liệu sau header."
-  exit 1
-}
-
-$rows = @($csvLines | ConvertFrom-Csv)
-if(-not $rows){ Write-Error "Không parse được CSV sau khi ghép header."; exit 1 }
-
-# === Column detection (robust for PS5) ===
-# Coerce names to [string] explicitly
-$available = @()
-if ($rows.Count -gt 0 -and $rows[0]) {
-  $available = @($rows[0].PSObject.Properties | ForEach-Object { [string]$_.Name })
-}
-
-function Find-Col {
-  param([string[]]$candidates, [string[]]$avail)
-  foreach ($c in $candidates) { if ($avail -contains $c) { return [string]$c } }
+# 2) CHANGE-002B: Robust column mapping with expanded aliases
+function Resolve-Col {
+  param([string[]]$candidates, [string[]]$cols)
+  foreach($c in $candidates){ 
+    if($cols -contains $c){ return [string]$c }
+  }
   return $null
 }
 
-$tsCol = Find-Col @('timestamp_iso','timestamp','time','Time','Timestamp') $available
-if (-not $tsCol) { Write-Error "Thiếu cột timestamp (timestamp_iso/timestamp)"; exit 1 }
-
-$tpCol = Find-Col @('ticksPerSec','ticks_per_sec','tickRate','tick_rate','TPS') $available
-if (-not $tpCol) { Write-Error "Thiếu cột tick-rate (ticksPerSec/tickRate)"; exit 1 }
-
-$bidCol = Find-Col @('bid','Bid','bestBid','bidPrice') $available
-$askCol = Find-Col @('ask','Ask','bestAsk','askPrice') $available
-
-if ($RequireBidAsk -and (-not $bidCol -or -not $askCol)) {
-  Write-Error "Thiếu cột bid/ask trong telemetry (RequireBidAsk=true)"
-  exit 1
-}
-
-# --- Chuẩn hóa tên cột về [string] ---
-$col_ts  = [string]$tsCol
-$col_tp  = [string]$tpCol
-$col_bid = if ($bidCol) { [string]$bidCol } else { $null }
-$col_ask = if ($askCol) { [string]$askCol } else { $null }
-
-# === Window filter (đã tính $win) ===
-$windowStart = $start.AddSeconds(-3)
-$win = @($rows | Where-Object {
-  $t = $_."$col_ts"
-  if (-not $t) { return $false }
-  $dt = [datetime]$t
-  ($dt -ge $windowStart) -and ($dt -le $end)
-})
-
-# === NEW: luôn sinh proof nếu thiếu mẫu, thoát 0 để các step sau vẫn chạy ===
-if (-not $win -or $win.Count -lt 3) {
-  $lastTs = $null
-  if ($rows.Count -gt 0) {
-    try { $lastTs = [datetime]($rows[-1]."$col_ts") } catch { $lastTs = $null }
-  }
-  $lastAgeSec = if ($lastTs) { [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1) } else { $null }
-
-  $selectColumns = @(
-    ([hashtable]@{ Name='timestamp_iso'; Expression = { [string]($_."$col_ts") } }),
-    ([hashtable]@{ Name='ticksPerSec' ; Expression = { [double]($_."$col_tp") } })
+# Helper to emit JSON and exit
+function Exit-WithProof {
+  param(
+    [bool]$Ok,
+    [string]$Note,
+    [string]$Mode,
+    [object]$MinLastAgeSec,
+    [array]$ProbeResults,
+    [string]$TelemetryFile,
+    [object]$MedianSpread,
+    [int]$ExitCode
   )
-  if ($col_bid) { $selectColumns += ([hashtable]@{ Name='bid' ; Expression = { [double]($_."$col_bid") } }) }
-  if ($col_ask) { $selectColumns += ([hashtable]@{ Name='ask' ; Expression = { [double]($_."$col_ask") } }) }
-  if ($col_bid -and $col_ask) { $selectColumns += ([hashtable]@{ Name='spread'; Expression = { [double]($_."$col_ask") - [double]($_."$col_bid") } }) }
+  
+  $jsonObj = @{
+    ok = $Ok
+    mode = $Mode
+    min_last_age_sec = $MinLastAgeSec
+    probes = $ProbeResults
+    note = $Note
+    timestamp_utc = (Get-Date).ToUniversalTime().ToString('o')
+    telemetry_file = $TelemetryFile
+  }
+  if ($MedianSpread -ne $null) { $jsonObj.median_spread = $MedianSpread }
+  
+  $jsonPath = Join-Path $OutDir "connection_ok.json"
+  $jsonObj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding UTF8 -Force
+  Write-Host "[INFO] Proof written: $jsonPath"
+  
+  exit $ExitCode
+}
 
-  $l1Path = Join-Path $OutDir 'l1_sample.csv'
-  $l1Selected = $win | Select-Object -Property $selectColumns
-  if ($l1Selected) {
-    $l1Selected | Export-Csv -NoTypeInformation -Encoding UTF8 $l1Path
+$firstLine = $null
+$fs = [System.IO.File]::Open($teleFullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+try {
+  $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
+  $firstLine = $sr.ReadLine()
+} finally { $sr.Close(); $fs.Close() }
+
+if (-not $firstLine) {
+  Write-Error "Cannot read header from telemetry file"
+  Exit-WithProof -Ok $false -Note "fail: cannot read header" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+}
+
+$cols = $firstLine -split ','
+
+# Expanded column aliases for real-world feeds
+$tsCol = Resolve-Col -candidates @('timestamp_iso','timestamp','ts_utc','ts') -cols $cols
+if(-not $tsCol){ 
+  Write-Error "Missing timestamp column (tried: timestamp_iso, timestamp, ts_utc, ts)"
+  Exit-WithProof -Ok $false -Note "fail: missing timestamp column" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+}
+
+# CHANGE-002B: tick_rate is primary, ticksPerSec is legacy
+$tpCol = Resolve-Col -candidates @('tick_rate','ticksPerSec','tps','tickrate','ticks_per_second') -cols $cols
+$hasTicks = ($tpCol -ne $null)
+
+$bidCol = Resolve-Col -candidates @('bid','Bid','Bid2','bid_px') -cols $cols
+$askCol = Resolve-Col -candidates @('ask','Ask','Ask2','ask_px') -cols $cols
+$symbolCol = Resolve-Col -candidates @('symbol','instrument') -cols $cols
+
+if ($RequireBidAsk) {
+  if(-not $bidCol -or -not $askCol){ 
+    Write-Error "Missing bid/ask columns (RequireBidAsk=true)"
+    Exit-WithProof -Ok $false -Note "fail: missing bid/ask (RequireBidAsk)" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+  }
+}
+
+# CHANGE-002B: Graceful degradation if no tick_rate but have bid/ask
+if (-not $hasTicks -and $bidCol -and $askCol) {
+  Write-Host "[WARN] No tick_rate column found, will use tick_rate=0 (bid/ask present)" -ForegroundColor Yellow
+} elseif (-not $hasTicks) {
+  Write-Error "Missing tick_rate column and no bid/ask fallback"
+  Exit-WithProof -Ok $false -Note "fail: missing tick_rate and no bid/ask" -Mode $Mode -MinLastAgeSec $null -ProbeResults @() -TelemetryFile $teleFullName -MedianSpread $null -ExitCode 1
+}
+
+# 3) CHANGE-002-REAL: Multi-probe collection
+$probeResults = @()
+$windowStart = (Get-Date).AddSeconds(-$Seconds)
+$windowEnd = Get-Date
+
+for ($i = 1; $i -le $Probes; $i++) {
+  if ($i -gt 1 -and -not $MockTelemetryPath) { Start-Sleep -Seconds $IntervalSec }
+  
+  try {
+    $probe = Get-TelemetryProbe -TeleFullName $teleFullName -TsCol $tsCol -TpCol $tpCol -WindowStart $windowStart -WindowEnd $windowEnd
+    $probeResults += $probe
+    Write-Host "[PROBE $i/$Probes] last_age=$($probe.last_age_sec)s, ratio=$($probe.active_ratio), tick_rate=$($probe.tick_rate), samples=$($probe.samples)"
+  } catch {
+    Write-Warning "Probe $i failed: $_"
+    $failedProbe = @{last_age_sec=$null; active_ratio=0; tick_rate=0; samples=0; ts_utc=(Get-Date).ToUniversalTime().ToString('o')}
+    $probeResults += $failedProbe
+  }
+}
+
+# 4) Calculate min_last_age_sec
+$validAges = @($probeResults | Where-Object { $null -ne $_.last_age_sec } | ForEach-Object { $_.last_age_sec })
+if ($validAges.Count -eq 0) {
+  $minLastAgeSec = $null
+} else {
+  $minLastAgeSec = ($validAges | Measure-Object -Minimum).Minimum
+}
+
+# 5) Calculate median spread if Bid/Ask available
+$medianSpread = $null
+if ($bidCol -and $askCol) {
+  $tail = Get-Content -LiteralPath $teleFullName -Tail 2000 -Encoding UTF8
+  $tailNoHeader = $tail | Where-Object { $_ -and ($_ -ne $firstLine) -and ($_ -notmatch '^(timestamp_iso|timestamp|time),') }
+  $csvLines2 = @(); $csvLines2 += $firstLine; $csvLines2 += $tailNoHeader
+  if ($csvLines2.Count -gt 1) {
+    $rows2 = @($csvLines2 | ConvertFrom-Csv)
+    $spreads = @()
+    foreach($r in $rows2){
+      $b = [double]($r."$bidCol")
+      $a = [double]($r."$askCol")
+      if($a -gt 0 -and $a -ge $b){$spreads += ($a - $b)}
+    }
+    if($spreads.Count){ $medianSpread = ($spreads | Sort-Object)[[int]($spreads.Count/2)] }
+  }
+}
+
+# 6) Mode-based decision logic
+$ok = $false
+$note = ""
+$reason = ""
+
+if ($null -eq $minLastAgeSec) {
+  $ok = $false
+  $note = "fail: no valid probes"
+  $reason = "Cannot determine last_age from any probe"
+} elseif ($Mode -eq 'gate2') {
+  # Gate2: soft-pass zone 5.0 < min ≤ 5.5
+  if ($minLastAgeSec -le 5.0) {
+    $ok = $true
+    $note = "pass"
+  } elseif ($minLastAgeSec -le 5.5) {
+    # Check additional metrics for soft-pass
+    $avgRatio = ($probeResults | ForEach-Object { $_.active_ratio } | Measure-Object -Average).Average
+    $avgTickRate = ($probeResults | ForEach-Object { $_.tick_rate } | Measure-Object -Average).Average
+    if ($avgRatio -ge 0.7 -and $avgTickRate -ge 0.5) {
+      $ok = $true
+      $note = "warn: borderline freshness (min_last_age=$minLastAgeSec s, ≤5.5s soft-pass)"
+    } else {
+      $ok = $false
+      $note = "fail: borderline freshness but metrics insufficient"
+      $reason = "min_last_age=$minLastAgeSec s (5.0-5.5 zone), but avg_ratio=$avgRatio or avg_tick_rate=$avgTickRate below threshold"
+    }
   } else {
-    $headers = ($selectColumns | ForEach-Object { $_['Name'] }) -join ','
-    $headers | Out-File $l1Path -Encoding UTF8
+    $ok = $false
+    $note = "fail: staleness exceeds Gate2 soft-pass threshold"
+    $reason = "min_last_age=$minLastAgeSec s > 5.5s"
   }
-
-  # PS5-safe: pre-calculate values outside hashtable
-  $samplesCount = @($win).Count
-  $lastTsIso    = if ($lastTs) { $lastTs.ToUniversalTime().ToString('o') } else { $null }
-
-  $proof = [pscustomobject]@{
-    host               = $env:COMPUTERNAME
-    telemetry_file     = $tele.FullName
-    window_start_iso   = $start.ToUniversalTime().ToString('o')
-    window_end_iso     = $end.ToUniversalTime().ToString('o')
-    duration_sec       = [int]($end - $start).TotalSeconds
-    timestamp_col      = $col_ts
-    tickrate_col       = $col_tp
-    bid_col            = $col_bid
-    ask_col            = $col_ask
-    samples            = $samplesCount
-    active_ratio       = 0
-    tick_rate_avg      = 0
-    last_timestamp_iso = $lastTsIso
-    last_age_sec       = $lastAgeSec
-    has_bid_ask        = [bool]($col_bid -and $col_ask)
-    spread_median      = $null
-    ok                 = $false
-    reason             = "insufficient_samples count=$samplesCount"
-    generated_at_iso   = (Get-Date).ToUniversalTime().ToString('o')
-  }
-  $proofPath = Join-Path $OutDir 'connection_ok.json'
-  $proof | ConvertTo-Json -Depth 5 | Out-File $proofPath -Encoding UTF8
-
-  if (!(Test-Path $proofPath)) { Write-Error "Không tạo được connection_ok.json"; exit 1 }
-  if (!(Test-Path $l1Path))    { Write-Error "Không tạo được l1_sample.csv";     exit 1 }
-
-  Write-Host "[WARN] Preflight: thiếu mẫu nhưng đã sinh proof (ok=false)."
-  exit 0
-}
-
-# --- Metrics ---
-$ticks = @()
-foreach($r in $win){ $ticks += [double]($r."$col_tp") }
-$total  = $ticks.Count
-$active = ($ticks | Where-Object { $_ -gt 0 }).Count
-$ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
-$avg    = if($total){ [math]::Round(($ticks | Measure-Object -Average).Average,3) } else { 0 }
-
-$lastTs = [datetime](($win | Select-Object -Last 1)."$col_ts")
-$lastAgeSec = [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1)
-
-# --- Bid/Ask & spread median ---
-$hasBA = $false; $spread_median = $null
-if ($col_bid -and $col_ask) {
-  $hasBA = $true
-  $spreads = @()
-  foreach($r in $win){
-    $b=[double]($r."$col_bid"); $a=[double]($r."$col_ask")
-    $spreads += ($a - $b)
-  }
-  $pos = $spreads | Where-Object { $_ -gt 0 }
-  if ($pos.Count) {
-    $sorted = $pos | Sort-Object
-    $mid = [int][math]::Floor($sorted.Count/2)
-    $spread_median = if ($sorted.Count % 2 -eq 0) { [math]::Round( ($sorted[$mid-1]+$sorted[$mid]) / 2.0, 10) } else { [math]::Round($sorted[$mid], 10) }
+} elseif ($Mode -eq 'gate3') {
+  # Gate3: hard limit ≤ 5.0
+  if ($minLastAgeSec -le 5.0) {
+    $ok = $true
+    $note = "pass"
+  } else {
+    $ok = $false
+    $note = "fail: Gate3 hard limit (≤5.0s)"
+    $reason = "min_last_age=$minLastAgeSec s > 5.0s (Gate3 threshold)"
   }
 }
 
-# --- Điều kiện pass ---
-$ok = ($lastAgeSec -le 5) -and ($ratio -ge 0.7) -and ($avg -ge 0.5)
-$reason = if($ok){"ok"}else{"freshness=$lastAgeSec; active_ratio=$ratio; tick_rate_avg=$avg"}
-
-# --- l1_sample.csv (tên cột chuẩn, PS5-safe) ---
-$selectColumns = @(
-  ([hashtable]@{ Name = 'timestamp_iso'; Expression = { [string]($_."$col_ts") } }),
-  ([hashtable]@{ Name = 'ticksPerSec' ; Expression = { [double]($_."$col_tp") } })
-)
-if ($col_bid) { $selectColumns += ([hashtable]@{ Name='bid'   ; Expression = { [double]($_."$col_bid") } }) }
-if ($col_ask) { $selectColumns += ([hashtable]@{ Name='ask'   ; Expression = { [double]($_."$col_ask") } }) }
-if ($col_bid -and $col_ask) { $selectColumns += ([hashtable]@{ Name='spread'; Expression = { [double]($_."$col_ask") - [double]($_."$col_bid") } }) }
-
-$l1 = $win | Select-Object -Property $selectColumns
-$l1Path = Join-Path $OutDir "l1_sample.csv"
-$l1 | Export-Csv -NoTypeInformation -Encoding UTF8 $l1Path
-
-# --- connection_ok.json ---
-$proof = [pscustomobject]@{
-  host = $env:COMPUTERNAME
-  telemetry_file = $tele.FullName
-  window_start_iso = $start.ToUniversalTime().ToString("o")
-  window_end_iso   = $end.ToUniversalTime().ToString("o")
-  duration_sec = [int]($end - $start).TotalSeconds
-  timestamp_col = $col_ts
-  tickrate_col  = $col_tp
-  bid_col = $col_bid
-  ask_col = $col_ask
-  samples = $total
-  active_ratio = $ratio
-  tick_rate_avg = $avg
-  last_timestamp_iso = $lastTs.ToUniversalTime().ToString("o")
-  last_age_sec = $lastAgeSec
-  has_bid_ask = $hasBA
-  spread_median = $spread_median
-  ok = $ok
-  reason = $reason
-  generated_at_iso = (Get-Date).ToUniversalTime().ToString("o")
-  note = "Gate3 yêu cầu has_bid_ask=true & spread_median>0"
+# 7) Exit with proof JSON (CHANGE-002B: centralized via Exit-WithProof)
+if ($ok) {
+  if ($note -match 'warn') {
+    Write-Host "[WARN] Preflight CONNECTIVITY: $note" -ForegroundColor Yellow
+    Write-Host "[INFO] min_last_age_sec=$minLastAgeSec, Mode=$Mode (soft-pass granted)" -ForegroundColor Yellow
+  } else {
+    Write-Host "[PASS] Preflight CONNECTIVITY ok=true" -ForegroundColor Green
+    Write-Host "[INFO] min_last_age_sec=$minLastAgeSec, Mode=$Mode" -ForegroundColor Green
+  }
+  Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 0
+} else {
+  Write-Host "Preflight CONNECTIVITY FAIL: $reason" -ForegroundColor Red
+  Write-Host "[FAIL] min_last_age_sec=$minLastAgeSec, Mode=$Mode" -ForegroundColor Red
+  Exit-WithProof -Ok $ok -Note $note -Mode $Mode -MinLastAgeSec $minLastAgeSec -ProbeResults $probeResults -TelemetryFile $teleFullName -MedianSpread $medianSpread -ExitCode 1
 }
-$proofPath = Join-Path $OutDir "connection_ok.json"
-$proof | ConvertTo-Json -Depth 5 | Out-File $proofPath -Encoding UTF8
-
-if(!(Test-Path $proofPath) -or !(Test-Path $l1Path)){ Write-Error "Thiếu proof files"; exit 1 }
-if(-not $ok){ Write-Error "Preflight CONNECTIVITY FAIL: $reason"; exit 1 }
-Write-Host "[PASS] Preflight CONNECTIVITY ok=true"
-exit 0
