@@ -1,0 +1,41 @@
+STATUS: STARTED -> EVIDENCE COLLECTED -> FAIL
+
+EVIDENCE:
+- Bundle: D:\botg\logs\preflight\verify_20251029_180642
+- [ECHO] Mode=paper; Sim=False (not captured in this automation session; cTrader relaunch pending)
+- [ECHO+] Preflight.Live=true; WriterStartBeforeCheck=true (not captured)
+- [PREFLIGHT] source=live | last_age_sec=1370.9 (script probe -> stale L1)
+- preflight_canary.json:
+```json
+{
+  "ok": false,
+  "fail_reason": "L1 data stale (\u003E5s since last tick)",
+  "checks": {
+    "sentinel": true,
+    "l1_fresh": false
+  },
+  "ack": {
+    "ok": false,
+    "latency_ms": 0,
+    "order_id": null,
+    "error_message": null
+  },
+  "fill": {
+    "ok": false,
+    "latency_ms": 0,
+    "slippage_pips": 0,
+    "close_latency_ms": 0,
+    "error_message": null
+  },
+  "timestamps": {
+    "start_iso": "2025-10-29T10:31:31.0478861Z",
+    "end_iso": "2025-10-29T10:31:31.0503876Z"
+  },
+  "bot": "BotG_01a5f4ab"
+}
+```
+- connection_ok.json: ok=false; min_last_age_sec=1370.9; active_ratio=0; tick_rate=0; samples=0
+- l1_sample.csv: rows=0 (file not generated; no ticks observed during probe)
+
+DECISION:
+- Gate2 dispatch: BLOCKED (staleness > 5s, no live L1 data)
