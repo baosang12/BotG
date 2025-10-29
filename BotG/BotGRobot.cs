@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using cAlgo.API;
 using Telemetry;
 using Connectivity;
+using BotG.Preflight;
 
 [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
 public class BotGRobot : Robot
@@ -29,6 +30,9 @@ public class BotGRobot : Robot
     private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
+    
+    // Preflight live tick tracking
+    private readonly CTraderTickSource _tickSource = new CTraderTickSource();
 
     protected override void OnStart()
     {
@@ -103,33 +107,40 @@ public class BotGRobot : Robot
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
             echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
             JsonSerializer.Serialize(echo.Env));
+        Print("[ECHO+] Preflight.Live=true; Fallback=preflight\\l1_sample.csv; ThresholdSec=5; WriterStartBeforeCheck=true");
 
-        // ========== PREFLIGHT CANARY (PAPER MODE ONLY) ==========
+        // ========== PREFLIGHT LIVE FRESHNESS (PAPER MODE ONLY) ==========
         var cfg = TelemetryConfig.Load();
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
 
-        if (isPaper && !simEnabled && _connector != null)
+        if (isPaper && !simEnabled)
         {
-            Print("[PREFLIGHT] Running canary (paper mode, simulation disabled)...");
-            var canaryTask = RunPreflightCanaryAsync(cfg.LogPath, _connector.OrderExecutor, _connector.MarketData);
+            Print("[PREFLIGHT] Running live freshness check (paper mode, simulation disabled)...");
             
-            // Wait synchronously (cTrader Robot doesn't support async OnStart)
-            canaryTask.Wait();
-            var result = canaryTask.Result;
+            var preflight = new PreflightLiveFreshness(
+                _tickSource,
+                () => Server.Time,
+                thresholdSec: 5.0,
+                fallbackCsvPath: Path.Combine(cfg.LogPath, "preflight", "l1_sample.csv")
+            );
+
+            var checkTask = preflight.CheckAsync(CancellationToken.None);
+            checkTask.Wait(); // cTrader doesn't support async OnStart
+            var result = checkTask.Result;
+
+            Print("[PREFLIGHT] L1 source={0} | last_age_sec={1:F1}", result.Source, result.LastAgeSec);
 
             var preflightDir = Path.Combine(cfg.LogPath, "preflight");
             Directory.CreateDirectory(preflightDir);
             var jsonPath = Path.Combine(preflightDir, "preflight_canary.json");
             
-            var json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(jsonPath, json);
-            
+            preflight.WriteResultJson(result, jsonPath);
             Print("[PREFLIGHT] Result written to {0}", jsonPath);
 
             if (!result.Ok)
             {
-                Print("[PREFLIGHT] FAILED - aborting bot startup. Reason: {0}", result.FailReason ?? "unknown");
+                Print("[PREFLIGHT] FAILED - aborting bot startup. L1 data too old: {0:F1}s > 5.0s", result.LastAgeSec);
                 _preflightPassed = false;
                 Stop();
                 return;
@@ -151,6 +162,9 @@ public class BotGRobot : Robot
 
     protected override void OnTick()
     {
+        // Track tick for preflight live freshness
+        _tickSource.OnTick(Server.Time);
+        
         try { _connector?.TickPump?.Pump(); } catch { }
         try { TelemetryContext.Collector?.IncTick(); } catch { }
 

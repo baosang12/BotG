@@ -1,0 +1,6 @@
+{
+  "Simulation": {
+    "Enabled": false
+  },
+  "Mode": "paper"
+}
