@@ -76,3 +76,13 @@ scripts/.tmp_pr_backup/**
 
 # PR NOOP trigger (used only to force a diff)
 scripts/.pr_trigger_for_pr.txt
+
+# Local runtime artifacts (keep repo clean during Gate runs)
+path_issues/
+current_*.txt
+POSTMERGE_REPORT_*.md
+pr_body_*.txt
+docs/issue_drafts/
+
+# Local stash directories
+path_issues/local_stash_*/
