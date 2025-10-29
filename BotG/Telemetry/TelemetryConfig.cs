@@ -52,27 +52,116 @@ namespace Telemetry
         {
             try
             {
-                // Allow override via environment variables
-                var envPath = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
-                var envMode = Environment.GetEnvironmentVariable("BOTG_MODE");
-                var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
-
+                // Priority: ENV > file (logs > config > workspace)
+                // Step 1: Load from file (lowest priority)
                 string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
                 string searchRoot = !string.IsNullOrWhiteSpace(rootHint) ? rootHint : baseDir;
-                string? cfgPath = FindConfigPath(searchRoot);
+                
+                var loadedFiles = new System.Collections.Generic.List<string>();
                 TelemetryConfig cfg = new TelemetryConfig();
-                if (!string.IsNullOrEmpty(cfgPath) && File.Exists(cfgPath))
+                
+                // Try multiple config locations in precedence order (later overrides earlier)
+                var configPaths = new[]
                 {
-                    var json = File.ReadAllText(cfgPath);
-                    var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
+                    Path.Combine(baseDir, "config.runtime.json"),
+                    "D:\\botg\\config\\config.runtime.json",
+                    "D:\\botg\\logs\\config.runtime.json"
+                };
+                
+                foreach (var path in configPaths)
+                {
+                    if (File.Exists(path))
                     {
-                        PropertyNameCaseInsensitive = true
-                    });
-                    if (loaded != null) cfg = loaded;
+                        try
+                        {
+                            var json = File.ReadAllText(path);
+                            var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            });
+                            if (loaded != null)
+                            {
+                                // Merge non-null properties
+                                if (!string.IsNullOrWhiteSpace(loaded.Mode)) cfg.Mode = loaded.Mode;
+                                if (!string.IsNullOrWhiteSpace(loaded.LogPath)) cfg.LogPath = loaded.LogPath;
+                                if (loaded.FlushIntervalSeconds > 0) cfg.FlushIntervalSeconds = loaded.FlushIntervalSeconds;
+                                if (loaded.Hours > 0) cfg.Hours = loaded.Hours;
+                                if (loaded.SecondsPerHour > 0) cfg.SecondsPerHour = loaded.SecondsPerHour;
+                                cfg.UseSimulation = loaded.UseSimulation;
+                                if (loaded.Simulation != null) cfg.Simulation = loaded.Simulation;
+                                if (loaded.Execution != null) cfg.Execution = loaded.Execution;
+                                if (loaded.Account != null) cfg.Account = loaded.Account;
+                                if (loaded.Paper != null) cfg.Paper = loaded.Paper;
+                                if (loaded.Trading != null) cfg.Trading = loaded.Trading;
+                                loadedFiles.Add(path);
+                            }
+                        }
+                        catch { }
+                    }
                 }
-                if (!string.IsNullOrWhiteSpace(envPath)) cfg.LogPath = envPath!;
-                if (!string.IsNullOrWhiteSpace(envMode)) cfg.Mode = envMode!;
-                if (int.TryParse(envFlush, out var sec) && sec > 0) cfg.FlushIntervalSeconds = sec;
+                
+                // Step 2: ENV overrides (highest priority)
+                var envPath = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
+                var envMode = Environment.GetEnvironmentVariable("BOTG_MODE") 
+                           ?? Environment.GetEnvironmentVariable("Mode");
+                var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
+                var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled") 
+                                 ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
+                
+                var envOverrides = new System.Collections.Generic.List<string>();
+                if (!string.IsNullOrWhiteSpace(envPath)) 
+                {
+                    cfg.LogPath = envPath!;
+                    envOverrides.Add($"BOTG_LOG_PATH={envPath}");
+                }
+                if (!string.IsNullOrWhiteSpace(envMode)) 
+                {
+                    cfg.Mode = envMode!;
+                    envOverrides.Add($"Mode={envMode}");
+                }
+                if (int.TryParse(envFlush, out var sec) && sec > 0) 
+                {
+                    cfg.FlushIntervalSeconds = sec;
+                    envOverrides.Add($"FlushIntervalSeconds={sec}");
+                }
+                
+                // Step 3: Simulation.Enabled with ENV override + paper default
+                bool simFromFile = cfg.Simulation?.Enabled ?? cfg.UseSimulation;
+                bool? simFromEnv = null;
+                if (!string.IsNullOrWhiteSpace(envSimEnabled))
+                {
+                    if (bool.TryParse(envSimEnabled, out var envSim))
+                    {
+                        simFromEnv = envSim;
+                        envOverrides.Add($"Simulation__Enabled={envSim}");
+                    }
+                }
+                
+                // Resolve final sim value: ENV > file > (paper default=false, others=true)
+                bool finalSim;
+                if (simFromEnv.HasValue)
+                {
+                    finalSim = simFromEnv.Value; // ENV wins
+                }
+                else
+                {
+                    // Use file value if set explicitly, otherwise default by mode
+                    string mode = cfg.Mode?.ToLowerInvariant() ?? "paper";
+                    finalSim = mode == "paper" ? false : simFromFile;
+                }
+                
+                cfg.UseSimulation = finalSim;
+                if (cfg.Simulation == null) cfg.Simulation = new SimulationConfig();
+                cfg.Simulation.Enabled = finalSim;
+                
+                // Log sources for forensics
+                var sourcesLog = loadedFiles.Count > 0 
+                    ? $"Files=[{string.Join(", ", loadedFiles)}]" 
+                    : "Files=[]";
+                var envLog = envOverrides.Count > 0 
+                    ? $"ENV=[{string.Join(", ", envOverrides)}]" 
+                    : "ENV=[]";
+                Console.WriteLine($"[ECHO+] {sourcesLog}; {envLog}; Mode={cfg.Mode}; Simulation.Enabled={finalSim}");
 
                 // Ensure directory exists; fallback if access denied
                 try
