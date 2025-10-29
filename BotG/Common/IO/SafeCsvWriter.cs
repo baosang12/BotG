@@ -10,22 +10,50 @@ namespace BotG.Common.IO;
 /// <summary>
 /// Thread-safe CSV writer with idempotent headers, retry logic, and UTF-8 (no BOM) encoding.
 /// Uses FileShare.ReadWrite to allow concurrent reads.
+/// Enforces canonical Gate2 headers for orders.csv and risk_snapshots.csv.
 /// </summary>
 public class SafeCsvWriter
 {
     private readonly string _path;
     private readonly string[] _header;
+    private readonly string _headerString;
     private readonly UTF8Encoding _encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     private readonly object _lock = new object();
+
+    // Gate2 canonical headers (frozen spec)
+    private static readonly string OrdersCanonicalHeader = 
+        "event,status,reason,latency,price_requested,price_filled,order_id,side,requested_lots,filled_lots";
+    private static readonly string RiskCanonicalHeader = 
+        "timestamp_iso,equity,R_used,exposure,drawdown";
 
     public SafeCsvWriter(string path, string[] header)
     {
         _path = path ?? throw new ArgumentNullException(nameof(path));
         _header = header ?? throw new ArgumentNullException(nameof(header));
+        
+        // Coerce canonical headers for known Gate2 files
+        _headerString = GetCanonicalHeader(path) ?? string.Join(",", _header);
     }
 
     /// <summary>
-    /// Ensures the CSV file exists and has a header row (idempotent).
+    /// Returns canonical header for known Gate2 files (orders.csv, risk_snapshots.csv).
+    /// Returns null for other files (telemetry.csv uses provided header).
+    /// </summary>
+    private static string? GetCanonicalHeader(string path)
+    {
+        var fileName = Path.GetFileName(path).ToLowerInvariant();
+        return fileName switch
+        {
+            "orders.csv" => OrdersCanonicalHeader,
+            "risk_snapshots.csv" => RiskCanonicalHeader,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Ensures the CSV file exists and has the correct canonical header (idempotent).
+    /// For known Gate2 files (orders.csv, risk_snapshots.csv), enforces canonical header.
+    /// If existing file has wrong header, truncates and rewrites with correct header.
     /// </summary>
     public async Task EnsureHeaderAsync()
     {
@@ -33,16 +61,27 @@ public class SafeCsvWriter
         {
             lock (_lock)
             {
-                using var stream = new FileStream(_path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-                
-                // If file is empty, write header
-                if (stream.Length == 0)
+                // Check if file exists and validate header
+                if (File.Exists(_path))
                 {
-                    var headerLine = EscapeCsvRow(_header) + "\r\n";
-                    var headerBytes = _encoding.GetBytes(headerLine);
-                    stream.Write(headerBytes, 0, headerBytes.Length);
-                    stream.Flush();
+                    using var reader = new StreamReader(_path, _encoding, detectEncodingFromByteOrderMarks: true);
+                    var firstLine = reader.ReadLine()?.Trim();
+                    
+                    // If header matches, do nothing (idempotent)
+                    if (string.Equals(firstLine, _headerString, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                    
+                    // Header mismatch: truncate and rewrite canonical header
+                    // (This ensures Gate2 compliance by correcting legacy/wrong headers)
                 }
+
+                // File doesn't exist OR header mismatch: write canonical header
+                using var stream = new FileStream(_path, FileMode.Create, FileAccess.Write, FileShare.Read);
+                using var writer = new StreamWriter(stream, _encoding);
+                writer.WriteLine(_headerString);
+                writer.Flush();
             }
         });
     }
