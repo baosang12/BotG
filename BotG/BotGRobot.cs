@@ -151,6 +151,38 @@ public class BotGRobot : Robot
 
                     Print("[PREFLIGHT] PASSED - trading enabled");
                     _preflightPassed = true;
+
+                    // ========== CANARY TRADE (PAPER-ONLY, OPT-IN) ==========
+                    bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
+                    if (canaryEnabled && _connector?.OrderExecutor != null)
+                    {
+                        try
+                        {
+                            var canary = new CanaryTrade(
+                                _connector.OrderExecutor,
+                                this,
+                                msg => Print(msg),
+                                symbol: this.SymbolName ?? "EURUSD",
+                                volumeOverride: null, // use default min volume
+                                timeoutMs: 10000
+                            );
+
+                            bool canaryOk = await canary.ExecuteAsync(CancellationToken.None);
+                            if (!canaryOk)
+                            {
+                                Print("[CANARY] Failed - order pipeline issue detected");
+                                // Don't stop bot, just log warning
+                            }
+                        }
+                        catch (Exception canaryEx)
+                        {
+                            Print("[CANARY] Exception: {0}", canaryEx.Message);
+                        }
+                    }
+                    else if (canaryEnabled)
+                    {
+                        Print("[CANARY] Skipped (no order executor available)");
+                    }
                 }
                 catch (Exception ex)
                 {
