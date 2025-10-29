@@ -132,4 +132,94 @@ public class WriterTests
             Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task SafeCsvWriter_EnforcesCanonicalHeaderForOrders()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        
+        try
+        {
+            var testFile = Path.Combine(tempDir, "orders.csv");
+            var wrongHeader = new[] { "timestamp", "action", "symbol" }; // Wrong header
+            var writer = new SafeCsvWriter(testFile, wrongHeader);
+
+            // Act - initialize file (should enforce canonical header)
+            await writer.AppendRowAsync(new[] { "REQUEST", "PENDING", "test", "50", "1.1000", "1.1001", "ORD123", "BUY", "0.01", "0.01" });
+
+            // Assert - header should be canonical Gate2 spec, not provided header
+            var lines = File.ReadAllLines(testFile);
+            Assert.True(lines.Length >= 1);
+            Assert.Equal("event,status,reason,latency,price_requested,price_filled,order_id,side,requested_lots,filled_lots", lines[0]);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SafeCsvWriter_EnforcesCanonicalHeaderForRisk()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        
+        try
+        {
+            var testFile = Path.Combine(tempDir, "risk_snapshots.csv");
+            var wrongHeader = new[] { "time", "balance", "equity" }; // Wrong header
+            var writer = new SafeCsvWriter(testFile, wrongHeader);
+
+            // Act - initialize file (should enforce canonical header)
+            await writer.AppendRowAsync(new[] { "2025-10-29T13:00:00Z", "10000.00", "0.5", "500.00", "0.00" });
+
+            // Assert - header should be canonical Gate2 spec
+            var lines = File.ReadAllLines(testFile);
+            Assert.True(lines.Length >= 1);
+            Assert.Equal("timestamp_iso,equity,R_used,exposure,drawdown", lines[0]);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SafeCsvWriter_TruncatesFileWithWrongHeader()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        
+        try
+        {
+            var testFile = Path.Combine(tempDir, "orders.csv");
+            
+            // Create file with wrong header and old data
+            File.WriteAllLines(testFile, new[] {
+                "phase,timestamp_iso,action,symbol",  // Wrong header
+                "ACCUMULATION,2025-10-29T12:00:00Z,BUY,EURUSD",
+                "ACCUMULATION,2025-10-29T12:01:00Z,SELL,GBPUSD"
+            });
+
+            var writer = new SafeCsvWriter(testFile, new[] { "dummy" });
+
+            // Act - append new row (should truncate and rewrite with canonical header)
+            await writer.AppendRowAsync(new[] { "REQUEST", "PENDING", "test", "50", "1.1000", "1.1001", "ORD123", "BUY", "0.01", "0.01" });
+
+            // Assert - old data gone, canonical header enforced
+            var lines = File.ReadAllLines(testFile);
+            Assert.Equal(2, lines.Length); // Header + 1 new row (old data deleted)
+            Assert.Equal("event,status,reason,latency,price_requested,price_filled,order_id,side,requested_lots,filled_lots", lines[0]);
+            Assert.Contains("REQUEST", lines[1]);
+            Assert.DoesNotContain("ACCUMULATION", string.Join("\n", lines)); // Old data removed
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }
