@@ -107,47 +107,58 @@ public class BotGRobot : Robot
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
             echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
             JsonSerializer.Serialize(echo.Env));
-        Print("[ECHO+] Preflight.Live=true; Fallback=preflight\\l1_sample.csv; ThresholdSec=5; WriterStartBeforeCheck=true");
+        Print("[ECHO+] Preflight.Async=true; FirstGate=TickEvent; Fallback=preflight\\l1_sample.csv; ThresholdSec=5; WriterStartBeforeCheck=true");
 
-        // ========== PREFLIGHT LIVE FRESHNESS (PAPER MODE ONLY) ==========
+        // ========== PREFLIGHT LIVE FRESHNESS (NON-BLOCKING, PAPER MODE ONLY) ==========
         var cfg = TelemetryConfig.Load();
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
 
         if (isPaper && !simEnabled)
         {
-            Print("[PREFLIGHT] Running live freshness check (paper mode, simulation disabled)...");
+            Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
             
-            var preflight = new PreflightLiveFreshness(
-                _tickSource,
-                () => Server.Time,
-                thresholdSec: 5.0,
-                fallbackCsvPath: Path.Combine(cfg.LogPath, "preflight", "l1_sample.csv")
-            );
-
-            var checkTask = preflight.CheckAsync(CancellationToken.None);
-            checkTask.Wait(); // cTrader doesn't support async OnStart
-            var result = checkTask.Result;
-
-            Print("[PREFLIGHT] L1 source={0} | last_age_sec={1:F1}", result.Source, result.LastAgeSec);
-
-            var preflightDir = Path.Combine(cfg.LogPath, "preflight");
-            Directory.CreateDirectory(preflightDir);
-            var jsonPath = Path.Combine(preflightDir, "preflight_canary.json");
-            
-            preflight.WriteResultJson(result, jsonPath);
-            Print("[PREFLIGHT] Result written to {0}", jsonPath);
-
-            if (!result.Ok)
+            // Run preflight in background - don't block OnStart
+            Task.Run(async () =>
             {
-                Print("[PREFLIGHT] FAILED - aborting bot startup. L1 data too old: {0:F1}s > 5.0s", result.LastAgeSec);
-                _preflightPassed = false;
-                Stop();
-                return;
-            }
+                try
+                {
+                    var preflight = new PreflightLiveFreshness(
+                        _tickSource,
+                        () => Server.Time,
+                        thresholdSec: 5.0,
+                        fallbackCsvPath: Path.Combine(cfg.LogPath, "preflight", "l1_sample.csv")
+                    );
 
-            Print("[PREFLIGHT] PASSED - proceeding to trading loop");
-            _preflightPassed = true;
+                    var result = await preflight.CheckAsync(CancellationToken.None);
+
+                    Print("[PREFLIGHT] L1 source={0} | last_age_sec={1:F1}", result.Source, result.LastAgeSec);
+
+                    var preflightDir = Path.Combine(cfg.LogPath, "preflight");
+                    Directory.CreateDirectory(preflightDir);
+                    var jsonPath = Path.Combine(preflightDir, "preflight_canary.json");
+                    
+                    preflight.WriteResultJson(result, jsonPath);
+                    Print("[PREFLIGHT] Result written to {0}", jsonPath);
+
+                    if (!result.Ok)
+                    {
+                        Print("[PREFLIGHT] FAILED - stopping bot. L1 data too old: {0:F1}s > 5.0s", result.LastAgeSec);
+                        _preflightPassed = false;
+                        Stop();
+                        return;
+                    }
+
+                    Print("[PREFLIGHT] PASSED - trading enabled");
+                    _preflightPassed = true;
+                }
+                catch (Exception ex)
+                {
+                    Print("[PREFLIGHT] Exception: {0}", ex.Message);
+                    _preflightPassed = false;
+                    Stop();
+                }
+            });
         }
         else
         {
