@@ -98,6 +98,12 @@ public class BotGRobot : Robot
 
         InitializeTelemetryWriter();
 
+        // ========== STARTUP ECHO ==========
+        var echo = ComposeStartupEcho();
+        Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
+            echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
+            JsonSerializer.Serialize(echo.Env));
+
         // ========== PREFLIGHT CANARY (PAPER MODE ONLY) ==========
         var cfg = TelemetryConfig.Load();
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
@@ -648,6 +654,45 @@ public class BotGRobot : Robot
 
         [JsonPropertyName("error_message")]
         public string? ErrorMessage { get; set; }
+    }
+
+    // ========== STARTUP ECHO (CONFIG & BUILD STAMP) ==========
+    private class StartupEcho
+    {
+        public string BuildStamp { get; set; } = string.Empty;
+        public string ConfigSource { get; set; } = string.Empty;
+        public string ResolvedMode { get; set; } = string.Empty;
+        public bool ResolvedSimulationEnabled { get; set; }
+        public Dictionary<string, string?> Env { get; set; } = new();
+    }
+
+    private StartupEcho ComposeStartupEcho()
+    {
+        var asm = typeof(BotGRobot).Assembly;
+        var ver = asm.GetName().Version?.ToString() ?? "0.0.0.0";
+        var buildTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        
+        var cfg = TelemetryConfig.Load();
+        string cfgPath = cfg.LogPath ?? "(unknown)";
+        bool sim = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
+        string mode = cfg.Mode ?? "(null)";
+
+        var env = new Dictionary<string, string?>
+        {
+            ["Mode"] = Environment.GetEnvironmentVariable("Mode"),
+            ["Simulation__Enabled"] = Environment.GetEnvironmentVariable("Simulation__Enabled"),
+            ["BOTG__Mode"] = Environment.GetEnvironmentVariable("BOTG__Mode"),
+            ["BOTG__Simulation__Enabled"] = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled"),
+        };
+
+        return new StartupEcho
+        {
+            BuildStamp = $"{ver}|{buildTime}",
+            ConfigSource = cfgPath,
+            ResolvedMode = mode,
+            ResolvedSimulationEnabled = sim,
+            Env = env
+        };
     }
 
 }
