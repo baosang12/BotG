@@ -2,5 +2,10 @@
   "Simulation": {
     "Enabled": false
   },
-  "Mode": "paper"
+  "Mode": "paper",
+  "Preflight": {
+    "Canary": {
+      "Enabled": false
+    }
+  }
 }

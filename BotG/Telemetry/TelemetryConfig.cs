@@ -21,6 +21,7 @@ namespace Telemetry
         public string RiskSnapshotFile { get; set; } = "risk_snapshots.csv";
         public string TelemetryFile { get; set; } = "telemetry.csv";
     public SimulationConfig Simulation { get; set; } = new SimulationConfig();
+    public PreflightConfig Preflight { get; set; } = new PreflightConfig();
     public ExecutionConfig Execution { get; set; } = new ExecutionConfig();
     public AccountConfig? Account { get; set; }
     public PaperConfig? Paper { get; set; }
@@ -107,6 +108,7 @@ namespace Telemetry
                 var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
                 var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled") 
                                  ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
+                var envCanaryEnabled = Environment.GetEnvironmentVariable("PREFLIGHT__Canary__Enabled");
                 
                 var envOverrides = new System.Collections.Generic.List<string>();
                 if (!string.IsNullOrWhiteSpace(envPath)) 
@@ -153,6 +155,18 @@ namespace Telemetry
                 cfg.UseSimulation = finalSim;
                 if (cfg.Simulation == null) cfg.Simulation = new SimulationConfig();
                 cfg.Simulation.Enabled = finalSim;
+                
+                // Step 4: Preflight.Canary.Enabled with ENV override (default false)
+                if (!string.IsNullOrWhiteSpace(envCanaryEnabled))
+                {
+                    if (bool.TryParse(envCanaryEnabled, out var canaryEnabled))
+                    {
+                        if (cfg.Preflight == null) cfg.Preflight = new PreflightConfig();
+                        if (cfg.Preflight.Canary == null) cfg.Preflight.Canary = new CanaryConfig();
+                        cfg.Preflight.Canary.Enabled = canaryEnabled;
+                        envOverrides.Add($"Preflight__Canary__Enabled={canaryEnabled}");
+                    }
+                }
                 
                 // Log sources for forensics
                 var sourcesLog = loadedFiles.Count > 0 
@@ -255,6 +269,16 @@ namespace Telemetry
         public bool SimulatePartialFills { get; set; } = false;
         // Optional sampling for telemetry to reduce size
         public int TelemetrySampleN { get; set; } = 1; // log every row by default
+    }
+
+    public class PreflightConfig
+    {
+        public CanaryConfig Canary { get; set; } = new CanaryConfig();
+    }
+
+    public class CanaryConfig
+    {
+        public bool Enabled { get; set; } = false; // Default: disabled
     }
 
     public class ExecutionConfig
