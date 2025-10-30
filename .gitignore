@@ -86,3 +86,9 @@ docs/issue_drafts/
 
 # Local stash directories
 path_issues/local_stash_*/
+
+# === P0 OPS Kit runtime artifacts (local operation only) ===
+# Never commit logs/artifacts from D:\botg\logs (user's local machine)
+# Scripts in scripts/preflight and scripts/postrun are SOURCE CODE - keep them!
+# Only ignore their OUTPUT artifacts
+D:/botg/logs/**

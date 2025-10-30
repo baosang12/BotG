@@ -1,6 +1,7 @@
 * text=auto
-*.ps1  text eol=crlf
-*.psm1 text eol=crlf
+*.ps1  text eol=crlf working-tree-encoding=UTF-8
+*.psm1 text eol=crlf working-tree-encoding=UTF-8
 *.cs   text eol=crlf
-*.md   text eol=lf
+*.md   text eol=crlf working-tree-encoding=UTF-8
+*.json text eol=crlf working-tree-encoding=UTF-8
 *.sh   text eol=lf
