@@ -155,41 +155,60 @@ public class BotGRobot : Robot
 
                     // ========== CANARY TRADE (PAPER-ONLY, OPT-IN, SINGLE-SHOT) ==========
                     bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
-                    if (canaryEnabled && !_canaryOnce && _connector?.OrderExecutor != null)
+                    if (canaryEnabled && !_canaryOnce)
                     {
-                        _canaryOnce = true; // Set flag BEFORE execution to prevent race conditions
-                        Print("[CANARY] Triggering once after preflight PASS...");
+                        _canaryOnce = true; // Set flag EARLY to prevent race conditions
                         
-                        try
+                        // Wait for OrderExecutor to be ready (max WaitExecutorSec)
+                        int waitSec = cfg.Preflight?.Canary?.WaitExecutorSec ?? 10;
+                        var deadline = DateTime.UtcNow.AddSeconds(waitSec);
+                        
+                        while (DateTime.UtcNow < deadline && _connector?.OrderExecutor == null)
                         {
-                            var canary = new CanaryTrade(
-                                _connector.OrderExecutor,
-                                this,
-                                msg => Print(msg),
-                                symbol: this.SymbolName ?? "EURUSD",
-                                volumeOverride: null, // use default min volume
-                                timeoutMs: 10000
-                            );
-
-                            bool canaryOk = await canary.ExecuteAsync(CancellationToken.None);
-                            if (!canaryOk)
-                            {
-                                Print("[CANARY] Failed - order pipeline issue detected");
-                                // Don't stop bot, just log warning
-                            }
+                            await Task.Delay(200);
                         }
-                        catch (Exception canaryEx)
+                        
+                        if (_connector?.OrderExecutor == null)
                         {
-                            Print("[CANARY] Exception: {0}", canaryEx.Message);
+                            Print("[CANARY] SKIP reason=executor_null wait_sec={0}", waitSec);
+                            WriteCanaryStatusJson(enabled: true, tried: false, ok: false, 
+                                reason: "executor_null", t0: DateTime.UtcNow, t1: DateTime.UtcNow);
+                        }
+                        else
+                        {
+                            string symbol = this.SymbolName ?? "EURUSD";
+                            Print("[CANARY] START symbol={0} qty={1}", symbol, 1000);
+                            var t0 = DateTime.UtcNow;
+                            
+                            try
+                            {
+                                var canary = new CanaryTrade(
+                                    _connector.OrderExecutor,
+                                    this,
+                                    msg => Print(msg), // CanaryTrade will log REQUEST/ACK/FILL/CLOSE
+                                    symbol: symbol,
+                                    volumeOverride: null,
+                                    timeoutMs: 10000
+                                );
+
+                                bool canaryOk = await canary.ExecuteAsync(CancellationToken.None);
+                                var latencyMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
+                                Print("[CANARY] DONE ok={0} latency_ms={1}", canaryOk, latencyMs);
+                                
+                                WriteCanaryStatusJson(enabled: true, tried: true, ok: canaryOk, 
+                                    reason: canaryOk ? null : "pipeline_fail", t0, DateTime.UtcNow);
+                            }
+                            catch (Exception canaryEx)
+                            {
+                                Print("[CANARY] FAIL reason=exception {0}", canaryEx.Message);
+                                WriteCanaryStatusJson(enabled: true, tried: true, ok: false, 
+                                    reason: "exception:" + canaryEx.Message, t0, DateTime.UtcNow);
+                            }
                         }
                     }
                     else if (canaryEnabled && _canaryOnce)
                     {
-                        Print("[CANARY] Already executed once - skipping");
-                    }
-                    else if (canaryEnabled)
-                    {
-                        Print("[CANARY] Skipped (no order executor available)");
+                        Print("[CANARY] SKIP reason=already_executed");
                     }
                 }
                 catch (Exception ex)
@@ -758,6 +777,34 @@ public class BotGRobot : Robot
             ResolvedSimulationEnabled = sim,
             Env = env
         };
+    }
+
+    private void WriteCanaryStatusJson(bool enabled, bool tried, bool ok, string? reason, DateTime t0, DateTime t1)
+    {
+        try
+        {
+            var cfg = TelemetryConfig.Load();
+            var dir = Path.Combine(cfg.LogPath ?? "D:\\botg\\logs", "preflight");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "canary_status.json");
+            
+            var status = new
+            {
+                enabled,
+                tried,
+                ok,
+                reason,
+                t_start_iso = t0.ToString("o"),
+                t_end_iso = t1.ToString("o")
+            };
+            
+            var json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json, new UTF8Encoding(false));
+        }
+        catch
+        {
+            // Silent fail - don't crash bot if status file write fails
+        }
     }
 
 }
