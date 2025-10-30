@@ -30,6 +30,7 @@ public class BotGRobot : Robot
     private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
+    private volatile bool _canaryOnce; // Single-shot canary execution guard
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -152,10 +153,13 @@ public class BotGRobot : Robot
                     Print("[PREFLIGHT] PASSED - trading enabled");
                     _preflightPassed = true;
 
-                    // ========== CANARY TRADE (PAPER-ONLY, OPT-IN) ==========
+                    // ========== CANARY TRADE (PAPER-ONLY, OPT-IN, SINGLE-SHOT) ==========
                     bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
-                    if (canaryEnabled && _connector?.OrderExecutor != null)
+                    if (canaryEnabled && !_canaryOnce && _connector?.OrderExecutor != null)
                     {
+                        _canaryOnce = true; // Set flag BEFORE execution to prevent race conditions
+                        Print("[CANARY] Triggering once after preflight PASS...");
+                        
                         try
                         {
                             var canary = new CanaryTrade(
@@ -178,6 +182,10 @@ public class BotGRobot : Robot
                         {
                             Print("[CANARY] Exception: {0}", canaryEx.Message);
                         }
+                    }
+                    else if (canaryEnabled && _canaryOnce)
+                    {
+                        Print("[CANARY] Already executed once - skipping");
                     }
                     else if (canaryEnabled)
                     {
