@@ -1,0 +1,29 @@
+{
+  "bot": {"name": "BotG", "artifact": "BotG.algo"},
+  "defaults": {"LOG_PATH": "D:\\botg\\logs", "SYMBOL": "EURUSD", "THRESHOLD_SEC": 5},
+  "evidence_files": {
+    "preflight": [
+      "preflight\\connection_ok.json",
+      "preflight\\l1_sample.csv",
+      "preflight\\preflight_canary.json"
+    ],
+    "canary": [
+      "preflight\\canary_proof.json",
+      "preflight\\orders_tail_canary.txt"
+    ],
+    "postrun": [
+      "orders.csv",
+      "telemetry.csv",
+      "risk_snapshots.csv",
+      "trade_closes.log",
+      "run_metadata.json",
+      "closed_trades_fifo_reconstructed.csv",
+      "analysis_summary_stats.json"
+    ]
+  },
+  "modules": [
+    "BotGRobot","Runtime","Preflight (LiveFreshness, CanaryTrade)","Telemetry",
+    "Execution","TradeManager","RiskManager","RiskEvaluator","Protection",
+    "Strategies","Indicators","Connectivity","DataFetcher","Analysis","Shims","Common"
+  ]
+}

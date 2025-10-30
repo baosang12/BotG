@@ -1,125 +1,247 @@
-param(
-  [string]$OutDir = "path_issues/ctrader_connect_proof",
-  [int]$Seconds = 60,
-  [string]$LogRoot = "D:\botg\logs",
-  [string]$TelemetryFilePattern = "telemetry.csv",
+param(param(
+
+    [int]$Seconds = 180,  [string]$OutDir = "path_issues/ctrader_connect_proof",
+
+    [string]$LogPath = "D:\botg\logs",  [int]$Seconds = 60,
+
+    [string]$Symbol = "EURUSD"  [string]$LogRoot = "D:\botg\logs",
+
+)  [string]$TelemetryFilePattern = "telemetry.csv",
+
   [switch]$RequireBidAsk,
-  # CHANGE-002-REAL: Retry + soft-pass parameters
+
+$ErrorActionPreference = "Stop"  # CHANGE-002-REAL: Retry + soft-pass parameters
+
   [ValidateSet('gate2', 'gate3')]
-  [string]$Mode = 'gate2',
-  [int]$Probes = 3,
-  [int]$IntervalSec = 10,
-  [string]$MockTelemetryPath = $null
-)
 
-$ErrorActionPreference = 'Stop'
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# Create preflight directory  [string]$Mode = 'gate2',
 
-Write-Host "[INFO] Preflight Mode=$Mode, Probes=$Probes, IntervalSec=$IntervalSec" -ForegroundColor Cyan
+$preflightDir = Join-Path $LogPath "preflight"  [int]$Probes = 3,
+
+if (-not (Test-Path $preflightDir)) {  [int]$IntervalSec = 10,
+
+    New-Item -ItemType Directory -Path $preflightDir -Force | Out-Null  [string]$MockTelemetryPath = $null
+
+})
+
+
+
+# Check telemetry.csv exists$ErrorActionPreference = 'Stop'
+
+$telemetryPath = Join-Path $LogPath "telemetry.csv"New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+if (-not (Test-Path $telemetryPath)) {
+
+    throw "Missing telemetry.csv at $telemetryPath"Write-Host "[INFO] Preflight Mode=$Mode, Probes=$Probes, IntervalSec=$IntervalSec" -ForegroundColor Cyan
+
+}
 
 # CHANGE-002-REAL: Helper function to collect metrics for one probe
-# CHANGE-002B: Support missing tick_rate column (set to 0)
-function Get-TelemetryProbe {
+
+Write-Host "[PREFLIGHT] Monitoring L1 feed for $Seconds seconds..." -ForegroundColor Cyan# CHANGE-002B: Support missing tick_rate column (set to 0)
+
+Write-Host "[PREFLIGHT] Symbol: $Symbol | Path: $telemetryPath" -ForegroundColor Grayfunction Get-TelemetryProbe {
+
   param(
-    [string]$TeleFullName,
-    [string]$TsCol,
-    [string]$TpCol,  # Can be $null if no tick_rate column
-    [datetime]$WindowStart,
-    [datetime]$WindowEnd
+
+$startTime = Get-Date    [string]$TeleFullName,
+
+$endTime = $startTime.AddSeconds($Seconds)    [string]$TsCol,
+
+$tickCounts = @()    [string]$TpCol,  # Can be $null if no tick_rate column
+
+$secondsWithTicks = 0    [datetime]$WindowStart,
+
+$lastRowCount = 0    [datetime]$WindowEnd
+
   )
 
-  # Read header with FileShare
-  $headerLine = $null
-  $fs = [System.IO.File]::Open($TeleFullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-  try {
-    $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
-    $headerLine = $sr.ReadLine()
-  } finally { $sr.Close(); $fs.Close() }
-  if (-not $headerLine) { throw "Cannot read header" }
+# Monitor telemetry.csv every second
 
-  # Get tail
-  $tailLines = 5000
-  $tail = Get-Content -LiteralPath $TeleFullName -Tail $tailLines -Encoding UTF8
-  $tailNoHeader = $tail | Where-Object {
-    $_ -and ($_ -ne $headerLine) -and ($_ -notmatch '^(timestamp_iso|timestamp|time|Time|Timestamp),')
-  }
+while ((Get-Date) -lt $endTime) {  # Read header with FileShare
 
-  $csvLines = @()
-  $csvLines += $headerLine
-  $csvLines += $tailNoHeader
-  if(-not $csvLines -or $csvLines.Count -lt 2) { throw "No telemetry data" }
+    $elapsed = [int]((Get-Date) - $startTime).TotalSeconds  $headerLine = $null
 
-  $rows = @($csvLines | ConvertFrom-Csv)
-  if(-not $rows){ throw "Cannot parse CSV" }
+      $fs = [System.IO.File]::Open($TeleFullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
 
-  # Filter window
+    # Count current rows  try {
+
+    $currentRows = (Get-Content $telemetryPath | Measure-Object -Line).Lines    $sr = New-Object System.IO.StreamReader($fs, [System.Text.UTF8Encoding]::new($false), $true)
+
+    $newRows = $currentRows - $lastRowCount    $headerLine = $sr.ReadLine()
+
+      } finally { $sr.Close(); $fs.Close() }
+
+    if ($newRows -gt 0) {  if (-not $headerLine) { throw "Cannot read header" }
+
+        $secondsWithTicks++
+
+    }  # Get tail
+
+      $tailLines = 5000
+
+    $tickCounts += $newRows  $tail = Get-Content -LiteralPath $TeleFullName -Tail $tailLines -Encoding UTF8
+
+    $lastRowCount = $currentRows  $tailNoHeader = $tail | Where-Object {
+
+        $_ -and ($_ -ne $headerLine) -and ($_ -notmatch '^(timestamp_iso|timestamp|time|Time|Timestamp),')
+
+    # Progress indicator  }
+
+    if ($elapsed % 30 -eq 0 -and $elapsed -gt 0) {
+
+        $tickRateNow = if ($elapsed -gt 0) { [Math]::Round(($tickCounts | Measure-Object -Sum).Sum / $elapsed, 3) } else { 0.0 }  $csvLines = @()
+
+        $activeRatioNow = if ($elapsed -gt 0) { [Math]::Round($secondsWithTicks / $elapsed, 3) } else { 0.0 }  $csvLines += $headerLine
+
+        Write-Host "[PREFLIGHT] Progress: ${elapsed}s | tick_rate: $tickRateNow | active_ratio: $activeRatioNow" -ForegroundColor Gray  $csvLines += $tailNoHeader
+
+    }  if(-not $csvLines -or $csvLines.Count -lt 2) { throw "No telemetry data" }
+
+    
+
+    Start-Sleep -Seconds 1  $rows = @($csvLines | ConvertFrom-Csv)
+
+}  if(-not $rows){ throw "Cannot parse CSV" }
+
+
+
+Write-Host "[PREFLIGHT] Monitoring complete. Analyzing..." -ForegroundColor Cyan  # Filter window
+
   $win = @($rows | Where-Object {
-    $t = $_."$TsCol"
-    if (-not $t) { return $false }
-    $dt = [datetime]$t
-    ($dt -ge $WindowStart) -and ($dt -le $WindowEnd)
+
+# Calculate metrics    $t = $_."$TsCol"
+
+$totalTicks = ($tickCounts | Measure-Object -Sum).Sum    if (-not $t) { return $false }
+
+$tickRateAvg = [Math]::Round($totalTicks / $Seconds, 3)    $dt = [datetime]$t
+
+$activeRatio = [Math]::Round($secondsWithTicks / $Seconds, 3)    ($dt -ge $WindowStart) -and ($dt -le $WindowEnd)
+
   })
 
-  if (-not $win -or $win.Count -lt 3) {
-    # Use last row if window empty
-    $lastTs = $null
-    if ($rows.Count -gt 0) {
-      try { $lastTs = [datetime]($rows[-1]."$TsCol") } catch { $lastTs = $null }
-    }
-    $lastAgeSec = if ($lastTs) { [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1) } else { $null }
-    
-    return @{
-      last_age_sec = $lastAgeSec
-      active_ratio = 0
-      tick_rate = 0
-      samples = 0
-      ts_utc = (Get-Date).ToUniversalTime().ToString('o')
-    }
-  }
+# Get last row timestamp to calculate age
+
+$allLines = Get-Content $telemetryPath  if (-not $win -or $win.Count -lt 3) {
+
+if ($allLines.Count -lt 2) {    # Use last row if window empty
+
+    $lastAgeSec = 999.0    $lastTs = $null
+
+} else {    if ($rows.Count -gt 0) {
+
+    $lastLine = $allLines[-1]      try { $lastTs = [datetime]($rows[-1]."$TsCol") } catch { $lastTs = $null }
+
+    $parts = $lastLine -split ','    }
+
+    if ($parts.Count -ge 1) {    $lastAgeSec = if ($lastTs) { [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1) } else { $null }
+
+        try {    
+
+            $lastTimestamp = [DateTime]::Parse($parts[0])    return @{
+
+            $lastAgeSec = [Math]::Round(((Get-Date) - $lastTimestamp).TotalSeconds, 1)      last_age_sec = $lastAgeSec
+
+        } catch {      active_ratio = 0
+
+            $lastAgeSec = 999.0      tick_rate = 0
+
+        }      samples = 0
+
+    } else {      ts_utc = (Get-Date).ToUniversalTime().ToString('o')
+
+        $lastAgeSec = 999.0    }
+
+    }  }
+
+}
 
   # CHANGE-002B: Calculate metrics (tick_rate=0 if column missing)
-  $ticks = @()
-  if ($TpCol) {
+
+# Determine OK status  $ticks = @()
+
+$ok = ($lastAgeSec -le 5.0) -and ($activeRatio -ge 0.7) -and ($tickRateAvg -ge 0.5)  if ($TpCol) {
+
     foreach($r in $win){ $ticks += [double]($r."$TpCol") }
-  }
-  
-  $total  = $win.Count
-  if ($ticks.Count -gt 0) {
-    $active = ($ticks | Where-Object { $_ -gt 0 }).Count
-    $ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
-    $avg    = [math]::Round(($ticks | Measure-Object -Average).Average,3)
-  } else {
-    # No tick_rate column - use presence of rows as "active"
-    $active = $total
+
+# Write connection_ok.json  }
+
+$result = @{  
+
+    ok = $ok  $total  = $win.Count
+
+    last_age_now_sec = $lastAgeSec  if ($ticks.Count -gt 0) {
+
+    active_ratio = $activeRatio    $active = ($ticks | Where-Object { $_ -gt 0 }).Count
+
+    tick_rate_avg = $tickRateAvg    $ratio  = if($total){ [math]::Round($active/$total,3) } else { 0 }
+
+    window_sec = $Seconds    $avg    = [math]::Round(($ticks | Measure-Object -Average).Average,3)
+
+    symbol = $Symbol  } else {
+
+    generated_at = (Get-Date).ToUniversalTime().ToString("o")    # No tick_rate column - use presence of rows as "active"
+
+}    $active = $total
+
     $ratio  = if($total -gt 0) { 1 } else { 0 }
-    $avg    = 0
-  }
+
+$jsonPath = Join-Path $preflightDir "connection_ok.json"    $avg    = 0
+
+$json = $result | ConvertTo-Json -Depth 10  }
+
+[System.IO.File]::WriteAllText($jsonPath, $json, [System.Text.UTF8Encoding]::new($false))
 
   $lastTs = [datetime](($win | Select-Object -Last 1)."$TsCol")
-  $lastAgeSec = [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1)
+
+Write-Host "[PREFLIGHT] Result: ok=$ok | last_age=${lastAgeSec}s | active_ratio=$activeRatio | tick_rate=$tickRateAvg" -ForegroundColor $(if ($ok) { "Green" } else { "Red" })  $lastAgeSec = [math]::Round(((Get-Date) - $lastTs).TotalSeconds,1)
+
+Write-Host "[PREFLIGHT] Saved: $jsonPath" -ForegroundColor Gray
 
   return @{
-    last_age_sec = $lastAgeSec
-    active_ratio = $ratio
-    tick_rate = $avg
-    samples = $total
+
+# Write l1_sample.csv (last 50 rows)    last_age_sec = $lastAgeSec
+
+$samplePath = Join-Path $preflightDir "l1_sample.csv"    active_ratio = $ratio
+
+$header = "timestamp_iso,symbol,bid,ask"    tick_rate = $avg
+
+$sampleLines = @($header)    samples = $total
+
     ts_utc = (Get-Date).ToUniversalTime().ToString('o')
-  }
-}
 
-# 1) Find telemetry file (or use mock)
-if ($MockTelemetryPath) {
+if ($allLines.Count -gt 1) {  }
+
+    $dataLines = $allLines[1..($allLines.Count - 1)]}
+
+    $startIdx = [Math]::Max(0, $dataLines.Count - 50)
+
+    $sampleLines += $dataLines[$startIdx..($dataLines.Count - 1)]# 1) Find telemetry file (or use mock)
+
+}if ($MockTelemetryPath) {
+
   $teleFullName = (Resolve-Path $MockTelemetryPath).Path
-  Write-Host "[INFO] Using mock: $teleFullName" -ForegroundColor Yellow
-} else {
+
+[System.IO.File]::WriteAllLines($samplePath, $sampleLines, [System.Text.UTF8Encoding]::new($false))  Write-Host "[INFO] Using mock: $teleFullName" -ForegroundColor Yellow
+
+Write-Host "[PREFLIGHT] Sample saved: $samplePath ($($sampleLines.Count - 1) rows)" -ForegroundColor Gray} else {
+
   $pattern = Join-Path $LogRoot $TelemetryFilePattern
-  $cands = Get-ChildItem -LiteralPath (Split-Path $pattern) -Filter (Split-Path $pattern -Leaf) -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-  if(-not $cands){ throw "No $pattern" }
-  $teleFullName = $cands[0].FullName
-  Write-Host "[INFO] Using telemetry: $teleFullName"
+
+if (-not $ok) {  $cands = Get-ChildItem -LiteralPath (Split-Path $pattern) -Filter (Split-Path $pattern -Leaf) -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+
+    Write-Host "[PREFLIGHT] FAILED - Check connection and data feed quality" -ForegroundColor Red  if(-not $cands){ throw "No $pattern" }
+
+    exit 1  $teleFullName = $cands[0].FullName
+
+}  Write-Host "[INFO] Using telemetry: $teleFullName"
+
 }
 
-# 2) CHANGE-002B: Robust column mapping with expanded aliases
+Write-Host "[PREFLIGHT] PASSED - Ready for canary" -ForegroundColor Green
+
+exit 0# 2) CHANGE-002B: Robust column mapping with expanded aliases
+
 function Resolve-Col {
   param([string[]]$candidates, [string[]]$cols)
   foreach($c in $candidates){ 
