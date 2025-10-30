@@ -279,6 +279,7 @@ namespace Telemetry
     public class CanaryConfig
     {
         public bool Enabled { get; set; } = false; // Default: disabled
+        public int WaitExecutorSec { get; set; } = 10; // Wait up to 10s for OrderExecutor readiness
     }
 
     public class ExecutionConfig
