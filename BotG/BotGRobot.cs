@@ -30,7 +30,6 @@ public class BotGRobot : Robot
     private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
-    private volatile bool _canaryOnce; // Single-shot canary execution guard
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -42,32 +41,14 @@ public class BotGRobot : Robot
         string EnvOr(string key, string defaultValue) => Environment.GetEnvironmentVariable(key) ?? defaultValue;
         var mode = EnvOr("DATASOURCE__MODE", "ctrader_demo");
 
-        // Load config early for wireproof
+        // Load config early
         var cfg = TelemetryConfig.Load();
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
-        bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
 
         // Ensure preflight directory exists
         var preflightDir = Path.Combine(cfg.LogPath, "preflight");
         Directory.CreateDirectory(preflightDir);
-
-        // Snapshot 0: init
-        WriteWireproofSnapshot(preflightDir, new Dictionary<string, object?>
-        {
-            ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
-            ["mode"] = cfg.Mode,
-            ["simulation_enabled"] = simEnabled,
-            ["preflight_canary_enabled"] = canaryEnabled,
-            ["executor_ready"] = false,
-            ["events_attached"] = 0,
-            ["armed"] = false,
-            ["requested"] = false,
-            ["ack"] = false,
-            ["fill"] = false,
-            ["close"] = false,
-            ["reason"] = "init"
-        });
 
         try
         {
@@ -108,23 +89,6 @@ public class BotGRobot : Robot
             Print("[ECHO+] ExecutorReady={0}; EventsAttached={1}; AutoTrading={2}", 
                 executorReady, eventsAttached, tradingEnabled);
 
-            // Snapshot 1: executor_ready + events_attached
-            WriteWireproofSnapshot(preflightDir, new Dictionary<string, object?>
-            {
-                ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
-                ["mode"] = cfg.Mode,
-                ["simulation_enabled"] = simEnabled,
-                ["preflight_canary_enabled"] = canaryEnabled,
-                ["executor_ready"] = executorReady,
-                ["events_attached"] = eventsAttached,
-                ["armed"] = false,
-                ["requested"] = false,
-                ["ack"] = false,
-                ["fill"] = false,
-                ["close"] = false,
-                ["reason"] = "executor_init"
-            });
-
             marketData.Start();
 
             var hzEnv = EnvOr("L1_SNAPSHOT_HZ", "5");
@@ -163,27 +127,6 @@ public class BotGRobot : Robot
             }
 
             try { TelemetryContext.QuoteTelemetry?.TrackSymbol(this.SymbolName); } catch { }
-
-            // Snapshot 2: armed (if canary enabled and executor ready)
-            if (canaryEnabled && executorReady)
-            {
-                WriteWireproofSnapshot(preflightDir, new Dictionary<string, object?>
-                {
-                    ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
-                    ["mode"] = cfg.Mode,
-                    ["simulation_enabled"] = simEnabled,
-                    ["preflight_canary_enabled"] = canaryEnabled,
-                    ["executor_ready"] = executorReady,
-                    ["events_attached"] = eventsAttached,
-                    ["armed"] = true,
-                    ["requested"] = false,
-                    ["ack"] = false,
-                    ["fill"] = false,
-                    ["close"] = false,
-                    ["reason"] = "armed_onstart"
-                });
-                Print("[ECHO+] Canary ARMED (executor_ready={0}, events_attached={1})", executorReady, eventsAttached);
-            }
         }
         catch (Exception ex)
         {
@@ -204,6 +147,34 @@ public class BotGRobot : Robot
         }
 
         InitializeTelemetryWriter();
+
+        // ========== EXECUTOR WIREPROOF (STARTUP) ==========
+        try
+        {
+            bool tradingEnabled = ResolveTradingEnabled();
+            bool executorReady = _connector?.OrderExecutor != null;
+            string connectorType = _connector?.GetType().Name ?? "null";
+            string executorType = _connector?.OrderExecutor?.GetType().Name ?? "null";
+
+            var wireproofPath = Path.Combine(preflightDir, "executor_wireproof.json");
+            var wireproof = new Dictionary<string, object?>
+            {
+                ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
+                ["trading_enabled"] = tradingEnabled,
+                ["connector"] = connectorType,
+                ["executor"] = executorType,
+                ["ok"] = tradingEnabled && executorReady
+            };
+
+            var json = JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(wireproofPath, json, _utf8NoBom);
+
+            Print("[ECHO+] ExecutorReady trading_enabled={0} executor={1}", tradingEnabled, executorType);
+        }
+        catch (Exception ex)
+        {
+            Print("[ECHO+] wireproof write failed: " + ex.Message);
+        }
 
         // ========== STARTUP ECHO ==========
         var echo = ComposeStartupEcho();
@@ -250,64 +221,6 @@ public class BotGRobot : Robot
 
                     Print("[PREFLIGHT] PASSED - trading enabled");
                     _preflightPassed = true;
-
-                    // ========== CANARY TRADE (PAPER-ONLY, OPT-IN, SINGLE-SHOT) ==========
-                    bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
-                    if (canaryEnabled && !_canaryOnce)
-                    {
-                        _canaryOnce = true; // Set flag EARLY to prevent race conditions
-                        
-                        // Wait for OrderExecutor to be ready (max WaitExecutorSec)
-                        int waitSec = cfg.Preflight?.Canary?.WaitExecutorSec ?? 10;
-                        var deadline = DateTime.UtcNow.AddSeconds(waitSec);
-                        
-                        while (DateTime.UtcNow < deadline && _connector?.OrderExecutor == null)
-                        {
-                            await Task.Delay(200);
-                        }
-                        
-                        if (_connector?.OrderExecutor == null)
-                        {
-                            Print("[CANARY] SKIP reason=executor_null wait_sec={0}", waitSec);
-                            WriteCanaryStatusJson(enabled: true, tried: false, ok: false, 
-                                reason: "executor_null", t0: DateTime.UtcNow, t1: DateTime.UtcNow);
-                        }
-                        else
-                        {
-                            string symbol = this.SymbolName ?? "EURUSD";
-                            Print("[CANARY] START symbol={0} qty={1}", symbol, 1000);
-                            var t0 = DateTime.UtcNow;
-                            
-                            try
-                            {
-                                var canary = new CanaryTrade(
-                                    _connector.OrderExecutor,
-                                    this,
-                                    msg => Print(msg), // CanaryTrade will log REQUEST/ACK/FILL/CLOSE
-                                    symbol: symbol,
-                                    volumeOverride: null,
-                                    timeoutMs: 10000
-                                );
-
-                                bool canaryOk = await canary.ExecuteAsync(CancellationToken.None);
-                                var latencyMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
-                                Print("[CANARY] DONE ok={0} latency_ms={1}", canaryOk, latencyMs);
-                                
-                                WriteCanaryStatusJson(enabled: true, tried: true, ok: canaryOk, 
-                                    reason: canaryOk ? null : "pipeline_fail", t0, DateTime.UtcNow);
-                            }
-                            catch (Exception canaryEx)
-                            {
-                                Print("[CANARY] FAIL reason=exception {0}", canaryEx.Message);
-                                WriteCanaryStatusJson(enabled: true, tried: true, ok: false, 
-                                    reason: "exception:" + canaryEx.Message, t0, DateTime.UtcNow);
-                            }
-                        }
-                    }
-                    else if (canaryEnabled && _canaryOnce)
-                    {
-                        Print("[CANARY] SKIP reason=already_executed");
-                    }
                 }
                 catch (Exception ex)
                 {
@@ -335,6 +248,12 @@ public class BotGRobot : Robot
         
         try { _connector?.TickPump?.Pump(); } catch { }
         try { TelemetryContext.Collector?.IncTick(); } catch { }
+
+        // NOTE: Strategy pipeline disabled - empty strategy list.
+        // To enable trading:
+        // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
+        // 2. Call strategy.Evaluate(data) here to generate signals
+        // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
 
         Interlocked.Increment(ref _tickCounter);
 
@@ -875,81 +794,6 @@ public class BotGRobot : Robot
             ResolvedSimulationEnabled = sim,
             Env = env
         };
-    }
-
-    private void WriteCanaryStatusJson(bool enabled, bool tried, bool ok, string? reason, DateTime t0, DateTime t1)
-    {
-        try
-        {
-            var cfg = TelemetryConfig.Load();
-            var dir = Path.Combine(cfg.LogPath ?? "D:\\botg\\logs", "preflight");
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, "canary_status.json");
-            
-            var status = new
-            {
-                enabled,
-                tried,
-                ok,
-                reason,
-                t_start_iso = t0.ToString("o"),
-                t_end_iso = t1.ToString("o")
-            };
-            
-            var json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json, new UTF8Encoding(false));
-        }
-        catch
-        {
-            // Silent fail - don't crash bot if status file write fails
-        }
-    }
-
-    private void WriteCanaryWireProof(bool tradingEnabled, string connectorType, bool executorReady)
-    {
-        try
-        {
-            var logRoot = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
-            if (string.IsNullOrWhiteSpace(logRoot))
-            {
-                logRoot = DefaultTelemetryDirectory;
-            }
-
-            var preflightDir = Path.Combine(logRoot, "preflight");
-            Directory.CreateDirectory(preflightDir);
-
-            var payload = new
-            {
-                ts = DateTime.UtcNow.ToString("o", _invariantCulture),
-                trading_enabled = tradingEnabled,
-                connector = connectorType,
-                executor_ready = executorReady
-            };
-
-            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = false });
-            var path = Path.Combine(preflightDir, "canary_wireproof.json");
-            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
-            using var writer = new StreamWriter(stream, _utf8NoBom) { AutoFlush = true };
-            writer.Write(json);
-        }
-        catch (Exception ex)
-        {
-            Print("[ECHO+] wireproof write failed: " + ex.Message);
-        }
-    }
-
-    private void WriteWireproofSnapshot(string preflightDir, Dictionary<string, object?> snapshot)
-    {
-        try
-        {
-            var path = Path.Combine(preflightDir, "canary_wireproof.json");
-            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json, _utf8NoBom);
-        }
-        catch (Exception ex)
-        {
-            Print("[ECHO+] wireproof snapshot write failed: " + ex.Message);
-        }
     }
 
     private bool ResolveTradingEnabled()
