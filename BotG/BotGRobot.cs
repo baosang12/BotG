@@ -38,6 +38,8 @@ public class BotGRobot : Robot
     protected override void OnStart()
     {
         BotGStartup.Initialize();
+        BotG.Runtime.Logging.PipelineLogger.Initialize();
+        BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Start", "Bot starting", null, Print);
 
         string EnvOr(string key, string defaultValue) => Environment.GetEnvironmentVariable(key) ?? defaultValue;
         var mode = EnvOr("DATASOURCE__MODE", "ctrader_demo");
@@ -56,6 +58,7 @@ public class BotGRobot : Robot
             _riskManager = new RiskManager.RiskManager();
             _riskManager.Initialize(new RiskManager.RiskSettings());
             try { _riskManager.SetSymbolReference(this.Symbol); } catch { }
+            BotG.Runtime.Logging.PipelineLogger.Log("RISK", "Ready", "RiskManager initialized", null, Print);
         }
         catch (Exception ex)
         {
@@ -63,6 +66,7 @@ public class BotGRobot : Robot
         }
 
         int eventsAttached = 0;
+        BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Start", "Initializing executor bundle", null, Print);
         try
         {
             _connector = ConnectorBundle.Create(this, mode);
@@ -128,6 +132,17 @@ public class BotGRobot : Robot
             }
 
             try { TelemetryContext.QuoteTelemetry?.TrackSymbol(this.SymbolName); } catch { }
+            if (executorReady)
+            {
+                var execData = new Dictionary<string, object>
+                {
+                    ["events_attached"] = eventsAttached,
+                    ["broker_name"] = executor?.BrokerName ?? "",
+                    ["server"] = executor?.Server ?? "",
+                    ["account_id"] = executor?.AccountId ?? ""
+                };
+                BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Ready", "Executor ready", execData, Print);
+            }
         }
         catch (Exception ex)
         {
@@ -140,6 +155,7 @@ public class BotGRobot : Robot
             {
                 var strategies = new List<Strategies.IStrategy<Strategies.TradeSignal>>();
                 _tradeManager = new TradeManager.TradeManager(strategies, this, _riskManager, _connector.MarketData, _connector.OrderExecutor);
+                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "Ready", "TradeManager initialized", null, Print);
             }
         }
         catch (Exception ex)
@@ -240,6 +256,16 @@ public class BotGRobot : Robot
         {
             Print("[PREFLIGHT] Skipped (mode={0}, sim={1})", cfg.Mode, simEnabled);
             _preflightPassed = true; // allow trading
+        var bootData = new Dictionary<string, object>
+        {
+            ["executor_ready"] = _connector?.OrderExecutor != null,
+            ["ops_enable_trading"] = cfg.Ops.EnableTrading,
+            ["debug_smoke_once"] = cfg.Debug.SmokeOnce,
+            ["mode"] = cfg.Mode ?? "",
+            ["simulation_enabled"] = simEnabled
+        };
+        BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Complete", "OnStart complete, AutoStart ready", bootData, Print);
+
         }
 
         Timer.Start(TimeSpan.FromSeconds(1));

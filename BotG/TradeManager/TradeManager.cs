@@ -31,11 +31,13 @@ namespace TradeManager
 
         public bool CanTrade(TradeSignal signal, double riskScore)
         {
-            // Single-switch gate: ops.enable_trading
-            var cfg = Telemetry.TelemetryConfig.Load();
+            // ========== SINGLE-SWITCH GATE: ops.enable_trading ==========
+            var cfg = TelemetryConfig.Load();
             if (!cfg.Ops.EnableTrading)
             {
-                // Log but don't place orders when disabled
+                // Log to pipeline when blocked by ops gate
+                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "CanTrade", "CanTrade=false (ops gate)", 
+                    new { ops_enable_trading = false }, null);
                 return false;
             }
 

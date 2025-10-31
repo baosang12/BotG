@@ -338,7 +338,7 @@ namespace Telemetry
     public class OpsConfig
     {
         [JsonPropertyName("enable_trading")]
-        public bool EnableTrading { get; set; } = true; // Default: allow trading
+        public bool EnableTrading { get; set; } = true; // Default: trading enabled
     }
 
     public class DebugConfig
