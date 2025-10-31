@@ -31,6 +31,8 @@ public class BotGRobot : Robot
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
     private bool _smokeOnceDone;
+    private int _requestedUnitsLast;
+    private string? _lastRejectReason;
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -395,7 +397,7 @@ public class BotGRobot : Robot
                     return;
                 }
 
-                // Calculate volume via RiskManager
+                // Calculate volume via RiskManager (units), then normalize to broker constraints
                 double stopPoints = 100.0; // Fixed 100-point SL for smoke test
                 double requestedVolume = 0;
                 if (_riskManager != null)
@@ -418,44 +420,75 @@ public class BotGRobot : Robot
                     return;
                 }
 
-                // Clamp to minLot/lotStep from symbol or config
-                double minLot = symbol.VolumeInUnitsMin / symbol.LotSize;
-                double lotStep = symbol.VolumeInUnitsStep / symbol.LotSize;
-                double lots = requestedVolume / symbol.LotSize;
+                // Normalize units to broker min/step
+                int units = _riskManager.NormalizeUnitsForSymbol(symbol, requestedVolume);
+                _requestedUnitsLast = units;
 
-                Print("[ECHO+] Risk lot calc: theoretical_lots={0:F5}, requestedVolume={1}, minLot={2}, lotStep={3}",
-                    lots, requestedVolume, minLot, lotStep);
-
-                if (lots < minLot)
+                // ORDER pipeline logging: PREPARED
+                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "PREPARED", "units_ready", new System.Collections.Generic.Dictionary<string, object>
                 {
-                    Print("[ECHO+] Risk lots={0:F5} < minLot={1} - fix sizing or skip smoke", lots, minLot);
-                    _smokeOnceDone = true;
-                    return;
+                    ["symbol"] = symbol.Name,
+                    ["requestedUnits"] = units
+                }, Print);
+
+                // Send order with retries on common rejects
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                string? rejectReason = null;
+                cAlgo.API.TradeResult? tradeResult = null;
+                for (int attempt = 1; attempt <= 3; attempt++)
+                {
+                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REQUEST", "market_buy", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["attempt"] = attempt,
+                        ["units"] = units
+                    }, Print);
+
+                    tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, units);
+                    if (tradeResult.IsSuccessful)
+                    {
+                        break;
+                    }
+
+                    rejectReason = tradeResult.Error?.ToString() ?? "UNKNOWN";
+                    _lastRejectReason = rejectReason;
+                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", rejectReason, new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["attempt"] = attempt,
+                        ["units"] = units,
+                        ["latency_ms"] = sw.ElapsedMilliseconds
+                    }, Print);
+
+                    // retry on volume or market closed
+                    var reasonUpper = rejectReason.ToUpperInvariant();
+                    if (reasonUpper.Contains("VOLUME") || reasonUpper.Contains("MIN") || reasonUpper.Contains("MARKET_CLOSED"))
+                    {
+                        Thread.Sleep(TimeSpan.FromSeconds(2));
+                        continue;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
 
-                // Round to lotStep
-                lots = Math.Round(lots / lotStep) * lotStep;
-                if (lots <= 0)
+                if (tradeResult == null || !tradeResult.IsSuccessful)
                 {
-                    Print("[ECHO+] Risk lots=0 after rounding (fix sizing)");
-                    _smokeOnceDone = true;
-                    return;
-                }
-
-                double volumeInUnits = lots * symbol.LotSize;
-
-                // Execute smoke: BUY market order
-                Print("[ECHO+] SmokeOnce: Sending market BUY {0} lots ({1} units)", lots, volumeInUnits);
-                var tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, volumeInUnits);
-
-                if (!tradeResult.IsSuccessful)
-                {
-                    Print("[ECHO+] SmokeOnce BUY failed: {0}", tradeResult.Error);
-                    _smokeOnceDone = true;
+                    Print("[ECHO+] SmokeOnce BUY failed: {0}", _lastRejectReason ?? tradeResult?.Error?.ToString());
                     return;
                 }
 
                 var position = tradeResult.Position;
+                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "ACK", "ok", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["id"] = position?.Id ?? 0,
+                    ["latency_ms"] = sw.ElapsedMilliseconds
+                }, Print);
+                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FILL", "ok", new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["id"] = position?.Id ?? 0,
+                    ["price"] = position?.EntryPrice ?? 0
+                }, Print);
+
                 Print("[ECHO+] REQUEST/ACK/FILL: PositionId={0}, EntryPrice={1}", position.Id, position.EntryPrice);
 
                 // Close immediately
@@ -463,10 +496,20 @@ public class BotGRobot : Robot
                 var closeResult = ClosePosition(position);
                 if (!closeResult.IsSuccessful)
                 {
+                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "error", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["id"] = position?.Id ?? 0,
+                        ["reason"] = closeResult.Error?.ToString() ?? "UNKNOWN"
+                    }, Print);
                     Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
                 }
                 else
                 {
+                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "ok", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["id"] = position?.Id ?? 0,
+                        ["price"] = closeResult.Position?.EntryPrice ?? 0
+                    }, Print);
                     Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", position.Id, closeResult.Position?.EntryPrice);
                 }
 
@@ -487,6 +530,30 @@ public class BotGRobot : Robot
         // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
         // 2. Call strategy.Evaluate(data) here to generate signals
         // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
+
+        // Write runtime probe snapshot
+        WriteRuntimeProbe(cfg);
+    }
+
+    private void WriteRuntimeProbe(TelemetryConfig cfg)
+    {
+        try
+        {
+            var folder = string.IsNullOrEmpty(TelemetryContext.RunFolder) ? (cfg.LogPath ?? DefaultTelemetryDirectory) : TelemetryContext.RunFolder;
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, "runtime_probe.json");
+            var obj = new System.Text.Json.Nodes.JsonObject
+            {
+                ["ts"] = DateTime.UtcNow.ToString("o"),
+                ["executorReady"] = _connector?.OrderExecutor != null,
+                ["tradingEnabled"] = ResolveTradingEnabled(),
+                ["opsEnableTrading"] = cfg.Ops.EnableTrading,
+                ["requestedUnitsLast"] = _requestedUnitsLast,
+                ["lastRejectReason"] = _lastRejectReason == null ? null : System.Text.Json.Nodes.JsonValue.Create(_lastRejectReason)
+            };
+            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions{WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping}), _utf8NoBom);
+        }
+        catch { }
     }
 
     private void InitializeTelemetryWriter()

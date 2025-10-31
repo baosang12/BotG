@@ -13,7 +13,7 @@ using Telemetry; // added
 namespace RiskManager
 {
     /// <summary>
-    /// Tri?n khai IRiskManager d? giám sát và ki?m soát r?i ro cho bot.
+    /// Tri?n khai IRiskManager d? giï¿½m sï¿½t vï¿½ ki?m soï¿½t r?i ro cho bot.
     /// </summary>
     public class RiskManager : IRiskManager, IModule
     {
@@ -531,7 +531,7 @@ namespace RiskManager
 
         public void CheckAlerts()
         {
-            // TODO: email/SMS/Slack thông qua webhook
+            // TODO: email/SMS/Slack thï¿½ng qua webhook
         }
 
         public void GenerateReports()
@@ -562,6 +562,38 @@ namespace RiskManager
                 return minVolume;
             double units = riskUsd / (stopLossPips * pipValue);
             return Math.Max(units, minVolume);
+        }
+
+        /// <summary>
+        /// Normalize requested volume in units to satisfy broker symbol constraints (min and step).
+        /// Accepts a cAlgo symbol (either cAlgo.API.Symbol or cAlgo.API.Internals.Symbol).
+        /// Returns an integer number of units, rounded down to step and never below min.
+        /// </summary>
+        public int NormalizeUnitsForSymbol(object symbol, double requestedUnits)
+        {
+            int min = 1;
+            int step = 1;
+            try
+            {
+                if (symbol != null)
+                {
+                    var t = symbol.GetType();
+                    var minProp = t.GetProperty("VolumeInUnitsMin");
+                    var stepProp = t.GetProperty("VolumeInUnitsStep");
+                    if (minProp != null) min = Convert.ToInt32(minProp.GetValue(symbol));
+                    if (stepProp != null) step = Convert.ToInt32(stepProp.GetValue(symbol));
+                }
+            }
+            catch { }
+
+            if (min <= 0) min = 1;
+            if (step <= 0) step = 1;
+
+            int units = (int)Math.Max(min, Math.Round(requestedUnits));
+            // round down to nearest step
+            units = (units / step) * step;
+            if (units < min) units = min;
+            return units;
         }
     }
 
