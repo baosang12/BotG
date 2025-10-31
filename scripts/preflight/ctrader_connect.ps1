@@ -40,26 +40,23 @@ if (-not (Test-Path $telemetry)) {
     exit 1
 }
 
-# Read header to verify schema
+# Read header with share-read
 $fh = [System.IO.File]::Open($telemetry, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
 $sr = New-Object System.IO.StreamReader($fh, $utf8NoBom, $true)
-try {
-    $header = $sr.ReadLine()
-} finally {
-    $sr.Dispose(); $fh.Dispose()
-}
-$expectedHeader = 'timestamp_iso,symbol,bid,ask'
-if ($header -ne $expectedHeader) {
+try { $header = $sr.ReadLine() } finally { $sr.Dispose(); $fh.Dispose() }
+
+# Accept canonical-4 or extended-5+ starting with canonical prefix
+$expectedPrefix = 'timestamp_iso,symbol,bid,ask'
+$headerOk = $false
+if ($header -eq $expectedPrefix) { $headerOk = $true }
+elseif ($header -like "$expectedPrefix,*") { $headerOk = $true }
+
+if (-not $headerOk) {
     Write-JsonNoBom $connJson @{
-        ok = $false
-        reason = "telemetry.csv header mismatch"
-        got = $header
-        expected = $expectedHeader
-        symbol = $Symbol
-        window_sec = $Seconds
-        generated_at = (Get-Date).ToUniversalTime().ToString("o")
-    }
-    exit 1
+        ok=$false; reason='telemetry.csv header mismatch'
+        got=$header; expected_anyOf=@($expectedPrefix, "$expectedPrefix,<extra>")
+        symbol=$Symbol; window_sec=$Seconds; generated_at=(Get-Date).ToUniversalTime().ToString("o")
+    }; exit 1
 }
 
 # Probe loop
@@ -84,7 +81,7 @@ while ((Get-Date) -lt $end) {
             $totalTicks++
             $secondsWithTicks++
             # keep a rolling window of last 50 ticks
-            $l1Buffer.Add($content)
+            $l1Buffer.Add(('{0},{1},{2},{3}' -f $parts[0],$parts[1],$parts[2],$parts[3]))
             if ($l1Buffer.Count -gt 50) { $l1Buffer.RemoveAt(0) }
         }
     }
