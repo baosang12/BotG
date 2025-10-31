@@ -20,44 +20,51 @@ function Write-AllTextNoBom($path, [string]$text) {
 }
 
 # Paths
-$preDir   = Join-Path $LogPath 'preflight'
-$l1Csv    = Join-Path $preDir 'l1_sample.csv'
+$preDir = Join-Path $LogPath 'preflight'
+$l1Csv = Join-Path $preDir 'l1_sample.csv'
 $connJson = Join-Path $preDir 'connection_ok.json'
-$telemetry= Join-Path $LogPath 'telemetry.csv'
+$telemetry = Join-Path $LogPath 'telemetry.csv'
 
 # Ensure dirs
 New-Item -ItemType Directory -Force -Path $preDir | Out-Null
 
-# Validate telemetry file exists
+# Validate telemetry file exists and has header
 if (-not (Test-Path $telemetry)) {
     Write-JsonNoBom $connJson @{
-        ok = $false; reason = "telemetry.csv not found"; symbol = $Symbol
-        window_sec = $Seconds; generated_at = (Get-Date).ToUniversalTime().ToString("o")
-    }; exit 1
+        ok = $false
+        reason = "telemetry.csv not found"
+        symbol = $Symbol
+        window_sec = $Seconds
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    exit 1
 }
 
-# Read header with share-read
+# Read header to verify schema
 $fh = [System.IO.File]::Open($telemetry, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
 $sr = New-Object System.IO.StreamReader($fh, $utf8NoBom, $true)
-try { $header = $sr.ReadLine() } finally { $sr.Dispose(); $fh.Dispose() }
-
-# Accept canonical-4 or extended-5+ starting with canonical prefix
-$expectedPrefix = 'timestamp_iso,symbol,bid,ask'
-$headerOk = $false
-if ($header -eq $expectedPrefix) { $headerOk = $true }
-elseif ($header -like "$expectedPrefix,*") { $headerOk = $true }
-
-if (-not $headerOk) {
+try {
+    $header = $sr.ReadLine()
+} finally {
+    $sr.Dispose(); $fh.Dispose()
+}
+$expectedHeader = 'timestamp_iso,symbol,bid,ask'
+if ($header -ne $expectedHeader) {
     Write-JsonNoBom $connJson @{
-        ok=$false; reason="telemetry.csv header mismatch"
-        got=$header; expected_anyOf=@($expectedPrefix, "$expectedPrefix,<extra>")
-        symbol=$Symbol; window_sec=$Seconds; generated_at=(Get-Date).ToUniversalTime().ToString("o")
-    }; exit 1
+        ok = $false
+        reason = "telemetry.csv header mismatch"
+        got = $header
+        expected = $expectedHeader
+        symbol = $Symbol
+        window_sec = $Seconds
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    exit 1
 }
 
 # Probe loop
 $start = Get-Date
-$end   = $start.AddSeconds($Seconds)
+$end = $start.AddSeconds($Seconds)
 $secondsWithTicks = 0
 $totalTicks = 0
 $lastStamp = $null
@@ -67,36 +74,41 @@ while ((Get-Date) -lt $end) {
     Start-Sleep -Milliseconds 1000
 
     # Tail last line safely (share-read)
-    $line = Get-Content -Path $telemetry -Tail 1 -Encoding UTF8
-    if (-not $line) { continue }
+    $content = Get-Content -Path $telemetry -Tail 1 -Encoding UTF8
+    if (-not $content) { continue }
 
-    if ($line -match '^\d{4}-\d{2}-\d{2}T') {
-        $parts = $line.Split(',')
-        # Require at least 4 columns; ignore extras
+    if ($content -match '^\d{4}-\d{2}-\d{2}T') {
+        $parts = $content.Split(',')
         if ($parts.Length -ge 4 -and $parts[1] -eq $Symbol) {
             $lastStamp = [datetime]::Parse($parts[0], $null, [System.Globalization.DateTimeStyles]::AssumeUniversal)
             $totalTicks++
             $secondsWithTicks++
-            # Keep rolling last 50 samples using only first 4 columns
-            $l1Buffer.Add(('{0},{1},{2},{3}' -f $parts[0],$parts[1],$parts[2],$parts[3]))
+            # keep a rolling window of last 50 ticks
+            $l1Buffer.Add($content)
             if ($l1Buffer.Count -gt 50) { $l1Buffer.RemoveAt(0) }
         }
     }
 }
 
-$windowSec   = [math]::Max(1, [int]([datetime]::UtcNow - $start.ToUniversalTime()).TotalSeconds)
-$tickRate    = [math]::Round(($totalTicks / $windowSec), 3)
+$windowSec = [math]::Max(1, [int]([datetime]::UtcNow - $start.ToUniversalTime()).TotalSeconds)
+$tickRate = [math]::Round(($totalTicks / $windowSec), 3)
 $activeRatio = [math]::Round(($secondsWithTicks / $windowSec), 3)
-$lastAge     = if ($lastStamp) { [math]::Round((([datetime]::UtcNow) - $lastStamp.ToUniversalTime()).TotalSeconds, 3) } else { 1e9 }
+$lastAge = if ($lastStamp) { [math]::Round((([datetime]::UtcNow) - $lastStamp.ToUniversalTime()).TotalSeconds, 3) } else { 1e9 }
 
 # PASS criteria
 $ok = ($lastAge -le 5.0) -and ($activeRatio -ge 0.7) -and ($tickRate -ge 0.5)
 
 # Write outputs
 Write-AllTextNoBom $l1Csv ("timestamp_iso,symbol,bid,ask`r`n" + ($l1Buffer -join "`r`n"))
+
 Write-JsonNoBom $connJson @{
-    ok=$ok; last_age_now_sec=$lastAge; active_ratio=$activeRatio; tick_rate_avg=$tickRate
-    window_sec=$windowSec; symbol=$Symbol; generated_at=(Get-Date).ToUniversalTime().ToString("o")
+    ok = $ok
+    last_age_now_sec = $lastAge
+    active_ratio = $activeRatio
+    tick_rate_avg = $tickRate
+    window_sec = $windowSec
+    symbol = $Symbol
+    generated_at = (Get-Date).ToUniversalTime().ToString("o")
 }
 
 if ($ok) { exit 0 } else { exit 1 }
