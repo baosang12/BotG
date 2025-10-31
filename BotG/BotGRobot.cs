@@ -31,6 +31,8 @@ public class BotGRobot : Robot
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
     private bool _smokeOnceDone;
+    private int _requestedUnitsLast;
+    private string? _lastRejectReason;
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -395,7 +397,7 @@ public class BotGRobot : Robot
                     return;
                 }
 
-                // Calculate volume via RiskManager
+                // Calculate volume via RiskManager (units), then normalize to broker constraints
                 double stopPoints = 100.0; // Fixed 100-point SL for smoke test
                 double requestedVolume = 0;
                 if (_riskManager != null)
@@ -418,57 +420,203 @@ public class BotGRobot : Robot
                     return;
                 }
 
-                // Clamp to minLot/lotStep from symbol or config
-                double minLot = symbol.VolumeInUnitsMin / symbol.LotSize;
-                double lotStep = symbol.VolumeInUnitsStep / symbol.LotSize;
-                double lots = requestedVolume / symbol.LotSize;
+                // Normalize units to broker min/step
+                int units = _riskManager.NormalizeUnitsForSymbol(symbol, requestedVolume);
+                _requestedUnitsLast = units;
 
-                Print("[ECHO+] Risk lot calc: theoretical_lots={0:F5}, requestedVolume={1}, minLot={2}, lotStep={3}",
-                    lots, requestedVolume, minLot, lotStep);
-
-                if (lots < minLot)
+                // ORDER pipeline logging: PREPARED
+                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "PREPARED", "units_ready", new System.Collections.Generic.Dictionary<string, object>
                 {
-                    Print("[ECHO+] Risk lots={0:F5} < minLot={1} - fix sizing or skip smoke", lots, minLot);
-                    _smokeOnceDone = true;
+                    ["symbol"] = symbol.Name,
+                    ["requestedUnits"] = units
+                }, Print);
+
+                // Send order with retries on common rejects
+                // Build order and route via executor to ensure orders.csv is populated via OrderLifecycleLogger
+                string orderId = $"SMOKE_{DateTime.UtcNow.Ticks}";
+                var newOrder = new Connectivity.NewOrder(
+                    OrderId: orderId,
+                    Symbol: symbol.Name,
+                    Side: Connectivity.OrderSide.Buy,
+                    Volume: units,
+                    Type: Connectivity.OrderType.Market,
+                    Price: null,
+                    StopLoss: null,
+                    ClientTag: "BotG_SMOKE"
+                );
+
+                // orders.csv: REQUEST
+                try
+                {
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "REQUEST",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: null,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: null,
+                        status: "REQUEST",
+                        reason: null,
+                        session: symbol.Name
+                    );
+                }
+                catch { }
+
+                // Wire one-shot handlers to capture ACK/FILL or REJECT
+                Connectivity.OrderFill? lastFill = null;
+                Connectivity.OrderReject? lastReject = null;
+                void OnFillHandler(Connectivity.OrderFill f)
+                {
+                    if (!string.Equals(f.OrderId, orderId, StringComparison.OrdinalIgnoreCase)) return;
+                    lastFill = f;
+                    try { executor.OnFill -= OnFillHandler; } catch { }
+                    try { executor.OnReject -= OnRejectHandler; } catch { }
+                }
+                void OnRejectHandler(Connectivity.OrderReject r)
+                {
+                    if (!string.Equals(r.OrderId, orderId, StringComparison.OrdinalIgnoreCase)) return;
+                    lastReject = r;
+                    _lastRejectReason = r.Reason;
+                    try { executor.OnFill -= OnFillHandler; } catch { }
+                    try { executor.OnReject -= OnRejectHandler; } catch { }
+                }
+                executor.OnFill += OnFillHandler;
+                executor.OnReject += OnRejectHandler;
+
+                // Send via executor (synchronous wait)
+                try { executor.SendAsync(newOrder).GetAwaiter().GetResult(); }
+                catch (Exception ex)
+                {
+                    _lastRejectReason = ex.Message;
+                }
+
+                // Small wait to allow event propagation
+                var waitDeadline = DateTime.UtcNow.AddMilliseconds(500);
+                while (lastFill == null && lastReject == null && DateTime.UtcNow < waitDeadline)
+                {
+                    Thread.Sleep(25);
+                }
+
+                if (lastReject != null)
+                {
+                    // orders.csv: REJECT
+                    try
+                    {
+                        TelemetryContext.OrderLogger?.LogV2(
+                            phase: "REJECT",
+                            orderId: orderId,
+                            clientOrderId: orderId,
+                            side: "Buy",
+                            action: "Buy",
+                            type: "Market",
+                            intendedPrice: this.Symbol?.Ask,
+                            stopLoss: null,
+                            execPrice: null,
+                            theoreticalLots: null,
+                            theoreticalUnits: units,
+                            requestedVolume: units,
+                            filledSize: null,
+                            status: "REJECT",
+                            reason: lastReject?.Reason,
+                            session: symbol.Name
+                        );
+                    }
+                    catch { }
+                    Print("[ECHO+] SmokeOnce BUY failed: {0}", _lastRejectReason ?? "unknown");
                     return;
                 }
 
-                // Round to lotStep
-                lots = Math.Round(lots / lotStep) * lotStep;
-                if (lots <= 0)
+                if (lastFill == null)
                 {
-                    Print("[ECHO+] Risk lots=0 after rounding (fix sizing)");
-                    _smokeOnceDone = true;
+                    Print("[ECHO+] SmokeOnce BUY unknown state (no fill/reject)");
                     return;
                 }
 
-                double volumeInUnits = lots * symbol.LotSize;
-
-                // Execute smoke: BUY market order
-                Print("[ECHO+] SmokeOnce: Sending market BUY {0} lots ({1} units)", lots, volumeInUnits);
-                var tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, volumeInUnits);
-
-                if (!tradeResult.IsSuccessful)
+                // orders.csv: ACK and FILL
+                try
                 {
-                    Print("[ECHO+] SmokeOnce BUY failed: {0}", tradeResult.Error);
-                    _smokeOnceDone = true;
-                    return;
-                }
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "ACK",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: lastFill.Price,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: lastFill.Volume,
+                        status: "ACK",
+                        reason: null,
+                        session: symbol.Name
+                    );
 
-                var position = tradeResult.Position;
-                Print("[ECHO+] REQUEST/ACK/FILL: PositionId={0}, EntryPrice={1}", position.Id, position.EntryPrice);
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "FILL",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: lastFill.Price,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: lastFill.Volume,
+                        status: "FILL",
+                        reason: null,
+                        session: symbol.Name
+                    );
+                }
+                catch { }
 
-                // Close immediately
-                Print("[ECHO+] SmokeOnce: Closing position {0}", position.Id);
-                var closeResult = ClosePosition(position);
-                if (!closeResult.IsSuccessful)
+                Print("[ECHO+] REQUEST/ACK/FILL: VolumeUnits={0}, FillPrice={1}", lastFill.Volume, lastFill.Price);
+
+                // Close immediately by label
+                try
                 {
-                    Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                    var pos = Positions.FirstOrDefault(p => p.SymbolName == symbol.Name && p.Label == "BotG_SMOKE");
+                    if (pos != null)
+                    {
+                        Print("[ECHO+] SmokeOnce: Closing position {0}", pos.Id);
+                        var closeResult = ClosePosition(pos);
+                        if (!closeResult.IsSuccessful)
+                        {
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "error", new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["id"] = pos.Id,
+                                ["reason"] = closeResult.Error?.ToString() ?? "UNKNOWN"
+                            }, Print);
+                            Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                        }
+                        else
+                        {
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "ok", new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["id"] = pos.Id,
+                                ["price"] = closeResult.Position?.EntryPrice ?? 0
+                            }, Print);
+                            Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", pos.Id, closeResult.Position?.EntryPrice);
+                        }
+                    }
+                    else
+                    {
+                        Print("[ECHO+] SmokeOnce: No position found to close");
+                    }
                 }
-                else
-                {
-                    Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", position.Id, closeResult.Position?.EntryPrice);
-                }
+                catch { }
 
                 Print("[ECHO+] SmokeOnce completed");
                 _smokeOnceDone = true;
@@ -487,6 +635,30 @@ public class BotGRobot : Robot
         // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
         // 2. Call strategy.Evaluate(data) here to generate signals
         // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
+
+        // Write runtime probe snapshot
+        WriteRuntimeProbe(cfg);
+    }
+
+    private void WriteRuntimeProbe(TelemetryConfig cfg)
+    {
+        try
+        {
+            var folder = string.IsNullOrEmpty(TelemetryContext.RunFolder) ? (cfg.LogPath ?? DefaultTelemetryDirectory) : TelemetryContext.RunFolder;
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, "runtime_probe.json");
+            var obj = new System.Text.Json.Nodes.JsonObject
+            {
+                ["ts"] = DateTime.UtcNow.ToString("o"),
+                ["executorReady"] = _connector?.OrderExecutor != null,
+                ["tradingEnabled"] = ResolveTradingEnabled(),
+                ["opsEnableTrading"] = cfg.Ops.EnableTrading,
+                ["requestedUnitsLast"] = _requestedUnitsLast,
+                ["lastRejectReason"] = _lastRejectReason == null ? null : System.Text.Json.Nodes.JsonValue.Create(_lastRejectReason)
+            };
+            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions{WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping}), _utf8NoBom);
+        }
+        catch { }
     }
 
     private void InitializeTelemetryWriter()
