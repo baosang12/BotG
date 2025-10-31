@@ -432,86 +432,191 @@ public class BotGRobot : Robot
                 }, Print);
 
                 // Send order with retries on common rejects
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                string? rejectReason = null;
-                cAlgo.API.TradeResult? tradeResult = null;
-                for (int attempt = 1; attempt <= 3; attempt++)
+                // Build order and route via executor to ensure orders.csv is populated via OrderLifecycleLogger
+                string orderId = $"SMOKE_{DateTime.UtcNow.Ticks}";
+                var newOrder = new Connectivity.NewOrder(
+                    OrderId: orderId,
+                    Symbol: symbol.Name,
+                    Side: Connectivity.OrderSide.Buy,
+                    Volume: units,
+                    Type: Connectivity.OrderType.Market,
+                    Price: null,
+                    StopLoss: null,
+                    ClientTag: "BotG_SMOKE"
+                );
+
+                // orders.csv: REQUEST
+                try
                 {
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REQUEST", "market_buy", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["attempt"] = attempt,
-                        ["units"] = units
-                    }, Print);
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "REQUEST",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: null,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: null,
+                        status: "REQUEST",
+                        reason: null,
+                        session: symbol.Name
+                    );
+                }
+                catch { }
 
-                    tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, units);
-                    if (tradeResult.IsSuccessful)
-                    {
-                        break;
-                    }
+                // Wire one-shot handlers to capture ACK/FILL or REJECT
+                Connectivity.OrderFill? lastFill = null;
+                Connectivity.OrderReject? lastReject = null;
+                void OnFillHandler(Connectivity.OrderFill f)
+                {
+                    if (!string.Equals(f.OrderId, orderId, StringComparison.OrdinalIgnoreCase)) return;
+                    lastFill = f;
+                    try { executor.OnFill -= OnFillHandler; } catch { }
+                    try { executor.OnReject -= OnRejectHandler; } catch { }
+                }
+                void OnRejectHandler(Connectivity.OrderReject r)
+                {
+                    if (!string.Equals(r.OrderId, orderId, StringComparison.OrdinalIgnoreCase)) return;
+                    lastReject = r;
+                    _lastRejectReason = r.Reason;
+                    try { executor.OnFill -= OnFillHandler; } catch { }
+                    try { executor.OnReject -= OnRejectHandler; } catch { }
+                }
+                executor.OnFill += OnFillHandler;
+                executor.OnReject += OnRejectHandler;
 
-                    rejectReason = tradeResult.Error?.ToString() ?? "UNKNOWN";
-                    _lastRejectReason = rejectReason;
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", rejectReason, new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["attempt"] = attempt,
-                        ["units"] = units,
-                        ["latency_ms"] = sw.ElapsedMilliseconds
-                    }, Print);
-
-                    // retry on volume or market closed
-                    var reasonUpper = rejectReason.ToUpperInvariant();
-                    if (reasonUpper.Contains("VOLUME") || reasonUpper.Contains("MIN") || reasonUpper.Contains("MARKET_CLOSED"))
-                    {
-                        Thread.Sleep(TimeSpan.FromSeconds(2));
-                        continue;
-                    }
-                    else
-                    {
-                        break;
-                    }
+                // Send via executor (synchronous wait)
+                try { executor.SendAsync(newOrder).GetAwaiter().GetResult(); }
+                catch (Exception ex)
+                {
+                    _lastRejectReason = ex.Message;
                 }
 
-                if (tradeResult == null || !tradeResult.IsSuccessful)
+                // Small wait to allow event propagation
+                var waitDeadline = DateTime.UtcNow.AddMilliseconds(500);
+                while (lastFill == null && lastReject == null && DateTime.UtcNow < waitDeadline)
                 {
-                    Print("[ECHO+] SmokeOnce BUY failed: {0}", _lastRejectReason ?? tradeResult?.Error?.ToString());
+                    Thread.Sleep(25);
+                }
+
+                if (lastReject != null)
+                {
+                    // orders.csv: REJECT
+                    try
+                    {
+                        TelemetryContext.OrderLogger?.LogV2(
+                            phase: "REJECT",
+                            orderId: orderId,
+                            clientOrderId: orderId,
+                            side: "Buy",
+                            action: "Buy",
+                            type: "Market",
+                            intendedPrice: this.Symbol?.Ask,
+                            stopLoss: null,
+                            execPrice: null,
+                            theoreticalLots: null,
+                            theoreticalUnits: units,
+                            requestedVolume: units,
+                            filledSize: null,
+                            status: "REJECT",
+                            reason: lastReject?.Reason,
+                            session: symbol.Name
+                        );
+                    }
+                    catch { }
+                    Print("[ECHO+] SmokeOnce BUY failed: {0}", _lastRejectReason ?? "unknown");
                     return;
                 }
 
-                var position = tradeResult.Position;
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "ACK", "ok", new System.Collections.Generic.Dictionary<string, object>
+                if (lastFill == null)
                 {
-                    ["id"] = position?.Id ?? 0,
-                    ["latency_ms"] = sw.ElapsedMilliseconds
-                }, Print);
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FILL", "ok", new System.Collections.Generic.Dictionary<string, object>
-                {
-                    ["id"] = position?.Id ?? 0,
-                    ["price"] = position?.EntryPrice ?? 0
-                }, Print);
-
-                Print("[ECHO+] REQUEST/ACK/FILL: PositionId={0}, EntryPrice={1}", position.Id, position.EntryPrice);
-
-                // Close immediately
-                Print("[ECHO+] SmokeOnce: Closing position {0}", position.Id);
-                var closeResult = ClosePosition(position);
-                if (!closeResult.IsSuccessful)
-                {
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "error", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["id"] = position?.Id ?? 0,
-                        ["reason"] = closeResult.Error?.ToString() ?? "UNKNOWN"
-                    }, Print);
-                    Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                    Print("[ECHO+] SmokeOnce BUY unknown state (no fill/reject)");
+                    return;
                 }
-                else
+
+                // orders.csv: ACK and FILL
+                try
                 {
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "ok", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["id"] = position?.Id ?? 0,
-                        ["price"] = closeResult.Position?.EntryPrice ?? 0
-                    }, Print);
-                    Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", position.Id, closeResult.Position?.EntryPrice);
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "ACK",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: lastFill.Price,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: lastFill.Volume,
+                        status: "ACK",
+                        reason: null,
+                        session: symbol.Name
+                    );
+
+                    TelemetryContext.OrderLogger?.LogV2(
+                        phase: "FILL",
+                        orderId: orderId,
+                        clientOrderId: orderId,
+                        side: "Buy",
+                        action: "Buy",
+                        type: "Market",
+                        intendedPrice: this.Symbol?.Ask,
+                        stopLoss: null,
+                        execPrice: lastFill.Price,
+                        theoreticalLots: null,
+                        theoreticalUnits: units,
+                        requestedVolume: units,
+                        filledSize: lastFill.Volume,
+                        status: "FILL",
+                        reason: null,
+                        session: symbol.Name
+                    );
                 }
+                catch { }
+
+                Print("[ECHO+] REQUEST/ACK/FILL: VolumeUnits={0}, FillPrice={1}", lastFill.Volume, lastFill.Price);
+
+                // Close immediately by label
+                try
+                {
+                    var pos = Positions.FirstOrDefault(p => p.SymbolName == symbol.Name && p.Label == "BotG_SMOKE");
+                    if (pos != null)
+                    {
+                        Print("[ECHO+] SmokeOnce: Closing position {0}", pos.Id);
+                        var closeResult = ClosePosition(pos);
+                        if (!closeResult.IsSuccessful)
+                        {
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "error", new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["id"] = pos.Id,
+                                ["reason"] = closeResult.Error?.ToString() ?? "UNKNOWN"
+                            }, Print);
+                            Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                        }
+                        else
+                        {
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "ok", new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["id"] = pos.Id,
+                                ["price"] = closeResult.Position?.EntryPrice ?? 0
+                            }, Print);
+                            Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", pos.Id, closeResult.Position?.EntryPrice);
+                        }
+                    }
+                    else
+                    {
+                        Print("[ECHO+] SmokeOnce: No position found to close");
+                    }
+                }
+                catch { }
 
                 Print("[ECHO+] SmokeOnce completed");
                 _smokeOnceDone = true;
