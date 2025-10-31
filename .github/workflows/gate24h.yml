@@ -215,6 +215,27 @@ jobs:
           if ($lineCount -lt 10) { throw "orders.csv too small ($lineCount lines)" }
           Write-Host "orders.csv last updated $([math]::Round($ageMinutes,2)) minutes ago with $lineCount lines"
 
+      - name: Verify executor wireproof
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $wireproofPath = 'D:\botg\logs\preflight\executor_wireproof.json'
+          if (-not (Test-Path -LiteralPath $wireproofPath)) {
+            throw "Missing executor wireproof: $wireproofPath"
+          }
+          $wireproof = Get-Content -LiteralPath $wireproofPath -Raw | ConvertFrom-Json
+          $required = @('generated_at','trading_enabled','connector','executor','ok')
+          foreach ($field in $required) {
+            if (-not $wireproof.PSObject.Properties.Name.Contains($field)) {
+              throw "executor_wireproof.json missing required field: $field"
+            }
+          }
+          if ($wireproof.ok -ne $true) {
+            throw "executor_wireproof.ok is not true (value: $($wireproof.ok))"
+          }
+          Write-Host "✓ Executor wireproof validated: ok=$($wireproof.ok), executor=$($wireproof.executor), generated_at=$($wireproof.generated_at)"
+
       # === Python portable via micromamba (no registry writes) ===
       - name: Ensure TLS 1.2
         if: ${{ always() && steps.assert.outputs.assert_fail != 'true' }}
