@@ -30,9 +30,7 @@ public class BotGRobot : Robot
     private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
-    private volatile bool _canaryOnce; // Single-shot canary execution guard
-    private volatile bool _smokeOnceDone; // Single-shot smoke test guard
-    private bool _executorReady; // Executor initialization status
+    private bool _smokeOnceDone;
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -45,14 +43,16 @@ public class BotGRobot : Robot
 
         string EnvOr(string key, string defaultValue) => Environment.GetEnvironmentVariable(key) ?? defaultValue;
         var mode = EnvOr("DATASOURCE__MODE", "ctrader_demo");
+
+        // Load config early
         var cfg = TelemetryConfig.Load();
+        bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
+        bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
 
-        // ========== WRITERS INITIALIZATION ==========
-        BotG.Runtime.Logging.PipelineLogger.Log("WRITER", "Init", "Initializing Telemetry writer", null, Print);
-        InitializeTelemetryWriter();
-        BotG.Runtime.Logging.PipelineLogger.Log("WRITER", "TelemetryReady", "Telemetry writer initialized", null, Print);
+        // Ensure preflight directory exists
+        var preflightDir = Path.Combine(cfg.LogPath, "preflight");
+        Directory.CreateDirectory(preflightDir);
 
-        // ========== RISK MANAGER ==========
         try
         {
             _riskManager = new RiskManager.RiskManager();
@@ -63,16 +63,37 @@ public class BotGRobot : Robot
         catch (Exception ex)
         {
             Print("BotGRobot startup: failed to initialize RiskManager: " + ex.Message);
-            BotG.Runtime.Logging.PipelineLogger.Log("RISK", "Error", "RiskManager init failed: " + ex.Message, null, Print);
         }
 
-        // ========== EXECUTOR INITIALIZATION ==========
+        int eventsAttached = 0;
+        BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Start", "Initializing executor bundle", null, Print);
         try
         {
-            BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Start", "Initializing executor bundle", null, Print);
             _connector = ConnectorBundle.Create(this, mode);
             var marketData = _connector.MarketData;
             var executor = _connector.OrderExecutor;
+
+            bool tradingEnabled = ResolveTradingEnabled();
+            bool executorReady = executor != null;
+
+            // Attach executor events for canary
+            if (executor != null)
+            {
+                executor.OnFill += (fill) => {
+                    Print("[ECHO+] Executor.OnFill: OrderId={0} Price={1}", fill.OrderId, fill.Price);
+                };
+                eventsAttached++;
+
+                executor.OnReject += (reject) => {
+                    Print("[ECHO+] Executor.OnReject: OrderId={0} Reason={1}", reject.OrderId, reject.Reason);
+                };
+                eventsAttached++;
+            }
+
+            Print("[ECHO+] TradingEnabled={0}", tradingEnabled);
+            Print("[ECHO+] ExecutorReady={0}; EventsAttached={1}; AutoTrading={2}", 
+                executorReady, eventsAttached, tradingEnabled);
+
             marketData.Start();
 
             var hzEnv = EnvOr("L1_SNAPSHOT_HZ", "5");
@@ -83,32 +104,51 @@ public class BotGRobot : Robot
             }
 
             TelemetryContext.AttachLevel1Snapshots(marketData, snapshotHz);
-            var quoteTelemetry = new OrderQuoteTelemetry(marketData);
-            TelemetryContext.AttachOrderLogger(quoteTelemetry, executor);
 
-            TelemetryContext.MetadataHook = meta =>
+            var quoteTelemetry = new OrderQuoteTelemetry(marketData);
+            if (executor != null)
             {
-                meta["data_source"] = mode;
-                meta["broker_name"] = executor.BrokerName ?? string.Empty;
-                meta["server"] = executor.Server ?? string.Empty;
-                meta["account_id"] = executor.AccountId ?? string.Empty;
-            };
-            TelemetryContext.UpdateDataSourceMetadata(mode, executor.BrokerName, executor.Server, executor.AccountId);
+                TelemetryContext.AttachOrderLogger(quoteTelemetry, executor);
+
+                TelemetryContext.MetadataHook = meta =>
+                {
+                    meta["data_source"] = mode;
+                    meta["broker_name"] = executor.BrokerName ?? string.Empty;
+                    meta["server"] = executor.Server ?? string.Empty;
+                    meta["account_id"] = executor.AccountId ?? string.Empty;
+                };
+                TelemetryContext.UpdateDataSourceMetadata(mode, executor.BrokerName, executor.Server, executor.AccountId);
+            }
+            else
+            {
+                TelemetryContext.MetadataHook = meta =>
+                {
+                    meta["data_source"] = mode;
+                    meta["broker_name"] = string.Empty;
+                    meta["server"] = string.Empty;
+                    meta["account_id"] = string.Empty;
+                };
+                TelemetryContext.UpdateDataSourceMetadata(mode, string.Empty, string.Empty, string.Empty);
+            }
 
             try { TelemetryContext.QuoteTelemetry?.TrackSymbol(this.SymbolName); } catch { }
-            
-            _executorReady = true;
-            BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Ready", "Executor ready", 
-                new { ready = true, broker = executor.BrokerName, mode = mode }, Print);
+            if (executorReady)
+            {
+                var execData = new Dictionary<string, object>
+                {
+                    ["events_attached"] = eventsAttached,
+                    ["broker_name"] = executor?.BrokerName ?? "",
+                    ["server"] = executor?.Server ?? "",
+                    ["account_id"] = executor?.AccountId ?? ""
+                };
+                BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Ready", "Executor ready", execData, Print);
+            }
         }
         catch (Exception ex)
         {
             Print("BotGRobot startup: failed to initialize connectivity: " + ex.Message);
-            BotG.Runtime.Logging.PipelineLogger.Log("EXECUTOR", "Error", "Executor init failed: " + ex.Message, null, Print);
-            _executorReady = false;
         }
 
-        // ========== TRADE MANAGER ==========
         try
         {
             if (_connector != null)
@@ -121,33 +161,39 @@ public class BotGRobot : Robot
         catch (Exception ex)
         {
             Print("BotGRobot startup: failed to initialize TradeManager: " + ex.Message);
-            BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "Error", "TradeManager init failed: " + ex.Message, null, Print);
         }
 
-        // ========== WIREPROOF with ops_enable_trading ==========
+        InitializeTelemetryWriter();
+
+        // ========== EXECUTOR WIREPROOF (STARTUP) ==========
         try
         {
-            var wireproofPath = Path.Combine(cfg.LogPath, "executor_wireproof.json");
-            var tradingEnabled = true; // Assume trading enabled in runtime context
-            var opsEnableTrading = cfg.Ops?.EnableTrading ?? true;
-            var wireproofOk = tradingEnabled && _executorReady && opsEnableTrading;
-            
-            var wireproof = new
+            bool tradingEnabled = ResolveTradingEnabled(); // cTrader platform trading state
+            bool opsEnableTrading = cfg.Ops.EnableTrading; // Runtime config gate
+            bool executorReady = _connector?.OrderExecutor != null;
+            string connectorType = _connector?.GetType().Name ?? "null";
+            string executorType = _connector?.OrderExecutor?.GetType().Name ?? "null";
+
+            var wireproofPath = Path.Combine(preflightDir, "executor_wireproof.json");
+            var wireproof = new Dictionary<string, object?>
             {
-                ts = DateTime.UtcNow.ToString("o"),
-                trading_enabled = tradingEnabled,
-                executor_ready = _executorReady,
-                ops_enable_trading = opsEnableTrading,
-                ok = wireproofOk
+                ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
+                ["trading_enabled"] = tradingEnabled, // cTrader platform state
+                ["ops_enable_trading"] = opsEnableTrading, // Runtime config gate
+                ["connector"] = connectorType,
+                ["executor"] = executorType,
+                ["ok"] = tradingEnabled && executorReady && opsEnableTrading // All gates must pass
             };
-            
-            Directory.CreateDirectory(Path.GetDirectoryName(wireproofPath) ?? cfg.LogPath);
-            File.WriteAllText(wireproofPath, JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true }), _utf8NoBom);
-            BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Wireproof", "Wireproof written", wireproof, Print);
+
+            var json = JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(wireproofPath, json, _utf8NoBom);
+
+            Print("[ECHO+] ExecutorReady trading_enabled={0} ops_enable_trading={1} executor={2}", 
+                tradingEnabled, opsEnableTrading, executorType);
         }
         catch (Exception ex)
         {
-            Print("[WIREPROOF] Failed to write: " + ex.Message);
+            Print("[ECHO+] wireproof write failed: " + ex.Message);
         }
 
         // ========== STARTUP ECHO ==========
@@ -155,17 +201,16 @@ public class BotGRobot : Robot
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
             echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
             JsonSerializer.Serialize(echo.Env));
-        Print("[ECHO+] Preflight.Async=true; FirstGate=TickEvent; Fallback=preflight\\l1_sample.csv; ThresholdSec=5; WriterStartBeforeCheck=true");
+        Print("[ECHO+] AutoStart online: ExecutorReady={0}, enable_trading={1}, smoke_once={2}",
+            _connector?.OrderExecutor != null, cfg.Ops.EnableTrading, cfg.Debug.SmokeOnce);
 
-        // ========== PREFLIGHT (NON-BLOCKING, PAPER MODE ONLY - DOES NOT BLOCK AUTOSTART) ==========
-        bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
-        bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
-
+        // ========== PREFLIGHT LIVE FRESHNESS (NON-BLOCKING, LOGGED ONLY) ==========
+        // Note: No mode/simulation gating - always run preflight if paper mode, just log result
         if (isPaper && !simEnabled)
         {
             Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
             
-            // Run preflight in background - don't block OnStart or trading
+            // Run preflight in background - don't block OnStart
             Task.Run(async () =>
             {
                 try
@@ -178,6 +223,7 @@ public class BotGRobot : Robot
                     );
 
                     var result = await preflight.CheckAsync(CancellationToken.None);
+
                     Print("[PREFLIGHT] L1 source={0} | last_age_sec={1:F1}", result.Source, result.LastAgeSec);
 
                     var preflightDir = Path.Combine(cfg.LogPath, "preflight");
@@ -189,70 +235,19 @@ public class BotGRobot : Robot
 
                     if (!result.Ok)
                     {
-                        Print("[PREFLIGHT] WARNING: L1 data too old: {0:F1}s > 5.0s (logged but not blocking)", result.LastAgeSec);
+                        Print("[PREFLIGHT] FAILED (L1 data stale: {0:F1}s > 5.0s) - logged, not blocking", result.LastAgeSec);
                         _preflightPassed = false;
+                        // AutoStart: do NOT stop, just log
                     }
                     else
                     {
                         Print("[PREFLIGHT] PASSED");
                         _preflightPassed = true;
                     }
-
-                    // ========== CANARY (OPT-IN, NON-BLOCKING) ==========
-                    bool canaryEnabled = cfg.Preflight?.Canary?.Enabled ?? false;
-                    if (canaryEnabled && !_canaryOnce)
-                    {
-                        _canaryOnce = true;
-                        int waitSec = cfg.Preflight?.Canary?.WaitExecutorSec ?? 10;
-                        var deadline = DateTime.UtcNow.AddSeconds(waitSec);
-                        
-                        while (DateTime.UtcNow < deadline && _connector?.OrderExecutor == null)
-                        {
-                            await Task.Delay(200);
-                        }
-                        
-                        if (_connector?.OrderExecutor == null)
-                        {
-                            Print("[CANARY] SKIP reason=executor_null wait_sec={0}", waitSec);
-                            WriteCanaryStatusJson(enabled: true, tried: false, ok: false, 
-                                reason: "executor_null", t0: DateTime.UtcNow, t1: DateTime.UtcNow);
-                        }
-                        else
-                        {
-                            string symbol = this.SymbolName ?? "EURUSD";
-                            Print("[CANARY] START symbol={0} qty={1}", symbol, 1000);
-                            var t0 = DateTime.UtcNow;
-                            
-                            try
-                            {
-                                var canary = new CanaryTrade(
-                                    _connector.OrderExecutor,
-                                    this,
-                                    msg => Print(msg),
-                                    symbol: symbol,
-                                    volumeOverride: null,
-                                    timeoutMs: 10000
-                                );
-
-                                bool canaryOk = await canary.ExecuteAsync(CancellationToken.None);
-                                var latencyMs = (int)(DateTime.UtcNow - t0).TotalMilliseconds;
-                                Print("[CANARY] DONE ok={0} latency_ms={1}", canaryOk, latencyMs);
-                                
-                                WriteCanaryStatusJson(enabled: true, tried: true, ok: canaryOk, 
-                                    reason: canaryOk ? null : "pipeline_fail", t0, DateTime.UtcNow);
-                            }
-                            catch (Exception canaryEx)
-                            {
-                                Print("[CANARY] FAIL reason=exception {0}", canaryEx.Message);
-                                WriteCanaryStatusJson(enabled: true, tried: true, ok: false, 
-                                    reason: "exception:" + canaryEx.Message, t0, DateTime.UtcNow);
-                            }
-                        }
-                    }
                 }
                 catch (Exception ex)
                 {
-                    Print("[PREFLIGHT] Exception: {0} (logged but not blocking)", ex.Message);
+                    Print("[PREFLIGHT] Exception: {0} - logged, not blocking", ex.Message);
                     _preflightPassed = false;
                 }
             });
@@ -260,26 +255,22 @@ public class BotGRobot : Robot
         else
         {
             Print("[PREFLIGHT] Skipped (mode={0}, sim={1})", cfg.Mode, simEnabled);
-            _preflightPassed = true;
+            _preflightPassed = true; // allow trading
+        var bootData = new Dictionary<string, object>
+        {
+            ["executor_ready"] = _connector?.OrderExecutor != null,
+            ["ops_enable_trading"] = cfg.Ops.EnableTrading,
+            ["debug_smoke_once"] = cfg.Debug.SmokeOnce,
+            ["mode"] = cfg.Mode ?? "",
+            ["simulation_enabled"] = simEnabled
+        };
+        BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Complete", "OnStart complete, AutoStart ready", bootData, Print);
+
         }
 
-        // ========== START TIMER & KICK RUNTIMELOOP ==========
         Timer.Start(TimeSpan.FromSeconds(1));
         Print("[TLM] Timer started 1s; Symbol={0}", Symbol?.Name ?? "NULL");
-        
-        // ========== BOOT COMPLETE - LOG FINAL STATUS ==========
-        var bootStatus = new
-        {
-            executorReady = _executorReady,
-            enable_trading = cfg.Ops?.EnableTrading ?? true,
-            smoke_once = cfg.Debug?.SmokeOnce ?? false
-        };
-        Print("[ECHO+] AutoStart online: ExecutorReady={0}, enable_trading={1}, smoke_once={2}",
-            bootStatus.executorReady, bootStatus.enable_trading, bootStatus.smoke_once);
-        BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Complete", "OnStart complete, RuntimeLoop will begin on Timer", bootStatus, Print);
-        
-        // Kick RuntimeLoop immediately (don't wait for first timer tick)
-        RuntimeLoop();
+        Print("BotGRobot started; telemetry initialized");
     }
 
     protected override void OnTick()
@@ -289,6 +280,12 @@ public class BotGRobot : Robot
         
         try { _connector?.TickPump?.Pump(); } catch { }
         try { TelemetryContext.Collector?.IncTick(); } catch { }
+
+        // NOTE: Strategy pipeline disabled - empty strategy list.
+        // To enable trading:
+        // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
+        // 2. Call strategy.Evaluate(data) here to generate signals
+        // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
 
         Interlocked.Increment(ref _tickCounter);
 
@@ -355,216 +352,141 @@ public class BotGRobot : Robot
     {
         var ticksPerSecond = Interlocked.Exchange(ref _tickCounter, 0);
         Interlocked.Exchange(ref _tickRateEstimate, (double)ticksPerSecond);
-        
-        // Call RuntimeLoop every 1s
+
+        // AutoStart RuntimeLoop: runs every 1s
         RuntimeLoop();
     }
 
-    /// <summary>
-    /// RuntimeLoop executes every 1s via OnTimer.
-    /// Always calls TradeManager.Process() (not blocked by mode/sim).
-    /// Single gate: ops.enable_trading controls order placement.
-    /// SmokeOnce: optional one-cycle broker test (BUY→ACK→FILL→CLOSE).
-    /// </summary>
     private void RuntimeLoop()
     {
-        try
+        // Guard: _tradeManager must be initialized
+        if (_tradeManager == null) return;
+
+        var cfg = TelemetryConfig.Load();
+
+        // ========== SMOKE_ONCE LOGIC ==========
+        // Execute one market BUY->ACK->FILL->CLOSE cycle if enabled
+        if (cfg.Debug.SmokeOnce && !_smokeOnceDone)
         {
-            var cfg = TelemetryConfig.Load();
-            
-            // Always call TradeManager.Process (not blocked by mode/sim)
-            if (_tradeManager != null)
+            try
             {
-                // TradeManager.Process will check ops.enable_trading gate internally
-                // NOTE: Currently strategies list is empty, so no signals will be generated
-                // This is intentional - ready for future strategy pipeline
-            }
+                // Check executor ready and no open positions
+                bool executorReady = _connector?.OrderExecutor != null;
+                bool noOpenPositions = Positions.Count == 0;
 
-            // Update runtime_probe.json every cycle
-            WriteRuntimeProbe(cfg);
-
-            // ========== SMOKE ONCE (ONE-CYCLE BROKER TEST) ==========
-            bool smokeOnce = cfg.Debug?.SmokeOnce ?? false;
-            if (smokeOnce && !_smokeOnceDone && _executorReady)
-            {
-                ExecuteSmokeOnce(cfg);
-            }
-        }
-        catch (Exception ex)
-        {
-            Print("[PIPE][RUNTIME] RuntimeLoop exception: " + ex.Message);
-            BotG.Runtime.Logging.PipelineLogger.Log("RUNTIME", "Error", "RuntimeLoop exception: " + ex.Message, null, Print);
-        }
-    }
-
-    private void WriteRuntimeProbe(TelemetryConfig cfg)
-    {
-        try
-        {
-            var probePath = Path.Combine("D:\\botg\\logs", "runtime_probe.json");
-            var symbol = this.SymbolName ?? "EURUSD";
-            
-            var probe = new
-            {
-                ts = DateTime.UtcNow.ToString("o", _invariantCulture),
-                executorReady = _executorReady,
-                opsEnableTrading = cfg.Ops?.EnableTrading ?? true,
-                tradingEnabled = true, // Runtime context
-                smokeOnce = cfg.Debug?.SmokeOnce ?? false,
-                smokeOnceDone = _smokeOnceDone,
-                symbol = symbol,
-                lots = 0.0, // Will be updated in SmokeOnce
-                lastError = ""
-            };
-
-            var json = JsonSerializer.Serialize(probe, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(probePath, json, _utf8NoBom);
-        }
-        catch { /* Silent fail */ }
-    }
-
-    private void ExecuteSmokeOnce(TelemetryConfig cfg)
-    {
-        try
-        {
-            var symbol = this.SymbolName ?? "EURUSD";
-            var symbolObj = this.Symbol;
-            
-            if (symbolObj == null)
-            {
-                BotG.Runtime.Logging.PipelineLogger.Log("SMOKE", "Skip", "Symbol null", null, Print);
-                return;
-            }
-
-            // Check for existing open positions
-            var openPositions = Positions.FindAll("BotG", symbolObj.Name);
-            if (openPositions != null && openPositions.Length > 0)
-            {
-                BotG.Runtime.Logging.PipelineLogger.Log("SMOKE", "Skip", "Open positions exist", 
-                    new { count = openPositions.Length }, Print);
-                return;
-            }
-
-            BotG.Runtime.Logging.PipelineLogger.Log("SMOKE", "Start", "Starting SmokeOnce cycle", null, Print);
-
-            // Calculate order size using RiskManager
-            double lots = 0.0;
-            if (_riskManager != null && symbolObj != null)
-            {
-                try
+                if (!executorReady)
                 {
-                    int stopPoints = 100; // Use 100 points for smoke test
-                    double stopDistancePriceUnits = stopPoints * symbolObj.TickSize;
-                    double pointValuePerUnit = 1.0; // Simplified for smoke test
-                    var orderSize = _riskManager.CalculateOrderSize(stopDistancePriceUnits, pointValuePerUnit);
-                    lots = orderSize / 100000.0; // Convert units to lots
-                }
-                catch (Exception ex)
-                {
-                    Print("[PIPE][RISK] CalculateOrderSize failed: " + ex.Message);
-                }
-            }
-
-            // Fallback: use minimum lot size if risk calc fails
-            if (lots <= 0 && symbolObj != null)
-            {
-                var minLot = symbolObj.VolumeInUnitsMin / 100000.0;
-                var lotStep = symbolObj.VolumeInUnitsStep / 100000.0;
-                lots = minLot;
-                
-                Print("[PIPE][RISK] lots=0 from RiskManager (minLot={0}, step={1}), using minLot", minLot, lotStep);
-                BotG.Runtime.Logging.PipelineLogger.Log("RISK", "Warning", "Zero lots from RiskManager, using minLot", 
-                    new { minLot = minLot, lotStep = lotStep }, Print);
-                
-                if (lots <= 0)
-                {
-                    Print("[PIPE][SMOKE] ABORT: lots=0 even after fallback");
-                    var probePath = Path.Combine("D:\\botg\\logs", "runtime_probe.json");
-                    var probeError = new
-                    {
-                        ts = DateTime.UtcNow.ToString("o"),
-                        lots = 0.0,
-                        lastError = "lots=0"
-                    };
-                    File.WriteAllText(probePath, JsonSerializer.Serialize(probeError), _utf8NoBom);
+                    Print("[SmokeOnce] Executor not ready, skipping");
                     return;
                 }
-            }
 
-            // Round to lot step
-            if (symbolObj != null)
-            {
-                var actualLotStep = symbolObj.VolumeInUnitsStep / 100000.0;
-                lots = Math.Round(lots / actualLotStep) * actualLotStep;
-            }
-            
-            if (lots <= 0)
-            {
-                Print("[PIPE][SMOKE] ABORT: lots=0 after rounding");
-                return;
-            }
+                if (!noOpenPositions)
+                {
+                    Print("[SmokeOnce] Open positions exist, skipping");
+                    return;
+                }
 
-            var volumeInUnits = (long)(lots * 100000);
-            
-            Print("[PIPE][ORDER] REQUEST BUY {0} {1}", symbol, lots);
-            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REQUEST", "Market BUY", 
-                new { side = "BUY", sym = symbol, lots = lots }, Print);
+                var executor = _connector!.OrderExecutor!;
+                var symbol = this.Symbol;
+                if (symbol == null)
+                {
+                    Print("[SmokeOnce] Symbol not available");
+                    _smokeOnceDone = true;
+                    return;
+                }
 
-            var t0 = DateTime.UtcNow;
-            
-            // Execute market order
-            var tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol, volumeInUnits, "SMOKE_BUY");
-            
-            var t1 = DateTime.UtcNow;
-            var latencyMs = (int)(t1 - t0).TotalMilliseconds;
+                // Calculate volume via RiskManager
+                double stopPoints = 100.0; // Fixed 100-point SL for smoke test
+                double requestedVolume = 0;
+                if (_riskManager != null)
+                {
+                    try
+                    {
+                        requestedVolume = _riskManager.CalculateOrderSize(stopPoints, 0.0);
+                    }
+                    catch (Exception ex)
+                    {
+                        Print("[SmokeOnce] Risk sizing failed: {0}", ex.Message);
+                        _smokeOnceDone = true;
+                        return;
+                    }
+                }
+                else
+                {
+                    Print("[SmokeOnce] RiskManager not initialized");
+                    _smokeOnceDone = true;
+                    return;
+                }
 
-            if (tradeResult == null || !tradeResult.IsSuccessful || tradeResult.Position == null)
-            {
-                Print("[PIPE][ORDER] FAILED: {0}", tradeResult?.Error?.ToString() ?? "null result");
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FAILED", "Order failed", 
-                    new { error = tradeResult?.Error?.ToString() ?? "null" }, Print);
+                // Clamp to minLot/lotStep from symbol or config
+                double minLot = symbol.VolumeInUnitsMin / symbol.LotSize;
+                double lotStep = symbol.VolumeInUnitsStep / symbol.LotSize;
+                double lots = requestedVolume / symbol.LotSize;
+
+                Print("[ECHO+] Risk lot calc: theoretical_lots={0:F5}, requestedVolume={1}, minLot={2}, lotStep={3}",
+                    lots, requestedVolume, minLot, lotStep);
+
+                if (lots < minLot)
+                {
+                    Print("[ECHO+] Risk lots={0:F5} < minLot={1} - fix sizing or skip smoke", lots, minLot);
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                // Round to lotStep
+                lots = Math.Round(lots / lotStep) * lotStep;
+                if (lots <= 0)
+                {
+                    Print("[ECHO+] Risk lots=0 after rounding (fix sizing)");
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                double volumeInUnits = lots * symbol.LotSize;
+
+                // Execute smoke: BUY market order
+                Print("[ECHO+] SmokeOnce: Sending market BUY {0} lots ({1} units)", lots, volumeInUnits);
+                var tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, volumeInUnits);
+
+                if (!tradeResult.IsSuccessful)
+                {
+                    Print("[ECHO+] SmokeOnce BUY failed: {0}", tradeResult.Error);
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                var position = tradeResult.Position;
+                Print("[ECHO+] REQUEST/ACK/FILL: PositionId={0}, EntryPrice={1}", position.Id, position.EntryPrice);
+
+                // Close immediately
+                Print("[ECHO+] SmokeOnce: Closing position {0}", position.Id);
+                var closeResult = ClosePosition(position);
+                if (!closeResult.IsSuccessful)
+                {
+                    Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                }
+                else
+                {
+                    Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", position.Id, closeResult.Position?.EntryPrice);
+                }
+
+                Print("[ECHO+] SmokeOnce completed");
                 _smokeOnceDone = true;
-                return;
             }
-
-            var position = tradeResult.Position;
-            var fillPrice = position.EntryPrice;
-            
-            Print("[PIPE][ORDER] ACK id={0} latency_ms={1}", position.Id, latencyMs);
-            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "ACK", "Order acknowledged", 
-                new { id = position.Id.ToString(), lat_ms = latencyMs }, Print);
-            
-            Print("[PIPE][ORDER] FILL id={0} price={1}", position.Id, fillPrice);
-            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FILL", "Order filled", 
-                new { id = position.Id.ToString(), price = fillPrice }, Print);
-
-            // Close position immediately
-            var t2 = DateTime.UtcNow;
-            var closeResult = ClosePosition(position);
-            var t3 = DateTime.UtcNow;
-            var closeLatencyMs = (int)(t3 - t2).TotalMilliseconds;
-
-            if (closeResult != null && closeResult.IsSuccessful)
+            catch (Exception ex)
             {
-                Print("[PIPE][ORDER] CLOSE OK id={0} latency_ms={1}", position.Id, closeLatencyMs);
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "CLOSE", "Position closed", 
-                    new { id = position.Id.ToString(), ok = true }, Print);
+                Print("[SmokeOnce] Exception: {0}", ex.Message);
+                _smokeOnceDone = true;
             }
-            else
-            {
-                Print("[PIPE][ORDER] CLOSE FAILED: {0}", closeResult?.Error?.ToString() ?? "null result");
-            }
+        }
 
-            _smokeOnceDone = true;
-            Print("[PIPE][SMOKE] completed");
-            BotG.Runtime.Logging.PipelineLogger.Log("SMOKE", "Complete", "SmokeOnce cycle completed successfully", null, Print);
-        }
-        catch (Exception ex)
-        {
-            Print("[PIPE][SMOKE] Exception: " + ex.Message);
-            BotG.Runtime.Logging.PipelineLogger.Log("SMOKE", "Error", "SmokeOnce exception: " + ex.Message, null, Print);
-            _smokeOnceDone = true; // Prevent retries
-        }
+        // ========== STRATEGY PIPELINE (ALWAYS RUNS, GATED BY ops.enable_trading) ==========
+        // Note: TradeManager.Process() will only place orders if cfg.Ops.EnableTrading == true
+        // For now, no strategies in list, so no signals generated
+        // To enable production trading:
+        // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
+        // 2. Call strategy.Evaluate(data) here to generate signals
+        // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
     }
 
     private void InitializeTelemetryWriter()
@@ -1041,32 +963,29 @@ public class BotGRobot : Robot
         };
     }
 
-    private void WriteCanaryStatusJson(bool enabled, bool tried, bool ok, string? reason, DateTime t0, DateTime t1)
+    private bool ResolveTradingEnabled()
     {
         try
         {
-            var cfg = TelemetryConfig.Load();
-            var dir = Path.Combine(cfg.LogPath ?? "D:\\botg\\logs", "preflight");
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, "canary_status.json");
-            
-            var status = new
+            var tradingProp = GetType().GetProperty("Trading");
+            var trading = tradingProp?.GetValue(this);
+            if (trading == null)
             {
-                enabled,
-                tried,
-                ok,
-                reason,
-                t_start_iso = t0.ToString("o"),
-                t_end_iso = t1.ToString("o")
-            };
-            
-            var json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json, new UTF8Encoding(false));
+                return false;
+            }
+
+            var enabledProp = trading.GetType().GetProperty("IsEnabled");
+            if (enabledProp?.GetValue(trading) is bool flag)
+            {
+                return flag;
+            }
         }
         catch
         {
-            // Silent fail - don't crash bot if status file write fails
+            // ignore reflection errors, assume not yet enabled
         }
+
+        return false;
     }
 
 }

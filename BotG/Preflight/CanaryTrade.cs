@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -66,36 +67,96 @@ namespace BotG.Preflight
             var orderId = Guid.NewGuid().ToString("N");
             _logger($"[CANARY] Enabled (paper), volume={_volume} units, timeout={_timeoutMs}ms");
 
+            bool proofOk = false;
+            string? proofReason = null;
+            string proofStage = "init";
+            bool proofArmed = false;
+            bool proofRequested = false;
+            bool proofAck = false;
+            bool proofFill = false;
+            bool proofClose = false;
+            bool proofEventsAttached = false;
+            bool? proofTradingBeforeSend = null;
+            bool? proofTradingAfterClose = null;
+            double proofWaited = 0.0;
+
+            void Snapshot(string stage, bool? ok = null, string? reason = null, double? waited = null, Dictionary<string, object?>? extra = null)
+            {
+                proofStage = stage;
+                if (ok.HasValue) proofOk = ok.Value;
+                if (reason != null) proofReason = reason;
+                if (waited.HasValue) proofWaited = waited.Value;
+
+                var payload = new Dictionary<string, object?>
+                {
+                    ["ok"] = proofOk,
+                    ["stage"] = proofStage,
+                    ["reason"] = proofReason,
+                    ["order_id"] = orderId,
+                    ["symbol"] = _symbol,
+                    ["generated_at"] = DateTime.UtcNow.ToString("o"),
+                    ["armed"] = proofArmed,
+                    ["requested"] = proofRequested,
+                    ["ack"] = proofAck,
+                    ["fill"] = proofFill,
+                    ["close"] = proofClose,
+                    ["waited_sec"] = Math.Round(proofWaited, 2),
+                    ["events_attached"] = proofEventsAttached,
+                    ["trading_enabled_now"] = IsTradingEnabled()
+                };
+
+                if (proofTradingBeforeSend.HasValue)
+                {
+                    payload["trading_enabled_before_send"] = proofTradingBeforeSend.Value;
+                }
+
+                if (proofTradingAfterClose.HasValue)
+                {
+                    payload["trading_enabled_after_close"] = proofTradingAfterClose.Value;
+                }
+
+                if (extra != null)
+                {
+                    foreach (var kvp in extra)
+                    {
+                        payload[kvp.Key] = kvp.Value;
+                    }
+                }
+
+                WriteProof(proofPath, payload);
+                
+                // Also write to wireproof for RC-EXECUTOR evidence
+                try
+                {
+                    var wireproofPath = Path.Combine(Path.GetDirectoryName(proofPath)!, "canary_wireproof.json");
+                    var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(wireproofPath, json, new UTF8Encoding(false));
+                }
+                catch
+                {
+                    // Silent fail on wireproof write
+                }
+            }
+
             var (ready, waitedSec) = await WaitForReadinessAsync(ct).ConfigureAwait(false);
+            proofWaited = waitedSec;
             bool tradingOk = IsTradingEnabled();
             bool executorOk = _executor != null;
+            proofArmed = ready;
             if (!ready)
             {
                 _logger($"[CANARY] SKIP TradingEnabled={tradingOk} ExecutorReady={executorOk} waited={waitedSec:F1}s");
-                WriteProof(proofPath, new
-                {
-                    ok = false,
-                    stage = "pre-exec-wait",
-                    reason = $"TradingEnabled={tradingOk}, ExecutorReady={executorOk}",
-                    waited_sec = Math.Round(waitedSec, 2),
-                    symbol = _symbol,
-                    generated_at = DateTime.UtcNow.ToString("o")
-                });
+                Snapshot("pre-exec-wait", ok: false, reason: $"TradingEnabled={tradingOk}, ExecutorReady={executorOk}", waited: waitedSec);
                 return false;
             }
+
+            Snapshot("armed", ok: false, waited: waitedSec);
+            _logger($"[ECHO+] Canary readiness armed: trading={tradingOk} executor={executorOk} waited_sec={waitedSec:F1}");
 
             var executor = _executor;
             if (executor == null)
             {
-                WriteProof(proofPath, new
-                {
-                    ok = false,
-                    stage = "pre-exec-wait",
-                    reason = "executor_null",
-                    waited_sec = Math.Round(waitedSec, 2),
-                    symbol = _symbol,
-                    generated_at = DateTime.UtcNow.ToString("o")
-                });
+                Snapshot("pre-exec-wait", ok: false, reason: "executor_null", waited: waitedSec);
                 return false;
             }
 
@@ -104,6 +165,13 @@ namespace BotG.Preflight
                 // Subscribe to fill/reject events
                 executor.OnFill += HandleFill;
                 executor.OnReject += HandleReject;
+                proofEventsAttached = true;
+                Snapshot("events-attached", extra: new Dictionary<string, object?>
+                {
+                    ["events_attached"] = true,
+                    ["executor_type"] = executor.GetType().FullName
+                });
+                _logger($"[ECHO+] Executor events attached (OnFill/OnReject) type={executor.GetType().FullName}");
 
                 var startTime = DateTime.UtcNow;
 
@@ -117,8 +185,18 @@ namespace BotG.Preflight
                     ClientTag: "BotG_CANARY"
                 );
 
+                proofRequested = true;
+                var tradingBeforeSend = IsTradingEnabled();
+                proofTradingBeforeSend = tradingBeforeSend;
+                Snapshot("request", waited: waitedSec, extra: new Dictionary<string, object?>
+                {
+                    ["trading_enabled_before_send"] = tradingBeforeSend
+                });
+                _logger($"[ECHO+] TradingEnabled before send={tradingBeforeSend}");
                 _logger($"[CANARY] REQUEST sent: orderId={orderId}, symbol={_symbol}, volume={_volume}");
                 await executor.SendAsync(order).ConfigureAwait(false);
+                proofAck = true;
+                Snapshot("request-ack", waited: waitedSec);
 
                 // 2. Wait for FILL or REJECT using polling loop for responsiveness
                 var waitStopwatch = Stopwatch.StartNew();
@@ -130,14 +208,11 @@ namespace BotG.Preflight
                     {
                         var rejectReason = _lastReject?.Reason ?? "unknown";
                         _logger($"[CANARY] REJECT: {rejectReason}");
-                        WriteProof(proofPath, new
+                        proofTradingAfterClose = IsTradingEnabled();
+                        _logger($"[ECHO+] TradingEnabled on reject={proofTradingAfterClose}");
+                        Snapshot("reject", ok: false, reason: rejectReason, extra: new Dictionary<string, object?>
                         {
-                            ok = false,
-                            stage = "reject",
-                            reason = rejectReason,
-                            order_id = orderId,
-                            symbol = _symbol,
-                            generated_at = DateTime.UtcNow.ToString("o")
+                            ["trading_enabled_after_close"] = proofTradingAfterClose
                         });
                         return false;
                     }
@@ -153,14 +228,11 @@ namespace BotG.Preflight
                 if (!_fillEvent.IsSet)
                 {
                     _logger($"[CANARY] TIMEOUT: no FILL within {_timeoutMs}ms");
-                    WriteProof(proofPath, new
+                    proofTradingAfterClose = IsTradingEnabled();
+                    _logger($"[ECHO+] TradingEnabled on fill-timeout={proofTradingAfterClose}");
+                    Snapshot("fill-timeout", ok: false, reason: $"no fill within {_timeoutMs}ms", extra: new Dictionary<string, object?>
                     {
-                        ok = false,
-                        stage = "fill-timeout",
-                        reason = $"no fill within {_timeoutMs}ms",
-                        order_id = orderId,
-                        symbol = _symbol,
-                        generated_at = DateTime.UtcNow.ToString("o")
+                        ["trading_enabled_after_close"] = proofTradingAfterClose
                     });
                     return false;
                 }
@@ -169,6 +241,12 @@ namespace BotG.Preflight
                 var latencyMs = (int)(fillTime - startTime).TotalMilliseconds;
                 var fillPrice = _lastFill?.Price ?? 0.0;
 
+                proofFill = true;
+                Snapshot("fill", extra: new Dictionary<string, object?>
+                {
+                    ["latency_ms"] = latencyMs,
+                    ["fill_price"] = fillPrice
+                });
                 _logger($"[CANARY] FILL price={fillPrice:F5}, latency_ms={latencyMs}");
 
                 // 3. Close position immediately
@@ -179,31 +257,30 @@ namespace BotG.Preflight
                 {
                     var closeLatency = (int)(DateTime.UtcNow - closeStartTime).TotalMilliseconds;
                     _logger($"[CANARY] CLOSE ok (latency_ms={closeLatency})");
-                    WriteProof(proofPath, new
+                    proofClose = true;
+                    var tradingAfter = IsTradingEnabled();
+                    proofTradingAfterClose = tradingAfter;
+                    _logger($"[ECHO+] TradingEnabled after close={tradingAfter}");
+                    Snapshot("executed", ok: true, extra: new Dictionary<string, object?>
                     {
-                        ok = true,
-                        stage = "executed",
-                        order_id = orderId,
-                        fill_price = fillPrice,
-                        latency_ms = latencyMs,
-                        lots = Math.Round(_volume / 100000.0, 4),
-                        volume_units = _volume,
-                        symbol = _symbol,
-                        generated_at = DateTime.UtcNow.ToString("o")
+                        ["fill_price"] = fillPrice,
+                        ["latency_ms"] = latencyMs,
+                        ["close_latency_ms"] = closeLatency,
+                        ["lots"] = Math.Round(_volume / 100000.0, 4),
+                        ["volume_units"] = _volume,
+                        ["trading_enabled_after_close"] = tradingAfter
                     });
                     return true;
                 }
                 else
                 {
                     _logger($"[CANARY] CLOSE failed");
-                    WriteProof(proofPath, new
+                    proofTradingAfterClose = IsTradingEnabled();
+                    Snapshot("close-failed", ok: false, reason: "close_failed", extra: new Dictionary<string, object?>
                     {
-                        ok = false,
-                        stage = "close-failed",
-                        reason = "close_failed",
-                        order_id = orderId,
-                        symbol = _symbol,
-                        generated_at = DateTime.UtcNow.ToString("o")
+                        ["fill_price"] = fillPrice,
+                        ["latency_ms"] = latencyMs,
+                        ["trading_enabled_after_close"] = proofTradingAfterClose
                     });
                     return false;
                 }
@@ -211,20 +288,18 @@ namespace BotG.Preflight
             catch (Exception ex)
             {
                 _logger($"[CANARY] Exception: {ex.Message}");
-                WriteProof(proofPath, new
-                {
-                    ok = false,
-                    stage = "exception",
-                    reason = ex.Message,
-                    symbol = _symbol,
-                    generated_at = DateTime.UtcNow.ToString("o")
-                });
+                proofTradingAfterClose = IsTradingEnabled();
+                Snapshot("exception", ok: false, reason: ex.Message);
                 return false;
             }
             finally
             {
                 executor.OnFill -= HandleFill;
                 executor.OnReject -= HandleReject;
+                if (proofEventsAttached)
+                {
+                    _logger("[ECHO+] Executor events detached (OnFill/OnReject)");
+                }
             }
         }
 

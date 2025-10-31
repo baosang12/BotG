@@ -41,14 +41,15 @@ namespace TradeManager
                 return false;
             }
 
-            // TODO: Add hard-stop risk gates (-3R daily, -6R weekly) in future PR
-            // if (daily_pnl <= -3R) return false;
-            // if (weekly_pnl <= -6R) return false;
-
             if (_tradeCountToday >= _maxTradesPerDay) return false;
             // Allow trades with risk score >= 5.0 (was 7.5)
             if (riskScore < 5.0) return false;
-            // Có thể bổ sung kiểm tra winrate, thời gian giao dịch, v.v.
+
+            // TODO: Add risk hard-stops here
+            // - Daily loss <= -3R → block new orders
+            // - Weekly loss <= -6R → block new orders
+            // Implementation: track realized P&L per day/week, compare to account equity * risk-per-trade
+
             return true;
         }
 
