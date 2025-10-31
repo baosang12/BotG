@@ -31,6 +31,20 @@ namespace TradeManager
 
         public bool CanTrade(TradeSignal signal, double riskScore)
         {
+            // ========== SINGLE-SWITCH GATE: ops.enable_trading ==========
+            var cfg = TelemetryConfig.Load();
+            if (!cfg.Ops.EnableTrading)
+            {
+                // Log to pipeline when blocked by ops gate
+                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "CanTrade", "CanTrade=false (ops gate)", 
+                    new { ops_enable_trading = false }, null);
+                return false;
+            }
+
+            // TODO: Add hard-stop risk gates (-3R daily, -6R weekly) in future PR
+            // if (daily_pnl <= -3R) return false;
+            // if (weekly_pnl <= -6R) return false;
+
             if (_tradeCountToday >= _maxTradesPerDay) return false;
             // Allow trades with risk score >= 5.0 (was 7.5)
             if (riskScore < 5.0) return false;
