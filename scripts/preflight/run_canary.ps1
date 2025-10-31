@@ -19,21 +19,67 @@ if (-not (Test-Path $configPath)) {
 
 Write-Host "[CANARY] Enabling canary in config..." -ForegroundColor Cyan
 
-# Read config
-$configJson = Get-Content $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
-# Ensure Preflight.Canary.Enabled=true
-if (-not $configJson.Preflight) {
-    $configJson | Add-Member -MemberType NoteProperty -Name "Preflight" -Value @{} -Force
+# Load config as Hashtable for reliable nested edits
+$configData = @{}
+try {
+    $rawConfig = Get-Content $configPath -Raw -Encoding UTF8
+    if ($rawConfig -and $rawConfig.Trim().StartsWith('{')) {
+        $configData = $rawConfig | ConvertFrom-Json -AsHashtable
+    }
 }
-if (-not $configJson.Preflight.Canary) {
-    $configJson.Preflight | Add-Member -MemberType NoteProperty -Name "Canary" -Value @{} -Force
+catch {
+    Write-Error "Failed to parse ${configPath}: $_"
+    exit 1
 }
-$configJson.Preflight.Canary | Add-Member -MemberType NoteProperty -Name "Enabled" -Value $true -Force
 
-# Write back (UTF-8 no BOM)
-$configText = $configJson | ConvertTo-Json -Depth 10
-[System.IO.File]::WriteAllText($configPath, $configText, [System.Text.UTF8Encoding]::new($false))
+if (-not $configData.ContainsKey('Preflight')) {
+    $configData['Preflight'] = @{}
+}
+$configData['Preflight']['Canary'] = @{ Enabled = $true }
+
+# Persist updated config (UTF-8 no BOM)
+$configJson = $configData | ConvertTo-Json -Depth 32
+[System.IO.File]::WriteAllText($configPath, $configJson, $utf8NoBom)
+
+# Guard: verify flag truly persisted
+try {
+    $verifyData = (Get-Content $configPath -Raw -Encoding UTF8) | ConvertFrom-Json -AsHashtable
+}
+catch {
+    Write-Error "Failed to re-read ${configPath} after write: $_"
+    exit 1
+}
+
+$canaryEnabled = $false
+if ($verifyData.ContainsKey('Preflight')) {
+    $preflightNode = $verifyData['Preflight']
+    if ($preflightNode -is [hashtable] -and $preflightNode.ContainsKey('Canary')) {
+        $canaryNode = $preflightNode['Canary']
+        if ($canaryNode -is [hashtable] -and $canaryNode['Enabled'] -eq $true) {
+            $canaryEnabled = $true
+        }
+    }
+}
+
+if (-not $canaryEnabled) {
+    Write-Error "Failed to persist Preflight.Canary.Enabled=true to ${configPath}"
+    exit 1
+}
+
+$env:Preflight__Canary__Enabled = 'true'
+
+# Rotate orders.csv and seed canonical header
+$ordersPath = Join-Path $LogPath 'orders.csv'
+if (Test-Path $ordersPath) {
+    $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $backupPath = Join-Path $LogPath ("orders_{0}.old.csv" -f $stamp)
+    Move-Item -Path $ordersPath -Destination $backupPath -Force
+}
+
+$ordersHeader = 'timestamp_iso,action,symbol,qty,price,status,reason,latency_ms,price_requested,price_filled'
+[System.IO.File]::WriteAllText($ordersPath, $ordersHeader + [Environment]::NewLine, $utf8NoBom)
 
 Write-Host "[CANARY] Config updated: Preflight.Canary.Enabled=true" -ForegroundColor Green
 Write-Host ""
