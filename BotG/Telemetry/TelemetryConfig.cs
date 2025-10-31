@@ -26,6 +26,8 @@ namespace Telemetry
     public AccountConfig? Account { get; set; }
     public PaperConfig? Paper { get; set; }
     public TradingConfig? Trading { get; set; }
+    public OpsConfig Ops { get; set; } = new OpsConfig();
+    public DebugConfig Debug { get; set; } = new DebugConfig();
 
     // Runtime, not from JSON: a per-run artifact folder under LogPath/artifacts/telemetry_run_yyyyMMdd_HHmmss
     public string? RunFolder { get; set; }
@@ -94,6 +96,8 @@ namespace Telemetry
                                 if (loaded.Account != null) cfg.Account = loaded.Account;
                                 if (loaded.Paper != null) cfg.Paper = loaded.Paper;
                                 if (loaded.Trading != null) cfg.Trading = loaded.Trading;
+                                if (loaded.Ops != null) cfg.Ops = loaded.Ops;
+                                if (loaded.Debug != null) cfg.Debug = loaded.Debug;
                                 loadedFiles.Add(path);
                             }
                         }
@@ -329,5 +333,17 @@ namespace Telemetry
     {
         [JsonPropertyName("starting_balance_usd")]
         public double? StartingBalanceUsd { get; set; }
+    }
+
+    public class OpsConfig
+    {
+        [JsonPropertyName("enable_trading")]
+        public bool EnableTrading { get; set; } = true; // Default: allow trading
+    }
+
+    public class DebugConfig
+    {
+        [JsonPropertyName("smoke_once")]
+        public bool SmokeOnce { get; set; } = false; // Default: disabled
     }
 }

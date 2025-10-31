@@ -30,6 +30,7 @@ public class BotGRobot : Robot
     private const string ExpectedTelemetryHeader = "timestamp_iso,symbol,bid,ask,tick_rate";
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
+    private bool _smokeOnceDone;
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -151,7 +152,8 @@ public class BotGRobot : Robot
         // ========== EXECUTOR WIREPROOF (STARTUP) ==========
         try
         {
-            bool tradingEnabled = ResolveTradingEnabled();
+            bool tradingEnabled = ResolveTradingEnabled(); // cTrader platform trading state
+            bool opsEnableTrading = cfg.Ops.EnableTrading; // Runtime config gate
             bool executorReady = _connector?.OrderExecutor != null;
             string connectorType = _connector?.GetType().Name ?? "null";
             string executorType = _connector?.OrderExecutor?.GetType().Name ?? "null";
@@ -160,16 +162,18 @@ public class BotGRobot : Robot
             var wireproof = new Dictionary<string, object?>
             {
                 ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
-                ["trading_enabled"] = tradingEnabled,
+                ["trading_enabled"] = tradingEnabled, // cTrader platform state
+                ["ops_enable_trading"] = opsEnableTrading, // Runtime config gate
                 ["connector"] = connectorType,
                 ["executor"] = executorType,
-                ["ok"] = tradingEnabled && executorReady
+                ["ok"] = tradingEnabled && executorReady && opsEnableTrading // All gates must pass
             };
 
             var json = JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(wireproofPath, json, _utf8NoBom);
 
-            Print("[ECHO+] ExecutorReady trading_enabled={0} executor={1}", tradingEnabled, executorType);
+            Print("[ECHO+] ExecutorReady trading_enabled={0} ops_enable_trading={1} executor={2}", 
+                tradingEnabled, opsEnableTrading, executorType);
         }
         catch (Exception ex)
         {
@@ -181,9 +185,11 @@ public class BotGRobot : Robot
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
             echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
             JsonSerializer.Serialize(echo.Env));
-        Print("[ECHO+] Preflight.Async=true; FirstGate=TickEvent; Fallback=preflight\\l1_sample.csv; ThresholdSec=5; WriterStartBeforeCheck=true");
+        Print("[ECHO+] AutoStart online: ExecutorReady={0}, enable_trading={1}, smoke_once={2}",
+            _connector?.OrderExecutor != null, cfg.Ops.EnableTrading, cfg.Debug.SmokeOnce);
 
-        // ========== PREFLIGHT LIVE FRESHNESS (NON-BLOCKING, PAPER MODE ONLY) ==========
+        // ========== PREFLIGHT LIVE FRESHNESS (NON-BLOCKING, LOGGED ONLY) ==========
+        // Note: No mode/simulation gating - always run preflight if paper mode, just log result
         if (isPaper && !simEnabled)
         {
             Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
@@ -213,20 +219,20 @@ public class BotGRobot : Robot
 
                     if (!result.Ok)
                     {
-                        Print("[PREFLIGHT] FAILED - stopping bot. L1 data too old: {0:F1}s > 5.0s", result.LastAgeSec);
+                        Print("[PREFLIGHT] FAILED (L1 data stale: {0:F1}s > 5.0s) - logged, not blocking", result.LastAgeSec);
                         _preflightPassed = false;
-                        Stop();
-                        return;
+                        // AutoStart: do NOT stop, just log
                     }
-
-                    Print("[PREFLIGHT] PASSED - trading enabled");
-                    _preflightPassed = true;
+                    else
+                    {
+                        Print("[PREFLIGHT] PASSED");
+                        _preflightPassed = true;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Print("[PREFLIGHT] Exception: {0}", ex.Message);
+                    Print("[PREFLIGHT] Exception: {0} - logged, not blocking", ex.Message);
                     _preflightPassed = false;
-                    Stop();
                 }
             });
         }
@@ -320,6 +326,141 @@ public class BotGRobot : Robot
     {
         var ticksPerSecond = Interlocked.Exchange(ref _tickCounter, 0);
         Interlocked.Exchange(ref _tickRateEstimate, (double)ticksPerSecond);
+
+        // AutoStart RuntimeLoop: runs every 1s
+        RuntimeLoop();
+    }
+
+    private void RuntimeLoop()
+    {
+        // Guard: _tradeManager must be initialized
+        if (_tradeManager == null) return;
+
+        var cfg = TelemetryConfig.Load();
+
+        // ========== SMOKE_ONCE LOGIC ==========
+        // Execute one market BUY->ACK->FILL->CLOSE cycle if enabled
+        if (cfg.Debug.SmokeOnce && !_smokeOnceDone)
+        {
+            try
+            {
+                // Check executor ready and no open positions
+                bool executorReady = _connector?.OrderExecutor != null;
+                bool noOpenPositions = Positions.Count == 0;
+
+                if (!executorReady)
+                {
+                    Print("[SmokeOnce] Executor not ready, skipping");
+                    return;
+                }
+
+                if (!noOpenPositions)
+                {
+                    Print("[SmokeOnce] Open positions exist, skipping");
+                    return;
+                }
+
+                var executor = _connector!.OrderExecutor!;
+                var symbol = this.Symbol;
+                if (symbol == null)
+                {
+                    Print("[SmokeOnce] Symbol not available");
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                // Calculate volume via RiskManager
+                double stopPoints = 100.0; // Fixed 100-point SL for smoke test
+                double requestedVolume = 0;
+                if (_riskManager != null)
+                {
+                    try
+                    {
+                        requestedVolume = _riskManager.CalculateOrderSize(stopPoints, 0.0);
+                    }
+                    catch (Exception ex)
+                    {
+                        Print("[SmokeOnce] Risk sizing failed: {0}", ex.Message);
+                        _smokeOnceDone = true;
+                        return;
+                    }
+                }
+                else
+                {
+                    Print("[SmokeOnce] RiskManager not initialized");
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                // Clamp to minLot/lotStep from symbol or config
+                double minLot = symbol.VolumeInUnitsMin / symbol.LotSize;
+                double lotStep = symbol.VolumeInUnitsStep / symbol.LotSize;
+                double lots = requestedVolume / symbol.LotSize;
+
+                Print("[ECHO+] Risk lot calc: theoretical_lots={0:F5}, requestedVolume={1}, minLot={2}, lotStep={3}",
+                    lots, requestedVolume, minLot, lotStep);
+
+                if (lots < minLot)
+                {
+                    Print("[ECHO+] Risk lots={0:F5} < minLot={1} - fix sizing or skip smoke", lots, minLot);
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                // Round to lotStep
+                lots = Math.Round(lots / lotStep) * lotStep;
+                if (lots <= 0)
+                {
+                    Print("[ECHO+] Risk lots=0 after rounding (fix sizing)");
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                double volumeInUnits = lots * symbol.LotSize;
+
+                // Execute smoke: BUY market order
+                Print("[ECHO+] SmokeOnce: Sending market BUY {0} lots ({1} units)", lots, volumeInUnits);
+                var tradeResult = ExecuteMarketOrder(TradeType.Buy, symbol.Name, volumeInUnits);
+
+                if (!tradeResult.IsSuccessful)
+                {
+                    Print("[ECHO+] SmokeOnce BUY failed: {0}", tradeResult.Error);
+                    _smokeOnceDone = true;
+                    return;
+                }
+
+                var position = tradeResult.Position;
+                Print("[ECHO+] REQUEST/ACK/FILL: PositionId={0}, EntryPrice={1}", position.Id, position.EntryPrice);
+
+                // Close immediately
+                Print("[ECHO+] SmokeOnce: Closing position {0}", position.Id);
+                var closeResult = ClosePosition(position);
+                if (!closeResult.IsSuccessful)
+                {
+                    Print("[ECHO+] SmokeOnce CLOSE failed: {0}", closeResult.Error);
+                }
+                else
+                {
+                    Print("[ECHO+] CLOSE: PositionId={0}, ClosingPrice={1}", position.Id, closeResult.Position?.EntryPrice);
+                }
+
+                Print("[ECHO+] SmokeOnce completed");
+                _smokeOnceDone = true;
+            }
+            catch (Exception ex)
+            {
+                Print("[SmokeOnce] Exception: {0}", ex.Message);
+                _smokeOnceDone = true;
+            }
+        }
+
+        // ========== STRATEGY PIPELINE (ALWAYS RUNS, GATED BY ops.enable_trading) ==========
+        // Note: TradeManager.Process() will only place orders if cfg.Ops.EnableTrading == true
+        // For now, no strategies in list, so no signals generated
+        // To enable production trading:
+        // 1. Add strategies to list in OnStart: strategies.Add(new MyStrategy(...))
+        // 2. Call strategy.Evaluate(data) here to generate signals
+        // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
     }
 
     private void InitializeTelemetryWriter()
