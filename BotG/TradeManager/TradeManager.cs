@@ -31,10 +31,23 @@ namespace TradeManager
 
         public bool CanTrade(TradeSignal signal, double riskScore)
         {
+            // Single-switch gate: ops.enable_trading
+            var cfg = Telemetry.TelemetryConfig.Load();
+            if (!cfg.Ops.EnableTrading)
+            {
+                // Log but don't place orders when disabled
+                return false;
+            }
+
             if (_tradeCountToday >= _maxTradesPerDay) return false;
             // Allow trades with risk score >= 5.0 (was 7.5)
             if (riskScore < 5.0) return false;
-            // Có thể bổ sung kiểm tra winrate, thời gian giao dịch, v.v.
+
+            // TODO: Add risk hard-stops here
+            // - Daily loss <= -3R → block new orders
+            // - Weekly loss <= -6R → block new orders
+            // Implementation: track realized P&L per day/week, compare to account equity * risk-per-trade
+
             return true;
         }
 
