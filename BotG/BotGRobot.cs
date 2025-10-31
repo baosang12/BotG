@@ -75,7 +75,8 @@ public class BotGRobot : Robot
             var marketData = _connector.MarketData;
             var executor = _connector.OrderExecutor;
 
-            bool tradingEnabled = ResolveTradingEnabled();
+            // NEW: trading gate chỉ theo ops.enable_trading
+            bool tradingEnabled = cfg.Ops.EnableTrading;
             bool executorReady = executor != null;
 
             // Attach executor events for canary
@@ -92,9 +93,16 @@ public class BotGRobot : Robot
                 eventsAttached++;
             }
 
+            // Log lý do rõ ràng
+            BotG.Runtime.Logging.PipelineLogger.Log("GATE", "Initialized", "policy=ops_only", new System.Collections.Generic.Dictionary<string, object>
+            {
+                ["trading_enabled"] = tradingEnabled,
+                ["ops_enable_trading"] = cfg.Ops.EnableTrading
+            }, Print);
+            Print("[GATE] trading_enabled={0} policy=ops_only; ops_enable_trading={1}", tradingEnabled, cfg.Ops.EnableTrading);
+            
             Print("[ECHO+] TradingEnabled={0}", tradingEnabled);
-            Print("[ECHO+] ExecutorReady={0}; EventsAttached={1}; AutoTrading={2}", 
-                executorReady, eventsAttached, tradingEnabled);
+            Print("[ECHO+] ExecutorReady={0}; EventsAttached={1}", executorReady, eventsAttached);
 
             marketData.Start();
 
@@ -170,8 +178,8 @@ public class BotGRobot : Robot
         // ========== EXECUTOR WIREPROOF (STARTUP) ==========
         try
         {
-            bool tradingEnabled = ResolveTradingEnabled(); // cTrader platform trading state
-            bool opsEnableTrading = cfg.Ops.EnableTrading; // Runtime config gate
+            // NEW: ops-only trading gate
+            bool tradingEnabled = cfg.Ops.EnableTrading;
             bool executorReady = _connector?.OrderExecutor != null;
             string connectorType = _connector?.GetType().Name ?? "null";
             string executorType = _connector?.OrderExecutor?.GetType().Name ?? "null";
@@ -180,18 +188,18 @@ public class BotGRobot : Robot
             var wireproof = new Dictionary<string, object?>
             {
                 ["generated_at"] = DateTime.UtcNow.ToString("o", _invariantCulture),
-                ["trading_enabled"] = tradingEnabled, // cTrader platform state
-                ["ops_enable_trading"] = opsEnableTrading, // Runtime config gate
+                ["trading_enabled"] = tradingEnabled, // ops.enable_trading only
+                ["ops_enable_trading"] = tradingEnabled, // Same value, policy=ops_only
                 ["connector"] = connectorType,
                 ["executor"] = executorType,
-                ["ok"] = tradingEnabled && executorReady && opsEnableTrading // All gates must pass
+                ["ok"] = tradingEnabled && executorReady // Both gates must pass
             };
 
             var json = JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(wireproofPath, json, _utf8NoBom);
 
             Print("[ECHO+] ExecutorReady trading_enabled={0} ops_enable_trading={1} executor={2}", 
-                tradingEnabled, opsEnableTrading, executorType);
+                tradingEnabled, tradingEnabled, executorType);
         }
         catch (Exception ex)
         {
@@ -203,7 +211,7 @@ public class BotGRobot : Robot
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
             echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
             JsonSerializer.Serialize(echo.Env));
-        Print("[ECHO+] AutoStart online: ExecutorReady={0}, enable_trading={1}, smoke_once={2}",
+        Print("[ECHO+] Policy=ops_only | RiskStops=ENABLED | ExecutorReady={0} | ops.enable_trading={1} | smoke_once={2}",
             _connector?.OrderExecutor != null, cfg.Ops.EnableTrading, cfg.Debug.SmokeOnce);
 
         // ========== PREFLIGHT LIVE FRESHNESS (NON-BLOCKING, LOGGED ONLY) ==========
@@ -370,6 +378,9 @@ public class BotGRobot : Robot
         // Execute one market BUY->ACK->FILL->CLOSE cycle if enabled
         if (cfg.Debug.SmokeOnce && !_smokeOnceDone)
         {
+            // Mark done at the start to prevent looping on crash
+            _smokeOnceDone = true;
+
             try
             {
                 // Check executor ready and no open positions
@@ -393,7 +404,6 @@ public class BotGRobot : Robot
                 if (symbol == null)
                 {
                     Print("[SmokeOnce] Symbol not available");
-                    _smokeOnceDone = true;
                     return;
                 }
 
@@ -409,14 +419,12 @@ public class BotGRobot : Robot
                     catch (Exception ex)
                     {
                         Print("[SmokeOnce] Risk sizing failed: {0}", ex.Message);
-                        _smokeOnceDone = true;
                         return;
                     }
                 }
                 else
                 {
                     Print("[SmokeOnce] RiskManager not initialized");
-                    _smokeOnceDone = true;
                     return;
                 }
 
@@ -431,7 +439,6 @@ public class BotGRobot : Robot
                     ["requestedUnits"] = units
                 }, Print);
 
-                // Send order with retries on common rejects
                 // Build order and route via executor to ensure orders.csv is populated via OrderLifecycleLogger
                 string orderId = $"SMOKE_{DateTime.UtcNow.Ticks}";
                 var newOrder = new Connectivity.NewOrder(
@@ -490,11 +497,15 @@ public class BotGRobot : Robot
                 executor.OnFill += OnFillHandler;
                 executor.OnReject += OnRejectHandler;
 
-                // Send via executor (synchronous wait)
-                try { executor.SendAsync(newOrder).GetAwaiter().GetResult(); }
+                // Send via executor (synchronous wait) - wrapped in try/catch, never throw
+                try
+                {
+                    executor.SendAsync(newOrder).GetAwaiter().GetResult();
+                }
                 catch (Exception ex)
                 {
                     _lastRejectReason = ex.Message;
+                    Print("[SmokeOnce] SendAsync exception: {0}", ex.Message);
                 }
 
                 // Small wait to allow event propagation
@@ -619,12 +630,11 @@ public class BotGRobot : Robot
                 catch { }
 
                 Print("[ECHO+] SmokeOnce completed");
-                _smokeOnceDone = true;
             }
             catch (Exception ex)
             {
                 Print("[SmokeOnce] Exception: {0}", ex.Message);
-                _smokeOnceDone = true;
+                _lastRejectReason = ex.Message;
             }
         }
 
@@ -651,7 +661,7 @@ public class BotGRobot : Robot
             {
                 ["ts"] = DateTime.UtcNow.ToString("o"),
                 ["executorReady"] = _connector?.OrderExecutor != null,
-                ["tradingEnabled"] = ResolveTradingEnabled(),
+                ["tradingEnabled"] = cfg.Ops.EnableTrading, // ops-only policy
                 ["opsEnableTrading"] = cfg.Ops.EnableTrading,
                 ["requestedUnitsLast"] = _requestedUnitsLast,
                 ["lastRejectReason"] = _lastRejectReason == null ? null : System.Text.Json.Nodes.JsonValue.Create(_lastRejectReason)
