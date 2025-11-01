@@ -69,19 +69,15 @@ public class BotGRobot : Robot
         }
 
         // Initialize RiskHeartbeatService using TelemetryContext.RiskPersister
-        try {
-            TelemetryContext.InitOnce();
-            if (TelemetryContext.RiskPersister != null)
-            {
-                _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, 15);
-                Print("[RISK_HEARTBEAT] Service initialized");
-            }
-            else
-            {
-                Print("[RISK_HEARTBEAT] RiskPersister not available, heartbeat disabled");
-            }
-        } catch (Exception ex) {
-            Print($"[RISK_HEARTBEAT] Initialization failed: {ex.Message}");
+        // TelemetryContext.InitOnce() already called in BotGStartup.Initialize() (line 43)
+        if (TelemetryContext.RiskPersister != null)
+        {
+            _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, 15);
+            Print("[RISK_HEARTBEAT] Service initialized");
+        }
+        else
+        {
+            Print("[RISK_HEARTBEAT] RiskPersister not available, heartbeat disabled");
         }
 
         int eventsAttached = 0;
