@@ -367,6 +367,8 @@ public class BotGRobot : Robot
         RuntimeLoop();
     }
 
+    private readonly BotG.Runtime.SmokeOnceService _smokeOnceService = new BotG.Runtime.SmokeOnceService();
+
     private void RuntimeLoop()
     {
         // Guard: _tradeManager must be initialized
@@ -376,10 +378,10 @@ public class BotGRobot : Robot
 
         // ========== SMOKE_ONCE LOGIC ==========
         // Execute one market BUY->ACK->FILL->CLOSE cycle if enabled
-        if (cfg.Debug.SmokeOnce && !_smokeOnceDone)
+        if (_smokeOnceService.ShouldFire(cfg))
         {
             // Mark done at the start to prevent looping on crash
-            _smokeOnceDone = true;
+            _smokeOnceService.MarkFired();
 
             try
             {
@@ -431,6 +433,9 @@ public class BotGRobot : Robot
                 // Normalize units to broker min/step
                 int units = _riskManager.NormalizeUnitsForSymbol(symbol, requestedVolume);
                 _requestedUnitsLast = units;
+
+                // Evidence log in expected format
+                try { Print("[SMOKE_ONCE] firing symbol={0} units={1}", symbol.Name, units); } catch {}
 
                 // ORDER pipeline logging: PREPARED
                 BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "PREPARED", "units_ready", new System.Collections.Generic.Dictionary<string, object>
@@ -501,6 +506,7 @@ public class BotGRobot : Robot
                 try
                 {
                     executor.SendAsync(newOrder).GetAwaiter().GetResult();
+                    try { Print("[EXECUTOR] request sent tag={0} requestId={1}", newOrder.ClientTag ?? "", orderId); } catch {}
                 }
                 catch (Exception ex)
                 {
