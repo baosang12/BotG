@@ -158,66 +158,85 @@ namespace Connectivity.CTrader
             await _sendLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                await Task.Run(() => Execute(order)).ConfigureAwait(false);
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                try
+                {
+                    // Marshal all cTrader API calls to the UI thread
+                    _robot.BeginInvokeOnMainThread(() =>
+                    {
+                        try
+                        {
+                            var tradeType = order.Side == OrderSide.Buy ? TradeType.Buy : TradeType.Sell;
+                            long volumeUnits = Convert.ToInt64(Math.Round(order.Volume));
+                            // ORDER pipeline log: REQUEST
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REQUEST", "market_order", new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["symbol"] = order.Symbol,
+                                ["side"] = order.Side.ToString(),
+                                ["units"] = volumeUnits
+                            });
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
+                            var result = _robot.ExecuteMarketOrder(tradeType, order.Symbol, volumeUnits, order.ClientTag ?? "BotG", order.StopLoss, null);
+                            var serverTs = result?.Position?.EntryTime ?? DateTime.UtcNow;
+                            if (result?.IsSuccessful == true)
+                            {
+                                double price = result.Position?.EntryPrice ?? 0.0;
+                                double filledVol = result.Position?.VolumeInUnits ?? order.Volume;
+                                try { OnFill?.Invoke(new OrderFill(order.OrderId, order.Symbol, order.Side, price, filledVol, serverTs, DateTime.UtcNow, "filled")); } catch { }
+                                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "ACK", "ok", new System.Collections.Generic.Dictionary<string, object>
+                                {
+                                    ["id"] = result.Position?.Id ?? 0,
+                                    ["latency_ms"] = sw.ElapsedMilliseconds
+                                });
+                                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FILL", "ok", new System.Collections.Generic.Dictionary<string, object>
+                                {
+                                    ["id"] = result.Position?.Id ?? 0,
+                                    ["price"] = price
+                                });
+                            }
+                            else
+                            {
+                                var reason = result?.Error?.ToString() ?? "unknown";
+                                try { OnReject?.Invoke(new OrderReject(order.OrderId, order.Symbol, reason, serverTs, DateTime.UtcNow, reason)); } catch { }
+                                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", reason, new System.Collections.Generic.Dictionary<string, object>
+                                {
+                                    ["units"] = volumeUnits,
+                                    ["latency_ms"] = sw.ElapsedMilliseconds
+                                });
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            var now = DateTime.UtcNow;
+                            try { OnReject?.Invoke(new OrderReject(order.OrderId, order.Symbol, ex.Message, now, now, ex.Message)); } catch { }
+                            BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", ex.Message, new System.Collections.Generic.Dictionary<string, object>
+                            {
+                                ["exception"] = ex.GetType().Name
+                            });
+                        }
+                        finally
+                        {
+                            tcs.TrySetResult(true);
+                        }
+                    });
+                }
+                catch (Exception exOuter)
+                {
+                    // Never let exceptions escape to Robot caller
+                    var now = DateTime.UtcNow;
+                    try { OnReject?.Invoke(new OrderReject(order.OrderId, order.Symbol, exOuter.Message, now, now, exOuter.Message)); } catch { }
+                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", exOuter.Message, new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        ["exception_outer"] = exOuter.GetType().Name
+                    });
+                    tcs.TrySetResult(true);
+                }
+
+                await tcs.Task.ConfigureAwait(false);
             }
             finally
             {
                 _sendLock.Release();
-            }
-        }
-
-        private void Execute(NewOrder order)
-        {
-            DateTime localSend = DateTime.UtcNow;
-            try
-            {
-                var tradeType = order.Side == OrderSide.Buy ? TradeType.Buy : TradeType.Sell;
-                long volumeUnits = Convert.ToInt64(Math.Round(order.Volume));
-                // ORDER pipeline log: REQUEST
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REQUEST", "market_order", new System.Collections.Generic.Dictionary<string, object>
-                {
-                    ["symbol"] = order.Symbol,
-                    ["side"] = order.Side.ToString(),
-                    ["units"] = volumeUnits
-                });
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var result = _robot.ExecuteMarketOrder(tradeType, order.Symbol, volumeUnits, order.ClientTag ?? "BotG", order.StopLoss, null);
-                var serverTs = result?.Position?.EntryTime ?? DateTime.UtcNow;
-                if (result?.IsSuccessful == true)
-                {
-                    double price = result.Position?.EntryPrice ?? 0.0;
-                    double filledVol = result.Position?.VolumeInUnits ?? order.Volume;
-                    OnFill?.Invoke(new OrderFill(order.OrderId, order.Symbol, order.Side, price, filledVol, serverTs, DateTime.UtcNow, "filled"));
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "ACK", "ok", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["id"] = result.Position?.Id ?? 0,
-                        ["latency_ms"] = sw.ElapsedMilliseconds
-                    });
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "FILL", "ok", new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["id"] = result.Position?.Id ?? 0,
-                        ["price"] = price
-                    });
-                }
-                else
-                {
-                    var reason = result?.Error?.ToString() ?? "unknown";
-                    OnReject?.Invoke(new OrderReject(order.OrderId, order.Symbol, reason, serverTs, DateTime.UtcNow, reason));
-                    BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", reason, new System.Collections.Generic.Dictionary<string, object>
-                    {
-                        ["units"] = volumeUnits,
-                        ["latency_ms"] = sw.ElapsedMilliseconds
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                var now = DateTime.UtcNow;
-                OnReject?.Invoke(new OrderReject(order.OrderId, order.Symbol, ex.Message, now, now, ex.Message));
-                BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "REJECT", ex.Message, new System.Collections.Generic.Dictionary<string, object>
-                {
-                    ["exception"] = ex.GetType().Name
-                });
             }
         }
 
