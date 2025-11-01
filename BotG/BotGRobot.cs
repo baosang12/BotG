@@ -18,6 +18,7 @@ public class BotGRobot : Robot
 {
     // hold runtime modules on the robot instance for later use
     private TradeManager.TradeManager? _tradeManager;
+    private BotG.Runtime.RiskHeartbeatService? _riskHeartbeat;
     private RiskManager.RiskManager? _riskManager;
     private ConnectorBundle? _connector;
     private long _tickCounter;
@@ -65,6 +66,22 @@ public class BotGRobot : Robot
         catch (Exception ex)
         {
             Print("BotGRobot startup: failed to initialize RiskManager: " + ex.Message);
+        }
+
+        // Initialize RiskHeartbeatService using TelemetryContext.RiskPersister
+        try {
+            TelemetryContext.InitOnce();
+            if (TelemetryContext.RiskPersister != null)
+            {
+                _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, 15);
+                Print("[RISK_HEARTBEAT] Service initialized");
+            }
+            else
+            {
+                Print("[RISK_HEARTBEAT] RiskPersister not available, heartbeat disabled");
+            }
+        } catch (Exception ex) {
+            Print($"[RISK_HEARTBEAT] Initialization failed: {ex.Message}");
         }
 
         int eventsAttached = 0;
@@ -371,6 +388,9 @@ public class BotGRobot : Robot
 
     private void RuntimeLoop()
     {
+        // Heartbeat: always tick at start of loop
+        _riskHeartbeat?.Tick();
+
         // Guard: _tradeManager must be initialized
         if (_tradeManager == null) return;
 
