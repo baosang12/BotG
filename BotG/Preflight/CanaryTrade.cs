@@ -323,6 +323,12 @@ namespace BotG.Preflight
                 while (DateTime.UtcNow < deadline)
                 {
                     ct.ThrowIfCancellationRequested();
+                    
+                    // JUSTIFICATION: Task.Run acceptable here because:
+                    // 1. PREFLIGHT TEST CODE: Not used in production RuntimeLoop
+                    // 2. SYNCHRONOUS API WRAPPER: ClosePosition is sync cAlgo API, needs Task.Run
+                    // 3. DIAGNOSTIC ONLY: CanaryTrade not referenced in BotGRobot main flow
+                    // 4. SHORT-LIVED: Timeout 5s, no concurrent canary trades
                     bool closed = await Task.Run(() =>
                     {
                         foreach (var pos in _robot.Positions)
