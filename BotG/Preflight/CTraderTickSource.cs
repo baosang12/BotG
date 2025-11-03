@@ -26,7 +26,11 @@ namespace BotG.Preflight
         {
             try
             {
-                // Wait on background thread to avoid blocking
+                // JUSTIFICATION: Task.Run acceptable here because:
+                // 1. BLOCKING API WRAPPER: ManualResetEventSlim.Wait() is sync blocking call
+                // 2. PREFLIGHT DIAGNOSTIC: Used only in PreflightLiveFreshness check
+                // 3. NO ALTERNATIVE: Cannot await ManualResetEventSlim directly
+                // 4. NON-CRITICAL PATH: Tick source for freshness validation, not trading
                 return await Task.Run(() => _tickEvent.Wait(timeout, ct), ct);
             }
             catch (OperationCanceledException)

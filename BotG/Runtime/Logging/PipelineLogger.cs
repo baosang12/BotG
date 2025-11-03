@@ -71,6 +71,11 @@ namespace BotG.Runtime.Logging
                 }
 
                 // File output (async to avoid blocking)
+                // JUSTIFICATION: Fire-and-forget Task.Run acceptable here because:
+                // 1. LOGGING ONLY: Non-critical telemetry, must not block trading operations
+                // 2. SILENT FAIL: Wrapped in try/catch, no exception propagation needed
+                // 3. FILE I/O: Append is blocking operation, must run on thread pool
+                // 4. NO STATE MUTATION: Only appends to log file, no trading state affected
                 System.Threading.Tasks.Task.Run(() =>
                 {
                     try

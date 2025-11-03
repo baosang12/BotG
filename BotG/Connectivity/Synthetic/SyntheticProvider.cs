@@ -44,6 +44,12 @@ namespace Connectivity.Synthetic
         public void Start()
         {
             if (_heartbeat != null) return;
+            
+            // JUSTIFICATION: Fire-and-forget Task.Run acceptable here because:
+            // 1. SIMULATION MODE ONLY: SyntheticProvider used for testing, not production
+            // 2. BACKGROUND HEARTBEAT: Quote generation loop, no trading operations
+            // 3. CANCELLATION SAFE: Respects CancellationToken, stops cleanly
+            // 4. NO RACE CONDITION: Only invokes OnQuote event, stateless
             _heartbeat = Task.Run(async () =>
             {
                 while (!_cts.Token.IsCancellationRequested)
@@ -104,6 +110,11 @@ namespace Connectivity.Synthetic
 
         public Task SendAsync(NewOrder order)
         {
+            // JUSTIFICATION: Task.Run acceptable here because:
+            // 1. SIMULATION MODE ONLY: SyntheticExecutor used for testing, not production
+            // 2. SYNCHRONOUS WRAPPER: SendAsync must return Task, but logic is sync
+            // 3. NO ACTUAL BROKER: Synthetic fill generation, no real trading risk
+            // 4. TEST HARNESS: Used in Harness project for local development
             return Task.Run(() =>
             {
                 var now = DateTime.UtcNow;

@@ -12,6 +12,7 @@ using cAlgo.API;
 using Telemetry;
 using Connectivity;
 using BotG.Preflight;
+using BotG.Threading;
 
 [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
 public class BotGRobot : Robot
@@ -37,6 +38,9 @@ public class BotGRobot : Robot
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
+    
+    // Thread safety: Serializes all async operations to prevent race conditions
+    private readonly ExecutionSerializer _executionSerializer = new ExecutionSerializer();
 
     protected override void OnStart()
     {
@@ -49,6 +53,9 @@ public class BotGRobot : Robot
 
         // Load config early
         var cfg = TelemetryConfig.Load();
+
+        // CRITICAL SAFETY: Validate trading gate BEFORE any execution
+        TradingGateValidator.ValidateOrThrow(cfg);
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
 
@@ -233,7 +240,11 @@ public class BotGRobot : Robot
         {
             Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
             
-            // Run preflight in background - don't block OnStart
+            // JUSTIFICATION: Fire-and-forget Task.Run is acceptable here because:
+            // 1. NON-CRITICAL PATH: Preflight check is diagnostic only, not trading operation
+            // 2. NON-BLOCKING STARTUP: Must not delay OnStart completion
+            // 3. EXCEPTION SAFE: Wrapped in try/catch, sets _preflightPassed flag
+            // 4. NO RACE CONDITION: Only writes to _preflightPassed (atomic bool)
             Task.Run(async () =>
             {
                 try
@@ -392,6 +403,18 @@ public class BotGRobot : Robot
 
         var cfg = TelemetryConfig.Load();
 
+        // CRITICAL SAFETY: Runtime preflight check - validates trading conditions every tick
+        // This catches config changes, sentinel files, or stale preflight results during execution
+        try
+        {
+            TradingGateValidator.ValidateOrThrow(cfg);
+        }
+        catch (InvalidOperationException gateEx)
+        {
+            // Trading gate violation - log and skip this tick
+            BotG.Runtime.Logging.PipelineLogger.Log("GATE", "RuntimeBlock", gateEx.Message, null, Print);
+            return;
+        }
         // ========== SMOKE_ONCE LOGIC ==========
         // Execute one market BUY->ACK->FILL->CLOSE cycle if enabled
         if (_smokeOnceService.ShouldFire(cfg))
@@ -990,7 +1013,8 @@ public class BotGRobot : Robot
 
             Print("[PREFLIGHT] Placing ACK test order: BUY_LIMIT {0} lots at {1}", volume / 100000.0, limitPrice);
 
-            var tradeResult = await Task.Run(() =>
+            // THREAD SAFETY: Use ExecutionSerializer to prevent concurrent trade operations
+            var tradeResult = await _executionSerializer.RunAsync(() =>
             {
                 var tr = ExecuteMarketOrder(TradeType.Buy, symbol, volume, "PREFLIGHT_ACK");
                 return tr;
@@ -1004,8 +1028,8 @@ public class BotGRobot : Robot
                 result.Ok = true;
                 result.OrderId = tradeResult.Position.Id.ToString();
                 
-                // Immediately close/cancel
-                await Task.Run(() => ClosePosition(tradeResult.Position));
+                // THREAD SAFETY: Use ExecutionSerializer for position close
+                await _executionSerializer.RunAsync(() => ClosePosition(tradeResult.Position));
                 Print("[PREFLIGHT] ACK test order closed");
             }
             else
@@ -1036,7 +1060,11 @@ public class BotGRobot : Robot
             Print("[PREFLIGHT] Placing FILL test: MARKET BUY {0} lots", volume / 100000.0);
 
             var entryPrice = this.Symbol?.Ask ?? 0;
-            var tradeResult = await Task.Run(() => ExecuteMarketOrder(TradeType.Buy, symbol, volume, "PREFLIGHT_FILL"));
+            
+            // THREAD SAFETY: Use ExecutionSerializer to prevent concurrent trade operations
+            var tradeResult = await _executionSerializer.RunAsync(() => 
+                ExecuteMarketOrder(TradeType.Buy, symbol, volume, "PREFLIGHT_FILL")
+            );
 
             var fillTime = DateTime.UtcNow;
             result.LatencyMs = (int)(fillTime - startTime).TotalMilliseconds;
@@ -1047,9 +1075,9 @@ public class BotGRobot : Robot
                 var pipSize = this.Symbol?.PipSize ?? 0.0001;
                 result.SlippagePips = Math.Abs(fillPrice - entryPrice) / pipSize;
                 
-                // Close immediately
+                // THREAD SAFETY: Use ExecutionSerializer for position close
                 var closeStart = DateTime.UtcNow;
-                await Task.Run(() => ClosePosition(tradeResult.Position));
+                await _executionSerializer.RunAsync(() => ClosePosition(tradeResult.Position));
                 var closeEnd = DateTime.UtcNow;
                 result.CloseLatencyMs = (int)(closeEnd - closeStart).TotalMilliseconds;
 
