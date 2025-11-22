@@ -89,6 +89,13 @@ temp_b64.txt
 test*.txt
 test_closed_trades.csv
 
+# Build diagnostics / cached artifacts
+BotG/obj_diag/
+Harness/obj_locked_backup/
+
+# Local backup files
+config.runtime.json.backup_*
+
 # PR NOOP trigger (used only to force a diff)
 scripts/.pr_trigger_for_pr.txt
 

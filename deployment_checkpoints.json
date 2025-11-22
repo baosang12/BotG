@@ -1,0 +1,7 @@
+{
+  "Description": "Automated build and deploy (Debug)",
+  "Configuration": "Debug",
+  "GitCommit": "e284389 PHASE 1: Critical Safety Fixes COMPLETE - Thread safety + Trading gate + Cancellation handling + Runtime preflight",
+  "Timestamp": "2025-11-10 10:00:57",
+  "Version": "Build-20251110-100057"
+}
