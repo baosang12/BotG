@@ -1,9 +1,0 @@
-{
-  "rows": 726,
-  "chunks_processed": 1,
-  "chunksize": 100000,
-  "elapsed_seconds": 0.0077021121978759766,
-  "by_side_path": "artifacts_ascii\\telemetry_run_20250823_102738\\fill_rate_by_side.csv",
-  "by_hour_path": "artifacts_ascii\\telemetry_run_20250823_102738\\fill_breakdown_by_hour.csv",
-  "log_file": "artifacts_ascii\\telemetry_run_20250823_102738\\run_compute_stream.log"
-}

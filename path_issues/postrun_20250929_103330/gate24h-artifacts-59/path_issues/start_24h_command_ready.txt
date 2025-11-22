@@ -1,4 +1,0 @@
-﻿mode=paper
-hours=0.1
-source=file-trigger-test3
-

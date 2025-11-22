@@ -1,7 +1,0 @@
-filename,status,size_mb,critical
-orders.csv,OK,256.55,True
-telemetry.csv,OK,2.17,True
-risk_snapshots.csv,OK,0.11,True
-trade_closes.log,OK,15.46,False
-run_metadata.json,OK,0.0,False
-closed_trades_fifo_reconstructed.csv,OK,32.9,False

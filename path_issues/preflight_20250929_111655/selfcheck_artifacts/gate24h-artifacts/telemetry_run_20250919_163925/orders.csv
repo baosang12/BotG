@@ -1,1 +1,0 @@
-﻿ts_iso,epoch_ms,phase,order_id,side,action,type,status,reason,latency_ms,price_requested,price_filled,size_requested,size_filled,sl,tp,price_exec,theoretical_lots,theoretical_units,requestedVolume,filledSize,slippage,brokerMsg,client_order_id,host,session

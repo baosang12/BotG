@@ -1,9 +1,0 @@
-﻿{
-    "ts":  "20250827_200336",
-    "run_dir":  "D:\\botg\\logs\\artifacts\\telemetry_run_20250827_200336",
-    "smoke_zip":  "D:\\botg\\logs\\artifacts\\telemetry_run_20250827_200336\\telemetry_run_20250827_200336.zip",
-    "trades":  248,
-    "total_pnl":  36.952000000003224,
-    "orphan_after":  0,
-    "acceptance":  "PASS"
-}
