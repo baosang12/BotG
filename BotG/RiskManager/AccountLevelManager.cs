@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace RiskManager
+namespace BotG.RiskManager
 {
     /// <summary>
     /// Quản lý cấp độ tài khoản (Account Level) dựa trên số dư (balance).

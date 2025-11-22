@@ -563,18 +563,39 @@ namespace Telemetry
                 return null;
             }
 
-            if (snapshot.SpreadPips.HasValue && snapshot.SpreadPips.Value > 0 && snapshot.Bid.HasValue && snapshot.Ask.HasValue)
-            {
-                var diff = snapshot.Ask.Value - snapshot.Bid.Value;
-                if (diff > 0)
-                {
-                    return diff / snapshot.SpreadPips.Value;
-                }
-            }
-
             if (snapshot.Bid.HasValue && snapshot.Ask.HasValue)
             {
-                return OrderQuoteTelemetry.GuessPipSize(symbol, snapshot.Bid.Value, snapshot.Ask.Value);
+                var bid = snapshot.Bid.Value;
+                var ask = snapshot.Ask.Value;
+                var diff = ask - bid;
+                if (diff <= 0)
+                {
+                    return null;
+                }
+
+                var guessed = OrderQuoteTelemetry.GuessPipSize(symbol, bid, ask);
+                if (snapshot.SpreadPips.HasValue && snapshot.SpreadPips.Value > 0)
+                {
+                    var derived = diff / snapshot.SpreadPips.Value;
+                    if (derived > 0)
+                    {
+                        if (guessed > 0)
+                        {
+                            // Broker feeds đôi khi trả spread bằng pipette; chỉ tin khi xấp xỉ giá trị suy ra từ bid/ask.
+                            var ratio = derived / guessed;
+                            if (ratio > 0.5 && ratio < 2.0)
+                            {
+                                return derived;
+                            }
+                        }
+                        else
+                        {
+                            return derived;
+                        }
+                    }
+                }
+
+                return guessed > 0 ? guessed : (double?)null;
             }
 
             return null;

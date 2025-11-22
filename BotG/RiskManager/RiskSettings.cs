@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace RiskManager
+namespace BotG.RiskManager
 {
     /// <summary>
     /// Cấu hình cho module RiskManager.
@@ -37,5 +37,8 @@ namespace RiskManager
 
         // Alerts
         public Dictionary<string, double> AlertThresholds { get; set; } = new Dictionary<string, double>();
+
+        // Conservative scaling for Ops-controlled testing phases
+        public double PositionSizeMultiplier { get; set; } = 1.0;
     }
 }

@@ -53,5 +53,53 @@ namespace Telemetry
                 // swallow to avoid interrupting trading runtime
             }
         }
+
+        public void UpsertSymbolFeeProfile(string symbolName, SymbolFeeProfileSnapshot snapshot)
+        {
+            if (string.IsNullOrWhiteSpace(symbolName) || snapshot == null)
+            {
+                return;
+            }
+
+            try
+            {
+                JsonObject root;
+                if (File.Exists(_filePath))
+                {
+                    var json = File.ReadAllText(_filePath);
+                    root = JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+                }
+                else
+                {
+                    root = new JsonObject();
+                }
+
+                var feeProfiles = root["symbol_fee_profiles"] as JsonObject ?? new JsonObject();
+                snapshot.Symbol = symbolName;
+                snapshot.CapturedAtIso ??= DateTime.UtcNow.ToString("o");
+                feeProfiles[symbolName] = JsonSerializer.SerializeToNode(snapshot) ?? new JsonObject();
+                root["symbol_fee_profiles"] = feeProfiles;
+
+                File.WriteAllText(_filePath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch
+            {
+                // swallow to avoid impacting runtime
+            }
+        }
+    }
+
+    public class SymbolFeeProfileSnapshot
+    {
+        public string? Symbol { get; set; }
+        public double SpreadPips { get; set; }
+        public double CommissionRoundtripUsdPerLot { get; set; }
+        public double FeePipsPerRoundtrip { get; set; }
+        public double FeePipsPerSide { get; set; }
+        public double SwapLongPipsPerDay { get; set; }
+        public double SwapShortPipsPerDay { get; set; }
+        public string? SwapType { get; set; }
+        public string? SwapTripleDay { get; set; }
+        public string? CapturedAtIso { get; set; }
     }
 }

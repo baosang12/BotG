@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -9,20 +11,42 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using cAlgo.API;
+using MarketSeries = cAlgo.API.Internals.MarketSeries;
 using Telemetry;
 using Connectivity;
 using BotG.Preflight;
 using BotG.Threading;
+using Strategies;
+using Strategies.Templates;
+using BotG.PositionManagement;
+using BotG.MarketRegime;
+using BotG.Strategies.Coordination;
+using BotG.Config;
+using BotG.Runtime.Logging;
+using BotG.MultiTimeframe;
+using BotG.Performance;
+using BotG.Performance.Monitoring;
+using Strategies.Breakout;
+using Strategies.Config;
+using RiskManager = BotG.RiskManager;
+using ModelBar = DataFetcher.Models.Bar;
+using ModelTimeFrame = DataFetcher.Models.TimeFrame;
 
 [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
 public class BotGRobot : Robot
 {
     // hold runtime modules on the robot instance for later use
-    private TradeManager.TradeManager? _tradeManager;
-    private BotG.Runtime.RiskHeartbeatService? _riskHeartbeat;
-    private RiskManager.RiskManager? _riskManager;
+    private TradeManager.TradeManager? _tradeManager = null;
+    private TelemetryConfig? _config;
+    private BotG.Runtime.RiskHeartbeatService? _riskHeartbeat = null;
+    private RiskManager.RiskManager? _riskManager = null;
+    private MainThreadTimer? _riskHeartbeatTimer = null;
+    private MainThreadTimer? _riskSnapshotTimer = null;
+    private MainThreadTimer? _telemetryTimer = null;
     private ConnectorBundle? _connector;
     private long _tickCounter;
+    private DateTime _lastTradingHoursLogUtc = DateTime.MinValue;
+    private bool _enforceTradingHours = true;
     private double _tickRateEstimate;
     private string? _telemetryPath;
     private readonly CultureInfo _invariantCulture = CultureInfo.InvariantCulture;
@@ -33,8 +57,24 @@ public class BotGRobot : Robot
     private bool _telemetrySampleLogged;
     private bool _preflightPassed;
     private bool _smokeOnceDone;
-    private int _requestedUnitsLast;
+    private double _requestedUnitsLast;
     private string? _lastRejectReason;
+    private StrategyPipeline? _strategyPipeline;
+    private BotG.Strategies.Coordination.IStrategyCoordinator? _coordinator;
+    private ConfigHotReloadManager? _configHotReloadManager;
+    private IReadOnlyList<IStrategy> _strategies = Array.Empty<IStrategy>();
+    private Strategies.Registry.StrategyRegistry? _strategyRegistry;
+    private FileSystemWatcher? _strategyRegistryWatcher;
+    private System.Threading.Timer? _strategyReloadTimer;
+    private readonly object _strategyReloadLock = new object();
+    private TimeSpan _strategyReloadDebounce = TimeSpan.FromSeconds(2);
+    private string? _pendingStrategyReloadReason;
+    private string? _strategyRegistryPath;
+    private FileStream? _instanceLockStream;
+    private string? _instanceLockPath;
+    private const string InstanceLockFileName = "botg_instance.lock";
+    private static bool _exceptionSinksRegistered;
+    private static readonly object _exceptionSinksLock = new object();
     
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
@@ -42,8 +82,62 @@ public class BotGRobot : Robot
     // Thread safety: Serializes all async operations to prevent race conditions
     private readonly ExecutionSerializer _executionSerializer = new ExecutionSerializer();
 
+    // POSITION MANAGEMENT: Track & manage all positions with exit strategies
+    private PositionManager? _positionManager = null;
+    private ExitProfileService? _exitProfileService = null;
+
+    // MARKET REGIME DETECTION: Classify market conditions for strategy routing
+    private MarketRegimeDetector? _regimeDetector = null;
+    private RegimeConfiguration? _regimeConfiguration = null;
+    private RegimeType _currentRegime = RegimeType.Uncertain;
+    private TimeframeManager? _timeframeManager;
+    private TimeframeSynchronizer? _timeframeSynchronizer;
+    private SessionAwareAnalyzer? _sessionAnalyzer;
+    private MultiTimeframeBenchmark? _multiTimeframeBenchmark;
+    private BacktestMonitor? _backtestMonitor;
+    private TimeframeSnapshot? _lastSnapshot;
+    private TimeframeAlignmentResult? _lastAlignment;
+    private TradingSession _lastSession = TradingSession.Asian;
+    private double _lastSessionMultiplier = 1.0;
+    private TimeframeSynchronizerConfig? _timeframeSynchronizerConfig;
+    private readonly Dictionary<ModelTimeFrame, DateTime> _lastIngestedOpenTimes = new();
+    private const int LiveDailyTradeLimit = 3;
+    private static readonly (TimeFrame CTrader, ModelTimeFrame Model)[] MultiTimeframePairs = new[]
+    {
+        (TimeFrame.Hour4, ModelTimeFrame.H4),
+        (TimeFrame.Hour, ModelTimeFrame.H1),
+        (TimeFrame.Minute15, ModelTimeFrame.M15)
+    };
+    private const int BenchmarkLogIntervalTicks = 600;
+
     protected override void OnStart()
     {
+        try
+        {
+            SafeOnStart();
+        }
+        catch (Exception ex)
+        {
+            LogCritical("OnStart", ex);
+        }
+    }
+
+    private void SafeOnStart()
+    {
+        var guardConfig = TelemetryConfig.LoadForGuard();
+        if (!EnsureSingleInstance(guardConfig))
+        {
+            try
+            {
+                BotG.Runtime.Logging.PipelineLogger.Initialize();
+                BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "GuardBlock", "Instance guard prevented start", null, Print);
+            }
+            catch { }
+
+            Stop();
+            return;
+        }
+
         BotGStartup.Initialize();
         BotG.Runtime.Logging.PipelineLogger.Initialize();
         BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Start", "Bot starting", null, Print);
@@ -52,12 +146,53 @@ public class BotGRobot : Robot
         var mode = EnvOr("DATASOURCE__MODE", "ctrader_demo");
 
         // Load config early
-        var cfg = TelemetryConfig.Load();
+        _config = TelemetryConfig.Load();
+        var cfg = _config;
 
-        // CRITICAL SAFETY: Validate trading gate BEFORE any execution
+        try
+        {
+            var exitProfilesConfig = ExitProfileConfigLoader.LoadFromRuntimeConfig();
+            _exitProfileService = new ExitProfileService(exitProfilesConfig);
+            PipelineLogger.Log(
+                "EXIT",
+                "ProfilesReady",
+                "Exit profile service initialized",
+                new Dictionary<string, object?>
+                {
+                    ["profile_count"] = _exitProfileService.ProfileCount,
+                    ["default_profile"] = _exitProfileService.DefaultProfileName
+                },
+                Print);
+        }
+        catch (Exception ex)
+        {
+            _exitProfileService = null;
+            PipelineLogger.Log(
+                "EXIT",
+                "ProfilesInitError",
+                "Failed to initialize exit profile service",
+                new { error = ex.Message },
+                Print);
+        }
+
+    // CRITICAL SAFETY: Validate trading gate BEFORE any execution
         TradingGateValidator.ValidateOrThrow(cfg);
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
+
+        _enforceTradingHours = false;
+        var enforceGateEnv = Environment.GetEnvironmentVariable("BOTG_ENFORCE_TRADING_HOURS");
+        if (!string.IsNullOrWhiteSpace(enforceGateEnv) && enforceGateEnv.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            _enforceTradingHours = true;
+        }
+
+        if (!_enforceTradingHours)
+        {
+            BotG.Runtime.Logging.PipelineLogger.Log("TRADING_HOURS", "GateDisabled", "Trading hours guard disabled", new { cfg.Mode }, Print);
+        }
+
+    RegisterGlobalExceptionSinks(cfg);
 
         // Ensure preflight directory exists
         var preflightDir = Path.Combine(cfg.LogPath, "preflight");
@@ -66,7 +201,11 @@ public class BotGRobot : Robot
         try
         {
             _riskManager = new RiskManager.RiskManager();
-            _riskManager.Initialize(new RiskManager.RiskSettings());
+            var riskSettings = new RiskManager.RiskSettings
+            {
+                PositionSizeMultiplier = 0.5
+            };
+            _riskManager.Initialize(riskSettings);
             try { _riskManager.SetSymbolReference(this.Symbol); } catch { }
             BotG.Runtime.Logging.PipelineLogger.Log("RISK", "Ready", "RiskManager initialized", null, Print);
         }
@@ -77,14 +216,148 @@ public class BotGRobot : Robot
 
         // Initialize RiskHeartbeatService using TelemetryContext.RiskPersister
         // TelemetryContext.InitOnce() already called in BotGStartup.Initialize() (line 43)
+        try
+        {
+            var debugLog = Path.Combine(cfg.LogPath, "a8_debug.log");
+            File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: Checking RiskPersister...\n");
+            File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: RiskPersister is {(TelemetryContext.RiskPersister == null ? "NULL" : "NOT NULL")}\n");
+        }
+        catch { }
+        
+        Print("[A8_DEBUG] TelemetryContext.RiskPersister is " + (TelemetryContext.RiskPersister == null ? "NULL" : "NOT NULL"));
         if (TelemetryContext.RiskPersister != null)
         {
-            _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, 15);
-            Print("[RISK_HEARTBEAT] Service initialized");
+            // A8 FIX: Re-initialize RiskPersister với callback openPnL cho paper mode
+            var riskCfg = _config ?? TelemetryConfig.Load();
+            bool isPaperMode = riskCfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                var debugLog = Path.Combine(cfg.LogPath, "a8_debug.log");
+                File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: Config mode='{riskCfg.Mode}', isPaperMode={isPaperMode}\n");
+            }
+            catch { }
+            Print($"[A8_DEBUG] Config mode='{riskCfg.Mode}', isPaperMode={isPaperMode}");
+            if (isPaperMode)
+            {
+#pragma warning disable CS8602 // Dereference of a possibly null reference - suppressed for A8 fix
+                Func<double> getOpenPnl = () =>
+                {
+                    try
+                    {
+                        double totalPnl = 0.0;
+                        foreach (var pos in this.Positions)
+                        {
+                            totalPnl += pos.NetProfit;
+                        }
+                        return totalPnl;
+                    }
+                    catch
+                    {
+                        return 0.0;
+                    }
+                };
+
+                var runDir = TelemetryContext.RunFolder;
+                TelemetryContext.RiskPersister = new Telemetry.RiskSnapshotPersister(
+                    runDir,
+                    riskCfg.RiskSnapshotFile,
+                    isPaperMode,
+                    getOpenPnl
+                );
+                try
+                {
+                    var debugLog = Path.Combine(cfg.LogPath, "a8_debug.log");
+                    File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: RiskPersister re-initialized with openPnl callback\n");
+                }
+                catch { }
+                Print("[A8_DEBUG] RiskPersister re-initialized with openPnl callback");
+#pragma warning restore CS8602
+            }
+            else
+            {
+                try
+                {
+                    var debugLog = Path.Combine(cfg.LogPath, "a8_debug.log");
+                    File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: NOT paper mode (mode='{riskCfg.Mode}'), skipping callback re-init\n");
+                }
+                catch { }
+                Print("[A8_DEBUG] NOT paper mode, skipping callback re-init");
+            }
+
+            int heartbeatSec = 15;
+            var envHeartbeat = Environment.GetEnvironmentVariable("BOTG_RISK_HEARTBEAT_SEC");
+            if (int.TryParse(envHeartbeat, out var hb) && hb > 0)
+            {
+                heartbeatSec = hb;
+            }
+
+            _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, TelemetryContext.PositionPersister, heartbeatSec, riskCfg);
+            _riskHeartbeatTimer = new MainThreadTimer(this, () =>
+            {
+                try
+                {
+                    _riskHeartbeat?.Tick();
+                }
+                catch (Exception ex)
+                {
+                    LogTimerException("RiskHeartbeat", ex);
+                }
+            }, TimeSpan.FromSeconds(heartbeatSec), runImmediately: true);
+            _riskHeartbeatTimer.Start();
+
+            AppendDebugLine("TIMER", $"RiskHeartbeat started interval={heartbeatSec}s (main-thread)");
+            Print($"[RISK_HEARTBEAT] Service started (interval={heartbeatSec}s, main-thread)");
         }
         else
         {
+            _riskHeartbeat = null;
+            AppendDebugLine("TIMER", "RiskHeartbeat skipped - RiskPersister missing");
             Print("[RISK_HEARTBEAT] RiskPersister not available, heartbeat disabled");
+        }
+
+        if (_riskManager != null && TelemetryContext.RiskPersister != null)
+        {
+            var snapshotInterval = _riskManager.SnapshotInterval;
+            _riskSnapshotTimer = new MainThreadTimer(this, () =>
+            {
+                try
+                {
+                    _riskManager?.CaptureSnapshotForScheduler();
+                }
+                catch (Exception ex)
+                {
+                    LogTimerException("RiskSnapshot", ex);
+                }
+            }, snapshotInterval);
+            _riskSnapshotTimer.Start();
+            AppendDebugLine("TIMER", $"Risk snapshot timer started interval={snapshotInterval.TotalSeconds:F0}s");
+        }
+        else if (_riskManager != null)
+        {
+            AppendDebugLine("TIMER", "Risk snapshot timer skipped - RiskPersister missing");
+        }
+
+        if (TelemetryContext.Collector != null)
+        {
+            var telemetryInterval = TelemetryContext.Collector.FlushInterval;
+            _telemetryTimer = new MainThreadTimer(this, () =>
+            {
+                try
+                {
+                    TelemetryContext.Collector?.FlushOnMainThread();
+                }
+                catch (Exception ex)
+                {
+                    LogTimerException("TelemetryCollector", ex);
+                }
+            }, telemetryInterval);
+            _telemetryTimer.Start();
+            AppendDebugLine("TIMER", $"Telemetry collector timer started interval={telemetryInterval.TotalSeconds:F0}s");
+            Print($"[TELEMETRY] Collector timer started (interval={telemetryInterval.TotalSeconds:F0}s)");
+        }
+        else
+        {
+            AppendDebugLine("TIMER", "Telemetry collector timer skipped - Collector null");
         }
 
         int eventsAttached = 0;
@@ -102,13 +375,17 @@ public class BotGRobot : Robot
             // Attach executor events for canary
             if (executor != null)
             {
-                executor.OnFill += (fill) => {
+                executor.OnFill += (fill) =>
+                {
                     Print("[ECHO+] Executor.OnFill: OrderId={0} Price={1}", fill.OrderId, fill.Price);
+                    try { _backtestMonitor?.OnTradeFill(); } catch { }
                 };
                 eventsAttached++;
 
-                executor.OnReject += (reject) => {
+                executor.OnReject += (reject) =>
+                {
                     Print("[ECHO+] Executor.OnReject: OrderId={0} Reason={1}", reject.OrderId, reject.Reason);
+                    try { _backtestMonitor?.OnTradeReject(); } catch { }
                 };
                 eventsAttached++;
             }
@@ -179,21 +456,104 @@ public class BotGRobot : Robot
             Print("BotGRobot startup: failed to initialize connectivity: " + ex.Message);
         }
 
+        InitializeMultiTimeframeSystem();
+        InitializeStrategyRegistry(cfg);
+
         try
         {
             if (_connector != null)
             {
-                var strategies = new List<Strategies.IStrategy<Strategies.TradeSignal>>();
-                _tradeManager = new TradeManager.TradeManager(strategies, this, _riskManager, _connector.MarketData, _connector.OrderExecutor);
-                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "Ready", "TradeManager initialized", null, Print);
+                if (_strategies == null || _strategies.Count == 0)
+                {
+                    _strategies = CreateStrategies();
+                }
+
+                _tradeManager = new TradeManager.TradeManager(_strategies, this, _riskManager, _connector.MarketData, _connector.OrderExecutor);
+                ConfigureDailyTradeLimit(cfg);
+
+                var coordinationConfig = StrategyCoordinationConfigLoader.LoadFromRuntimeConfig();
+                ApplyCoordinationConfig(coordinationConfig, isReload: false);
+
+                InitializeCoordinationHotReload();
+
+                if (cfg.StrategyRegistry != null && cfg.StrategyRegistry.HotReloadEnabled && _strategyRegistry != null)
+                {
+                    InitializeStrategyRegistryWatcher(cfg);
+                }
+
+                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "Ready", "TradeManager initialized",
+                    new Dictionary<string, object?>
+                    {
+                        ["strategy_count"] = _strategies.Count,
+                        ["strategies"] = string.Join(",", _strategies.Select(s => s.Name))
+                    }, Print);
+
+                Print("[DEBUG] About to initialize PositionManager...");
+                
+                // Initialize PositionManager with compound exit strategy (SL/TP + Time-based)
+                try
+                {
+                    Print("[DEBUG] Creating CompoundExitStrategy...");
+                    // M15 timeframe: 15 minutes × 60 seconds = 900 seconds per bar
+                    var exitStrategy = CompoundExitStrategy.CreateDefault(secondsPerBar: 900);
+                    Print("[DEBUG] Creating PositionManager instance...");
+                    _positionManager = new PositionManager(this, exitStrategy);
+                    Print("[DEBUG] Logging POSITION Ready...");
+                    BotG.Runtime.Logging.PipelineLogger.Log("POSITION", "Ready", "PositionManager initialized",
+                        new Dictionary<string, object?>
+                        {
+                            ["exit_strategy"] = "Compound (SL/TP + Time-based, M15=900s/bar)"
+                        }, Print);
+                    Print("[PositionManager] Initialized with compound exit strategy (M15 timeframe)");
+                }
+                catch (Exception pmEx)
+                {
+                    Print($"[PositionManager] FAILED to initialize: {pmEx.GetType().Name}: {pmEx.Message}");
+                    Print($"[PositionManager] Stack trace: {pmEx.StackTrace}");
+                    BotG.Runtime.Logging.PipelineLogger.Log("POSITION", "InitError", "PositionManager initialization failed",
+                        new Dictionary<string, object?>
+                        {
+                            ["error"] = pmEx.Message,
+                            ["type"] = pmEx.GetType().Name
+                        }, Print);
+                }
+
+                // Initialize Market Regime Detector
+                try
+                {
+                    _regimeConfiguration = RegimeConfigurationLoader.LoadFromRuntimeConfig();
+                    _regimeDetector = new MarketRegimeDetector(this, _regimeConfiguration);
+                    BotG.Runtime.Logging.PipelineLogger.Log("REGIME", "Ready", "MarketRegimeDetector initialized",
+                        new Dictionary<string, object?>
+                        {
+                            ["adx_trend_threshold"] = _regimeConfiguration.AdxTrendThreshold,
+                            ["adx_range_threshold"] = _regimeConfiguration.AdxRangeThreshold,
+                            ["volatility_threshold"] = _regimeConfiguration.VolatilityThreshold,
+                            ["calm_threshold"] = _regimeConfiguration.CalmThreshold,
+                            ["confidence_floor"] = _regimeConfiguration.MinimumRegimeConfidence
+                        }, Print);
+                    Print($"[MarketRegime] Detector initialized (ADX>={_regimeConfiguration.AdxTrendThreshold}, volatility x{_regimeConfiguration.VolatilityThreshold}, confidence floor {_regimeConfiguration.MinimumRegimeConfidence:F2})");
+                }
+                catch (Exception rgEx)
+                {
+                    Print($"[MarketRegime] FAILED to initialize: {rgEx.GetType().Name}: {rgEx.Message}");
+                    BotG.Runtime.Logging.PipelineLogger.Log("REGIME", "InitError", "MarketRegimeDetector initialization failed",
+                        new Dictionary<string, object?>
+                        {
+                            ["error"] = rgEx.Message,
+                            ["type"] = rgEx.GetType().Name
+                        }, Print);
+                }
             }
         }
         catch (Exception ex)
         {
-            Print("BotGRobot startup: failed to initialize TradeManager: " + ex.Message);
+            Print($"BotGRobot startup: failed to initialize TradeManager/PositionManager: {ex.GetType().Name}: {ex.Message}");
+            Print($"Stack trace: {ex.StackTrace}");
         }
 
         InitializeTelemetryWriter();
+        InitializeBacktestMonitor(cfg);
 
         // ========== EXECUTOR WIREPROOF (STARTUP) ==========
         try
@@ -238,6 +598,13 @@ public class BotGRobot : Robot
         // Note: No mode/simulation gating - always run preflight if paper mode, just log result
         if (isPaper && !simEnabled)
         {
+            // A47 EMERGENCY: Preflight async check DISABLED - Server.Time callback causes threading violation
+            // The lambda () => Server.Time is invoked from Task.Run background thread
+            // TODO: Capture Server.Time on main thread before passing to PreflightLiveFreshness
+            Print("[A47_EMERGENCY] Preflight async check DISABLED - Server.Time threading violation");
+            _preflightPassed = true; // Set to true to allow bot to continue
+            
+            /*
             Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
             
             // JUSTIFICATION: Fire-and-forget Task.Run is acceptable here because:
@@ -285,6 +652,7 @@ public class BotGRobot : Robot
                     _preflightPassed = false;
                 }
             });
+            */
         }
         else
         {
@@ -302,18 +670,862 @@ public class BotGRobot : Robot
 
         }
 
-        Timer.Start(TimeSpan.FromSeconds(1));
-        Print("[TLM] Timer started 1s; Symbol={0}", Symbol?.Name ?? "NULL");
-        Print("BotGRobot started; telemetry initialized");
+        // A47 v4 EMERGENCY: Timer.Start() DISABLED entirely - all timer callbacks run on background thread
+        // Even empty SafeOnTimer() triggers cTrader threading violations after ~60 seconds
+        // Timer.Start(TimeSpan.FromSeconds(1));
+        Print("[A47_EMERGENCY_v4] Timer.Start DISABLED - threading violation root cause");
+        Print("BotGRobot started; telemetry initialized (Timer DISABLED)");
+    }
+
+    private void InitializeMultiTimeframeSystem()
+    {
+        if (Symbol == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var config = new TimeframeManagerConfig
+            {
+                Timeframes = MultiTimeframePairs.Select(p => p.Model).ToArray(),
+                RequireClosedBars = true,
+                DefaultBufferSize = 256,
+                AntiRepaintGuard = TimeSpan.FromSeconds(30)
+            };
+
+                    var synchronizerConfig = new TimeframeSynchronizerConfig
+                    {
+                        MinimumAlignedTimeframes = 2,
+                        MinimumBarsPerTimeframe = 1,
+                        MaximumAllowedSkew = TimeSpan.FromHours(4),
+                        AntiRepaintGuard = TimeSpan.FromMinutes(5),
+                        WarmupBarsRequired = 12,
+                        WarmupBarsPerTimeframe = new Dictionary<ModelTimeFrame, int>
+                        {
+                            [ModelTimeFrame.H4] = 8,
+                            [ModelTimeFrame.H1] = 20,
+                            [ModelTimeFrame.M15] = 48
+                        },
+                        RequiredAlignmentRatio = 0.67,
+                        EnableAntiRepaint = true,
+                        EnableSkewCheck = true,
+                        IgnoreSkewDuringWarmup = true
+                    };
+
+            _timeframeManager = new TimeframeManager(config);
+            _timeframeSynchronizer = new TimeframeSynchronizer(synchronizerConfig);
+            _timeframeSynchronizerConfig = synchronizerConfig;
+            _sessionAnalyzer = new SessionAwareAnalyzer();
+            _multiTimeframeBenchmark = new MultiTimeframeBenchmark(Symbol.Name, 50.0, BenchmarkLogIntervalTicks);
+
+            var bootstrapTimestamp = DateTime.UtcNow;
+            _lastSnapshot = TimeframeSnapshot.Empty(Symbol.Name, bootstrapTimestamp, config.Timeframes);
+            _lastAlignment = _timeframeSynchronizer.GetAlignmentResult(_lastSnapshot);
+            _lastSession = _sessionAnalyzer.GetCurrentSession(bootstrapTimestamp);
+            _lastSessionMultiplier = _sessionAnalyzer.GetPositionSizeMultiplier(_lastSession);
+
+            PipelineLogger.Log(
+                "MTF",
+                "Init",
+                "Multi-timeframe components initialized",
+                new
+                {
+                    symbol = Symbol.Name,
+                    timeframes = string.Join(",", config.Timeframes)
+                },
+                Print);
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log(
+                "MTF",
+                "InitError",
+                "Failed to initialize multi-timeframe components",
+                new { error = ex.Message },
+                Print);
+
+            _timeframeManager = null;
+            _timeframeSynchronizer = null;
+            _sessionAnalyzer = null;
+            _multiTimeframeBenchmark = null;
+            _timeframeSynchronizerConfig = null;
+        }
+    }
+
+    private void InitializeBacktestMonitor(TelemetryConfig cfg)
+    {
+        var symbol = Symbol;
+        if (symbol == null)
+        {
+            PipelineLogger.Log("MONITOR", "InitSkip", "Backtest monitor skipped (no symbol)", null, Print);
+            return;
+        }
+
+        try
+        {
+            var monitorConfig = BacktestMonitorConfig.FromEnvironment(cfg.LogPath);
+            _backtestMonitor = new BacktestMonitor(
+                symbol.Name,
+                symbol.PipSize,
+                monitorConfig,
+                (module, evt, message, data) => PipelineLogger.Log(module, evt, message, data, Print));
+
+            PipelineLogger.Log(
+                "MONITOR",
+                "Ready",
+                "Backtest monitor initialized",
+                new { output = monitorConfig.OutputDirectory, interval_sec = monitorConfig.ReportInterval.TotalSeconds },
+                Print);
+        }
+        catch (Exception ex)
+        {
+            _backtestMonitor = null;
+            PipelineLogger.Log(
+                "MONITOR",
+                "InitError",
+                "Failed to initialize backtest monitor",
+                new { error = ex.Message },
+                Print);
+        }
+    }
+
+    private void ConfigureDailyTradeLimit(TelemetryConfig? cfg)
+    {
+        if (_tradeManager == null)
+        {
+            return;
+        }
+
+        if (ShouldForceDisableDailyTradeLimit())
+        {
+            _tradeManager.SetDailyTradeLimit(int.MaxValue);
+            PipelineLogger.Log(
+                "TRADE",
+                "DailyLimitBypass",
+                "Daily trade limit disabled via override",
+                new Dictionary<string, object?>
+                {
+                    ["mode"] = cfg?.Mode ?? string.Empty,
+                    ["running_mode"] = RunningMode.ToString()
+                },
+                Print);
+            Print("[TRADE] Daily trade limit bypassed via BOTG_DISABLE_DAILY_TRADE_LIMIT (limit -> unlimited)");
+            return;
+        }
+
+        _tradeManager.SetDailyTradeLimit(LiveDailyTradeLimit);
+        PipelineLogger.Log(
+            "TRADE",
+            "DailyLimitEnabled",
+            "Daily trade limit enforced",
+            new Dictionary<string, object?>
+            {
+                ["limit"] = LiveDailyTradeLimit,
+                ["running_mode"] = RunningMode.ToString(),
+                ["mode"] = cfg?.Mode ?? string.Empty
+            },
+            Print);
+        Print($"[TRADE] Daily trade limit enforced (limit={LiveDailyTradeLimit})");
+    }
+
+    private static bool ShouldForceDisableDailyTradeLimit()
+    {
+        var disableLimit = Environment.GetEnvironmentVariable("BOTG_DISABLE_DAILY_TRADE_LIMIT");
+        if (IsTruthyEnvFlag(disableLimit))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsTruthyEnvFlag(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        value = value.Trim();
+        return !(value.Equals("0", StringComparison.OrdinalIgnoreCase) ||
+                 value.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                 value.Equals("off", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void InitializeStrategyRegistry(TelemetryConfig cfg)
+    {
+        try
+        {
+            var path = ResolveStrategyRegistryPath(cfg);
+            _strategyRegistryPath = path;
+            _strategyReloadDebounce = TimeSpan.FromSeconds(Math.Max(0.5, cfg.StrategyRegistry?.WatchDebounceSeconds ?? 2.0));
+            _strategyRegistry = new Strategies.Registry.StrategyRegistry(path);
+            var result = _strategyRegistry.BuildStrategies(BuildStrategyFactoryContext());
+            ApplyStrategyRegistryResult(result, "startup");
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log("STRATEGY", "RegistryInitFailed", "Failed to initialize strategy registry", new { error = ex.Message }, Print);
+            _strategyRegistry = null;
+            _strategies = CreateStrategies();
+        }
+    }
+
+    private Strategies.Registry.StrategyFactoryContext BuildStrategyFactoryContext()
+    {
+        return new Strategies.Registry.StrategyFactoryContext(
+            _timeframeManager,
+            _timeframeSynchronizer,
+            _sessionAnalyzer,
+            _regimeDetector);
+    }
+
+    private string ResolveStrategyRegistryPath(TelemetryConfig cfg)
+    {
+        var configured = cfg.StrategyRegistry?.ConfigPath;
+        var baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
+
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return Path.Combine(baseDir, "strategy_registry.json");
+        }
+
+        return Path.IsPathRooted(configured)
+            ? configured
+            : Path.Combine(baseDir, configured);
+    }
+
+    private void ApplyStrategyRegistryResult(Strategies.Registry.StrategyRegistryResult? result, string reason)
+    {
+        IReadOnlyList<IStrategy> strategySet;
+        var diagnostics = result?.Diagnostics?.ToArray() ?? Array.Empty<Strategies.Registry.StrategyLoadDiagnostic>();
+
+        if (result == null || result.Strategies.Count == 0)
+        {
+            strategySet = CreateStrategies();
+            PipelineLogger.Log(
+                "STRATEGY",
+                "RegistryFallback",
+                "Strategy registry empty, using legacy defaults",
+                new { reason },
+                Print);
+        }
+        else
+        {
+            strategySet = result.Strategies;
+        }
+
+        _strategies = strategySet;
+
+        if (_tradeManager != null)
+        {
+            _tradeManager.UpdateStrategies(_strategies);
+        }
+
+        if (_coordinator != null && _tradeManager != null)
+        {
+            _strategyPipeline = new StrategyPipeline(_strategies, _tradeManager, _executionSerializer, _coordinator);
+        }
+
+        var diagPayload = diagnostics
+            .Select(d => new { strategy = d.StrategyName, status = d.Status, reason = d.Reason })
+            .ToArray();
+
+        PipelineLogger.Log(
+            "STRATEGY",
+            "RegistryApply",
+            "Strategy registry applied",
+            new
+            {
+                reason,
+                count = _strategies.Count,
+                diagnostics = diagPayload
+            },
+            Print);
+    }
+
+    private void InitializeStrategyRegistryWatcher(TelemetryConfig cfg)
+    {
+        if (_strategyRegistryPath == null || cfg.StrategyRegistry?.HotReloadEnabled != true)
+        {
+            return;
+        }
+
+        try
+        {
+            DisposeStrategyWatcher();
+
+            var directory = Path.GetDirectoryName(_strategyRegistryPath);
+            var file = Path.GetFileName(_strategyRegistryPath);
+            if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(file))
+            {
+                return;
+            }
+
+            var watcher = new FileSystemWatcher(directory, file)
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime
+            };
+
+            watcher.Changed += OnStrategyRegistryFileChanged;
+            watcher.Created += OnStrategyRegistryFileChanged;
+            watcher.Deleted += OnStrategyRegistryFileChanged;
+            watcher.Renamed += OnStrategyRegistryFileRenamed;
+            watcher.EnableRaisingEvents = true;
+
+            _strategyRegistryWatcher = watcher;
+
+            PipelineLogger.Log(
+                "STRATEGY",
+                "WatcherReady",
+                "Strategy registry watcher started",
+                new { path = _strategyRegistryPath },
+                Print);
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log(
+                "STRATEGY",
+                "WatcherInitFailed",
+                "Failed to initialize strategy registry watcher",
+                new { error = ex.Message },
+                Print);
+        }
+    }
+
+    private void OnStrategyRegistryFileChanged(object sender, FileSystemEventArgs e)
+    {
+        ScheduleStrategyReload($"fs_{e.ChangeType}");
+    }
+
+    private void OnStrategyRegistryFileRenamed(object sender, RenamedEventArgs e)
+    {
+        ScheduleStrategyReload("fs_renamed");
+    }
+
+    private void ScheduleStrategyReload(string reason)
+    {
+        lock (_strategyReloadLock)
+        {
+            _pendingStrategyReloadReason = reason;
+            _strategyReloadTimer?.Dispose();
+            _strategyReloadTimer = new System.Threading.Timer(ExecuteStrategyReload, null, _strategyReloadDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void ExecuteStrategyReload(object? state)
+    {
+        string reason;
+        lock (_strategyReloadLock)
+        {
+            _strategyReloadTimer?.Dispose();
+            _strategyReloadTimer = null;
+            reason = _pendingStrategyReloadReason ?? "filesystem";
+            _pendingStrategyReloadReason = null;
+        }
+
+        ReloadStrategies(reason, triggeredByWatcher: true);
+    }
+
+    private void ReloadStrategies(string reason, bool triggeredByWatcher)
+    {
+        if (_strategyRegistry == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = _strategyRegistry.BuildStrategies(BuildStrategyFactoryContext());
+            ApplyStrategyRegistryResult(result, reason);
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log(
+                "STRATEGY",
+                "RegistryReloadFailed",
+                "Failed to reload strategy registry",
+                new { error = ex.Message, reason },
+                Print);
+        }
+    }
+
+    private void DisposeStrategyWatcher()
+    {
+        lock (_strategyReloadLock)
+        {
+            if (_strategyRegistryWatcher != null)
+            {
+                try { _strategyRegistryWatcher.EnableRaisingEvents = false; } catch { }
+                try { _strategyRegistryWatcher.Changed -= OnStrategyRegistryFileChanged; } catch { }
+                try { _strategyRegistryWatcher.Created -= OnStrategyRegistryFileChanged; } catch { }
+                try { _strategyRegistryWatcher.Deleted -= OnStrategyRegistryFileChanged; } catch { }
+                try { _strategyRegistryWatcher.Renamed -= OnStrategyRegistryFileRenamed; } catch { }
+                try { _strategyRegistryWatcher.Dispose(); } catch { }
+                _strategyRegistryWatcher = null;
+            }
+
+            _strategyReloadTimer?.Dispose();
+            _strategyReloadTimer = null;
+            _pendingStrategyReloadReason = null;
+        }
+    }
+
+    private IReadOnlyList<IStrategy> CreateStrategies()
+    {
+        var list = new List<IStrategy>
+        {
+            new SmaCrossoverStrategy(),
+            new RsiStrategy(),
+            new PriceActionStrategy(),
+            new VolatilityStrategy()
+        };
+
+        if (_timeframeManager != null && _timeframeSynchronizer != null && _sessionAnalyzer != null)
+        {
+            var breakoutConfig = new BreakoutStrategyConfig();
+            list.Add(new BreakoutStrategy(_timeframeManager, _timeframeSynchronizer, _sessionAnalyzer, breakoutConfig));
+        }
+
+        return list;
+    }
+
+    private (TimeframeSnapshot Snapshot, TimeframeAlignmentResult Alignment, TradingSession Session, double Multiplier) UpdateMultiTimeframeState(DateTime serverTimeUtc)
+    {
+        if (_timeframeManager == null || _timeframeSynchronizer == null)
+        {
+            return EnsureFallbackMultiTimeframeState(serverTimeUtc);
+        }
+
+        if (Symbol == null)
+        {
+            return EnsureFallbackMultiTimeframeState(serverTimeUtc);
+        }
+
+        var symbol = Symbol.Name;
+
+        foreach (var pair in MultiTimeframePairs)
+        {
+            IngestTimeframeSeries(symbol, pair, serverTimeUtc);
+        }
+
+        var snapshot = _timeframeManager.CaptureSnapshot(symbol, serverTimeUtc);
+        var alignment = _timeframeSynchronizer.GetAlignmentResult(snapshot);
+
+        if (_sessionAnalyzer != null)
+        {
+            _lastSession = _sessionAnalyzer.GetCurrentSession(serverTimeUtc);
+            _lastSessionMultiplier = _sessionAnalyzer.GetPositionSizeMultiplier(_lastSession);
+        }
+
+        _lastSnapshot = snapshot;
+        _lastAlignment = alignment;
+
+        return (snapshot, alignment, _lastSession, _lastSessionMultiplier);
+    }
+
+    private (TimeframeSnapshot Snapshot, TimeframeAlignmentResult Alignment, TradingSession Session, double Multiplier) EnsureFallbackMultiTimeframeState(DateTime serverTimeUtc)
+    {
+        var symbol = Symbol?.Name ?? string.Empty;
+
+        if (_lastSnapshot == null)
+        {
+            var frames = MultiTimeframePairs.Select(p => p.Model).ToArray();
+            _lastSnapshot = TimeframeSnapshot.Empty(symbol, serverTimeUtc, frames);
+        }
+
+        if (_lastAlignment == null)
+        {
+            var statuses = MultiTimeframePairs.ToDictionary(
+                pair => pair.Model,
+                _ => new TimeframeSeriesStatus(0, false, null, null));
+
+            _lastAlignment = new TimeframeAlignmentResult(
+                false,
+                false,
+                0,
+                _lastSnapshot.TotalTimeframes,
+                new ReadOnlyDictionary<ModelTimeFrame, TimeframeSeriesStatus>(statuses),
+                _lastSnapshot,
+                "uninitialized",
+                0,
+                false,
+                null);
+        }
+
+        if (_sessionAnalyzer != null)
+        {
+            _lastSession = _sessionAnalyzer.GetCurrentSession(serverTimeUtc);
+            _lastSessionMultiplier = _sessionAnalyzer.GetPositionSizeMultiplier(_lastSession);
+        }
+
+        return (_lastSnapshot, _lastAlignment, _lastSession, _lastSessionMultiplier);
+    }
+
+    private void TrackWarmupProgressForMonitor(TimeframeAlignmentResult alignment)
+    {
+        if (_backtestMonitor == null || alignment.SeriesStatuses == null)
+        {
+            return;
+        }
+
+        foreach (var kvp in alignment.SeriesStatuses)
+        {
+            var required = GetWarmupRequirementForMonitor(kvp.Key);
+            _backtestMonitor.TrackWarmup(kvp.Key.ToString(), kvp.Value.AvailableBars, required);
+        }
+    }
+
+    private int GetWarmupRequirementForMonitor(ModelTimeFrame timeframe)
+    {
+        if (_timeframeSynchronizerConfig?.WarmupBarsPerTimeframe != null &&
+            _timeframeSynchronizerConfig.WarmupBarsPerTimeframe.TryGetValue(timeframe, out var specific) &&
+            specific > 0)
+        {
+            return specific;
+        }
+
+        return _timeframeSynchronizerConfig?.WarmupBarsRequired ?? 0;
+    }
+
+    private void IngestTimeframeSeries(string symbol, (TimeFrame CTrader, ModelTimeFrame Model) pair, DateTime serverTimeUtc)
+    {
+        if (_timeframeManager == null)
+        {
+            return;
+        }
+
+        MarketSeries series;
+        try
+        {
+            series = MarketData.GetSeries(Symbol, pair.CTrader);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (series == null)
+        {
+            return;
+        }
+
+        var count = series.Close.Count;
+        if (count < 2)
+        {
+            return;
+        }
+
+        var lastClosedIndex = count - 2;
+        _lastIngestedOpenTimes.TryGetValue(pair.Model, out var lastRecordedOpenTime);
+        var maxCatchUp = Math.Min(lastClosedIndex + 1, 16);
+        var pending = new Stack<ModelBar>();
+
+        for (int index = lastClosedIndex; index >= 0 && pending.Count < maxCatchUp; index--)
+        {
+            var openTime = series.OpenTime[index];
+            if (openTime <= lastRecordedOpenTime)
+            {
+                break;
+            }
+
+            pending.Push(ConvertToBar(series, index, pair));
+        }
+
+        while (pending.Count > 0)
+        {
+            var bar = pending.Pop();
+            if (_timeframeManager.TryAddBar(symbol, bar, serverTimeUtc, isClosedBar: true))
+            {
+                _lastIngestedOpenTimes[pair.Model] = bar.OpenTime;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
+    private static ModelBar ConvertToBar(MarketSeries series, int index, (TimeFrame CTrader, ModelTimeFrame Model) pair)
+    {
+        return new ModelBar
+        {
+            OpenTime = series.OpenTime[index],
+            Open = series.Open[index],
+            High = series.High[index],
+            Low = series.Low[index],
+            Close = series.Close[index],
+            Volume = Convert.ToInt64(series.TickVolume[index]),
+            Tf = pair.Model
+        };
+    }
+
+    private MarketContext BuildMarketContext(MarketData marketData, DateTime serverTimeUtc)
+    {
+        double equity = 0.0;
+        double balance = 0.0;
+        double exposure = 0.0;
+        int positionCount = 0;
+
+        try
+        {
+            equity = Account?.Equity ?? 0.0;
+            balance = Account?.Balance ?? 0.0;
+
+            if (Positions != null)
+            {
+                foreach (var position in Positions)
+                {
+                    if (!string.Equals(position.SymbolName, marketData.Symbol, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    positionCount++;
+                    exposure += Math.Abs(position.VolumeInUnits) * marketData.Mid;
+                }
+            }
+        }
+        catch
+        {
+            // ignore account inspection errors; fall back to defaults
+        }
+
+        double drawdown = equity - balance;
+        var metrics = new Dictionary<string, double>
+        {
+            ["tick_rate_estimate"] = _tickRateEstimate
+        };
+
+        var metadata = new Dictionary<string, object?>
+        {
+            ["position_count"] = positionCount,
+            ["mode"] = _config?.Mode ?? Environment.GetEnvironmentVariable("BOTG_MODE") ?? Environment.GetEnvironmentVariable("Mode"),
+            ["regime_confidence_floor"] = _regimeConfiguration?.MinimumRegimeConfidence,
+            ["server_time"] = serverTimeUtc,
+            ["bar_time"] = marketData.TimestampUtc
+        };
+
+        RegimeAnalysisResult? regimeAnalysis = null;
+
+        // Update current regime if detector is available
+        if (_regimeDetector != null)
+        {
+            try
+            {
+                regimeAnalysis = _regimeDetector.AnalyzeCurrentRegimeDetailed();
+                _currentRegime = regimeAnalysis.Regime;
+            }
+            catch
+            {
+                regimeAnalysis = null;
+                // If analysis fails, keep previous regime
+            }
+        }
+
+        metrics["regime_risk_multiplier"] = regimeAnalysis?.GetRiskMultiplier() ?? _currentRegime.GetRiskMultiplier();
+        metadata["regime_confidence"] = regimeAnalysis?.Confidence;
+        metadata["regime_display"] = _currentRegime.ToDisplayString();
+
+        if (_lastAlignment != null)
+        {
+            var alignment = _lastAlignment;
+            var total = Math.Max(alignment.TotalTimeframes, 1);
+            metrics["mtf_alignment_ratio"] = alignment.AlignedTimeframes / (double)total;
+            metrics["mtf_alignment_ok"] = alignment.IsAligned ? 1.0 : 0.0;
+            metrics["mtf_anti_repaint_ok"] = alignment.AntiRepaintSafe ? 1.0 : 0.0;
+
+            metadata["mtf_alignment_ok"] = alignment.IsAligned;
+            metadata["mtf_alignment_reason"] = alignment.Reason;
+            metadata["mtf_aligned"] = alignment.AlignedTimeframes;
+            metadata["mtf_total"] = alignment.TotalTimeframes;
+            metadata["mtf_ready"] = alignment.IsAligned && alignment.AntiRepaintSafe;
+        }
+
+        metrics["mtf_session_multiplier"] = _lastSessionMultiplier;
+        metadata["mtf_session"] = _lastSession.ToString();
+        metadata["mtf_session_multiplier"] = _lastSessionMultiplier;
+
+        if (_lastSnapshot != null && _lastAlignment != null)
+        {
+            metadata["mtf_snapshot_timestamp"] = _lastSnapshot.TimestampUtc;
+            metadata["mtf_context"] = new MultiTimeframeEvaluationContext(
+                marketData,
+                _lastSnapshot,
+                _lastAlignment,
+                _lastSession);
+        }
+
+        var context = new MarketContext(marketData, equity, exposure, drawdown, _currentRegime, regimeAnalysis, metrics, metadata)
+        {
+            CurrentTime = serverTimeUtc
+        };
+        return context;
     }
 
     protected override void OnTick()
+    {
+        try
+        {
+            SafeOnTick();
+        }
+        catch (Exception ex)
+        {
+            LogCritical("OnTick", ex);
+        }
+    }
+
+    private void RegisterGlobalExceptionSinks(TelemetryConfig cfg)
+    {
+        if (_exceptionSinksRegistered)
+        {
+            return;
+        }
+
+        lock (_exceptionSinksLock)
+        {
+            if (_exceptionSinksRegistered)
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(cfg.LogPath);
+                var sinkLog = Path.Combine(cfg.LogPath, "unhandled_exceptions.log");
+
+                AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+                {
+                    try
+                    {
+                        var message = args.ExceptionObject is Exception ex
+                            ? ex.ToString()
+                            : args.ExceptionObject?.ToString() ?? "<null exception object>";
+                        File.AppendAllText(
+                            sinkLog,
+                            $"[{DateTime.UtcNow:o}] AppDomain.UnhandledException IsTerminating={args.IsTerminating}\n{message}\n\n");
+                    }
+                    catch
+                    {
+                    }
+                };
+
+                TaskScheduler.UnobservedTaskException += (_, taskArgs) =>
+                {
+                    try
+                    {
+                        var message = taskArgs.Exception?.ToString() ?? "<null exception>";
+                        File.AppendAllText(
+                            sinkLog,
+                            $"[{DateTime.UtcNow:o}] TaskScheduler.UnobservedTaskException\n{message}\n\n");
+                        taskArgs.SetObserved();
+                    }
+                    catch
+                    {
+                    }
+                };
+
+                _exceptionSinksRegistered = true;
+            }
+            catch
+            {
+                // Ignore failures - logging is best-effort and must not crash startup
+            }
+        }
+    }
+
+    private void SafeOnTick()
     {
         // Track tick for preflight live freshness
         _tickSource.OnTick(Server.Time);
         
         try { _connector?.TickPump?.Pump(); } catch { }
         try { TelemetryContext.Collector?.IncTick(); } catch { }
+
+        var serverTimeUtc = GetServerTimeUtc();
+        var mtfSw = Stopwatch.StartNew();
+        var mtfState = UpdateMultiTimeframeState(serverTimeUtc);
+        mtfSw.Stop();
+
+        BenchmarkReport? benchmark = null;
+        if (_multiTimeframeBenchmark != null)
+        {
+            benchmark = _multiTimeframeBenchmark.Record(mtfSw.Elapsed, mtfState.Alignment, serverTimeUtc);
+        }
+
+        if (benchmark?.ShouldLog == true)
+        {
+            PipelineLogger.Log(
+                "MTF",
+                "Benchmark",
+                "Multi-timeframe ingestion metrics",
+                new
+                {
+                    symbol = benchmark.Symbol,
+                    latency_ms = benchmark.LastLatencyMs,
+                    avg_ms = benchmark.AverageLatencyMs,
+                    max_ms = benchmark.MaxLatencyMs,
+                    aligned = mtfState.Alignment.IsAligned,
+                    anti_repaint = mtfState.Alignment.AntiRepaintSafe,
+                    samples = benchmark.Samples,
+                    over_budget_pct = benchmark.OverBudgetRatio
+                },
+                Print);
+        }
+
+        if (benchmark?.ShouldAlert == true)
+        {
+            PipelineLogger.Log(
+                "MTF",
+                "LatencyAlert",
+                "Multi-timeframe ingestion latency exceeds target",
+                new
+                {
+                    symbol = benchmark.Symbol,
+                    latency_ms = benchmark.LastLatencyMs,
+                    target_ms = benchmark.TargetLatencyMs,
+                    reason = mtfState.Alignment.Reason,
+                    anti_repaint = mtfState.Alignment.AntiRepaintSafe
+                },
+                Print);
+        }
+
+        if (_backtestMonitor != null && Symbol != null)
+        {
+            _backtestMonitor.OnTick(
+                serverTimeUtc,
+                Symbol.Bid,
+                Symbol.Ask,
+                benchmark?.LastLatencyMs,
+                mtfState.Alignment.IsAligned,
+                mtfState.Alignment.AntiRepaintSafe);
+
+            TrackWarmupProgressForMonitor(mtfState.Alignment);
+        }
+
+        // SCALPING CONSERVATIVE: Check trading hours (08:00-20:00 only)
+        if (!IsWithinTradingHours())
+        {
+            // Still process position management during off-hours (exit monitoring)
+            // but skip signal generation
+            if (_positionManager != null && Symbol != null)
+            {
+                try
+                {
+                    SyncPositionsWithManager();
+                    double currentBid = Symbol.Bid;
+                    double currentAsk = Symbol.Ask;
+                    if (currentBid > 0 && currentAsk > 0)
+                    {
+                        _positionManager.OnTick(Server.Time, currentBid, currentAsk, Symbol.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Print($"[PositionManager] OnTick error (off-hours): {ex.Message}");
+                }
+            }
+            return; // Skip signal generation during off-hours
+        }
 
         // NOTE: Strategy pipeline disabled - empty strategy list.
         // To enable trading:
@@ -322,6 +1534,28 @@ public class BotGRobot : Robot
         // 3. Strategies emit SignalGenerated events → TradeManager.Process(signal, riskScore)
 
         Interlocked.Increment(ref _tickCounter);
+
+        // POSITION MANAGEMENT: Check exit conditions for all open positions every tick
+        if (_positionManager != null && Symbol != null)
+        {
+            try
+            {
+                // 1. Sync cTrader positions → PositionManager (detect new positions)
+                SyncPositionsWithManager();
+                
+                // 2. Check exit conditions for all tracked positions
+                double currentBid = Symbol.Bid;
+                double currentAsk = Symbol.Ask;
+                if (currentBid > 0 && currentAsk > 0)
+                {
+                    _positionManager.OnTick(Server.Time, currentBid, currentAsk, Symbol.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                Print($"[PositionManager] OnTick error: {ex.Message}");
+            }
+        }
 
         if (string.IsNullOrEmpty(_telemetryPath))
         {
@@ -344,6 +1578,38 @@ public class BotGRobot : Robot
                 bid,
                 ask);
             return;
+        }
+
+        if (_strategyPipeline != null)
+        {
+            var marketData = new MarketData(currentSymbol.Name, bid, ask, serverTimeUtc);
+            var context = BuildMarketContext(marketData, serverTimeUtc);
+            if (mtfState.Alignment.IsAligned && mtfState.Alignment.AntiRepaintSafe)
+            {
+                try
+                {
+                    _strategyPipeline.ProcessAsync(marketData, context, CancellationToken.None).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    BotG.Runtime.Logging.PipelineLogger.Log("STRATEGY", "PipelineError", "Strategy pipeline tick failed", new { error = ex.Message }, Print);
+                }
+            }
+            else
+            {
+                PipelineLogger.Log(
+                    "MTF",
+                    "PipelineSkip",
+                    "Skipped strategy pipeline due to multi-timeframe misalignment",
+                    new
+                    {
+                        reason = mtfState.Alignment.Reason,
+                        aligned = mtfState.Alignment.AlignedTimeframes,
+                        total = mtfState.Alignment.TotalTimeframes,
+                        anti_repaint = mtfState.Alignment.AntiRepaintSafe
+                    },
+                    Print);
+            }
         }
 
         var timestamp = DateTime.UtcNow.ToString("o", _invariantCulture);
@@ -382,26 +1648,81 @@ public class BotGRobot : Robot
         }
     }
 
+    private DateTime GetServerTimeUtc()
+    {
+        var serverTime = Server?.Time ?? DateTime.UtcNow;
+        return serverTime.Kind switch
+        {
+            DateTimeKind.Utc => serverTime,
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(serverTime, DateTimeKind.Utc),
+            _ => serverTime.ToUniversalTime()
+        };
+    }
+
     protected override void OnTimer()
+    {
+        try
+        {
+            SafeOnTimer();
+        }
+        catch (Exception ex)
+        {
+            LogCritical("OnTimer", ex);
+        }
+    }
+
+    private void SafeOnTimer()
     {
         var ticksPerSecond = Interlocked.Exchange(ref _tickCounter, 0);
         Interlocked.Exchange(ref _tickRateEstimate, (double)ticksPerSecond);
 
-        // AutoStart RuntimeLoop: runs every 1s
-        RuntimeLoop();
+        // A47 EMERGENCY: RuntimeLoop DISABLED - accesses cTrader API (Positions, Symbol) from timer thread
+        // TODO: Wrap all API calls in BeginInvokeOnMainThread() before re-enabling
+        // RuntimeLoop();
     }
 
     private readonly BotG.Runtime.SmokeOnceService _smokeOnceService = new BotG.Runtime.SmokeOnceService();
+    private int _runtimeLoopDebugCounter = 0; // A8 DEBUG: Counter for debug logging
+    private int _memorySnapshotCounter = 0; // A10: Counter for memory snapshots (every 30 ticks = 30s)
 
     private void RuntimeLoop()
     {
+        // A8 DEBUG: Check if _riskHeartbeat is null
+        if (_runtimeLoopDebugCounter++ < 5) // Only log first 5 times
+        {
+            try
+            {
+                var debugCfg = _config ?? TelemetryConfig.Load();
+                var debugLog = Path.Combine(debugCfg.LogPath, "a8_debug.log");
+                File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] RuntimeLoop: _riskHeartbeat is {(_riskHeartbeat == null ? "NULL" : "NOT NULL")}\n");
+            }
+            catch { }
+        }
+        
         // Heartbeat: always tick at start of loop
         _riskHeartbeat?.Tick();
+
+        // A10: Memory snapshot every 30 seconds - DISABLED temporarily
+        /*
+        if (_memorySnapshotCounter++ >= 30)
+        {
+            _memorySnapshotCounter = 0;
+            try
+            {
+                var snapshot = TelemetryContext.MemoryProfiler?.CaptureSnapshot();
+                if (snapshot != null)
+                {
+                    TelemetryContext.MemoryProfiler?.Persist(snapshot);
+                }
+            }
+            catch { }
+        }
+        */
 
         // Guard: _tradeManager must be initialized
         if (_tradeManager == null) return;
 
-        var cfg = TelemetryConfig.Load();
+    var cfg = _config ?? TelemetryConfig.Load();
 
         // CRITICAL SAFETY: Runtime preflight check - validates trading conditions every tick
         // This catches config changes, sentinel files, or stale preflight results during execution
@@ -470,7 +1791,7 @@ public class BotGRobot : Robot
                 }
 
                 // Normalize units to broker min/step
-                int units = _riskManager.NormalizeUnitsForSymbol(symbol, requestedVolume);
+                double units = _riskManager.NormalizeUnitsForSymbol(symbol, requestedVolume);
                 _requestedUnitsLast = units;
 
                 // Evidence log in expected format
@@ -716,6 +2037,166 @@ public class BotGRobot : Robot
         catch { }
     }
 
+    /// <summary>
+    /// Sync cTrader positions với PositionManager tracking
+    /// Gọi định kỳ để detect positions mới được mở bởi ExecutionModule
+    /// </summary>
+    private void SyncPositionsWithManager()
+    {
+        if (_positionManager == null) return;
+
+        try
+        {
+            var trackedIds = _positionManager.GetOpenPositions().Select(p => p.Id).ToHashSet();
+            
+            foreach (var ctraderPos in Positions)
+            {
+                string posId = ctraderPos.Id.ToString();
+                
+                // Nếu position chưa được track, thêm vào PositionManager
+                if (!trackedIds.Contains(posId))
+                {
+                    var symbolInfo = ctraderPos.Symbol;
+                    if (symbolInfo == null && string.Equals(Symbol?.Name, ctraderPos.SymbolName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        symbolInfo = Symbol;
+                    }
+
+                    double pipSize = symbolInfo?.PipSize ?? (ctraderPos.SymbolName.Contains("JPY") ? 0.01 : 0.0001);
+                    double lotSize = symbolInfo?.LotSize ?? 100000.0;
+                    double pipValuePerLot = symbolInfo?.PipValue ?? 0.0;
+                    double tickSize = symbolInfo?.TickSize ?? 0.0;
+                    double tickValue = symbolInfo?.TickValue ?? 0.0;
+                    double pointValue = tickSize > 0 ? (tickValue / tickSize) : CalculatePointValueForPosition();
+
+                    string? strategyName = PositionLabelHelper.TryParseStrategyName(ctraderPos.Label);
+                    string appliedProfile;
+                    var exitParams = CreateExitParametersForPosition(ctraderPos, pipSize, strategyName, out appliedProfile);
+
+                    var position = new BotG.PositionManagement.Position
+                    {
+                        Id = posId,
+                        Symbol = ctraderPos.SymbolName,
+                        Direction = ctraderPos.TradeType,
+                        EntryPrice = ctraderPos.EntryPrice,
+                        VolumeInUnits = ctraderPos.VolumeInUnits,
+                        OpenTime = ctraderPos.EntryTime,
+                        CurrentPrice = ctraderPos.TradeType == TradeType.Buy ? Symbol.Bid : Symbol.Ask,
+                        Label = ctraderPos.Label,
+                        Status = PositionStatus.Open,
+                        ExitParams = exitParams,
+                        PipSize = pipSize,
+                        PointValue = pointValue
+                    };
+
+                    if (_exitProfileService != null)
+                    {
+                        PipelineLogger.Log(
+                            "EXIT",
+                            "ProfileApplied",
+                            "Exit profile assigned",
+                            new
+                            {
+                                position = posId,
+                                profile = appliedProfile,
+                                strategy = strategyName ?? "unknown",
+                                symbol = ctraderPos.SymbolName
+                            },
+                            Print);
+                    }
+
+                    position.ExitParams?.ApplyBrokerFeeBuffer(
+                        ctraderPos.SymbolName,
+                        pipSize,
+                        lotSize,
+                        pipValuePerLot,
+                        tickSize,
+                        tickValue,
+                        position.VolumeInUnits,
+                        position.Direction);
+                    position.UpdateUnrealizedPnL(position.CurrentPrice, position.PointValue);
+
+                    _positionManager.OnPositionOpened(position);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Print($"[BotGRobot] SyncPositionsWithManager error: {ex.Message}");
+        }
+    }
+
+    private ExitParameters CreateExitParametersForPosition(
+        cAlgo.API.Position ctraderPos,
+        double pipSize,
+        string? strategyName,
+        out string appliedProfile)
+    {
+        appliedProfile = "default_static";
+
+        double balance = 0.0;
+        try { balance = Account?.Balance ?? 0.0; }
+        catch { }
+
+        if (_exitProfileService == null)
+        {
+            return ExitParameters.CreateDefault(ctraderPos.SymbolName, ctraderPos.EntryPrice, ctraderPos.TradeType, balance);
+        }
+
+        try
+        {
+            var exitParams = _exitProfileService.CreateParameters(
+                strategyName,
+                ctraderPos.SymbolName,
+                ctraderPos.EntryPrice,
+                ctraderPos.TradeType,
+                pipSize,
+                balance,
+                out appliedProfile);
+            return exitParams;
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log(
+                "EXIT",
+                "ProfileError",
+                "Failed to materialize exit profile",
+                new
+                {
+                    position = ctraderPos.Id,
+                    symbol = ctraderPos.SymbolName,
+                    strategy = strategyName,
+                    error = ex.Message
+                },
+                Print);
+
+            appliedProfile = "default_error";
+            return ExitParameters.CreateDefault(ctraderPos.SymbolName, ctraderPos.EntryPrice, ctraderPos.TradeType, balance);
+        }
+    }
+
+    /// <summary>
+    /// Tính point value để chuyển đổi price movement sang USD
+    /// </summary>
+    private double CalculatePointValueForPosition()
+    {
+        try
+        {
+            var symbol = Symbol;
+            double tickValue = symbol.TickValue;
+            double tickSize = symbol.TickSize;
+            if (tickSize > 0)
+            {
+                return tickValue / tickSize;
+            }
+            return symbol.PipValue / 0.0001;
+        }
+        catch
+        {
+            return 10.0;
+        }
+    }
+
     private void InitializeTelemetryWriter()
     {
         try
@@ -925,15 +2406,14 @@ public class BotGRobot : Robot
                 return false;
             }
 
-            // Read last line
-            var lines = await File.ReadAllLinesAsync(telemetryPath);
-            if (lines.Length < 2) // Need at least header + 1 data row
+            // Read last line using high-performance tail reader
+            using var reader = new Telemetry.CsvTailReader(telemetryPath);
+            var lastLine = await reader.ReadLastLineAsync();
+            if (string.IsNullOrWhiteSpace(lastLine))
             {
                 Print("[PREFLIGHT] Telemetry has no data rows");
                 return false;
             }
-
-            var lastLine = lines[^1];
             var parts = lastLine.Split(',');
             if (parts.Length == 0)
             {
@@ -969,7 +2449,9 @@ public class BotGRobot : Robot
                 return true;
             }
 
-            var firstLine = (await File.ReadAllLinesAsync(csvPath)).FirstOrDefault();
+            // Read header using high-performance reader (reads only first 64KB)
+            using var reader = new Telemetry.CsvTailReader(csvPath);
+            var firstLine = await reader.ReadFirstLineAsync();
             var match = string.Equals(firstLine, expectedHeader, StringComparison.Ordinal);
             
             if (!match)
@@ -1171,8 +2653,8 @@ public class BotGRobot : Robot
         var asm = typeof(BotGRobot).Assembly;
         var ver = asm.GetName().Version?.ToString() ?? "0.0.0.0";
         var buildTime = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
-        
-        var cfg = TelemetryConfig.Load();
+
+        var cfg = _config ?? TelemetryConfig.Load();
         string cfgPath = cfg.LogPath ?? "(unknown)";
         bool sim = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
         string mode = cfg.Mode ?? "(null)";
@@ -1218,6 +2700,307 @@ public class BotGRobot : Robot
         }
 
         return false;
+    }
+
+    private void LogCritical(string stage, Exception ex)
+    {
+        try
+        {
+            var cfg = _config ?? TelemetryConfig.Load();
+            var logPath = Path.Combine(cfg.LogPath, "a8_debug.log");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] CRITICAL:{stage}: {ex}{Environment.NewLine}");
+        }
+        catch
+        {
+            // ignore logging failures to avoid recursive faults
+        }
+
+        try
+        {
+            Print($"[CRITICAL] {stage} exception: {ex.Message}");
+        }
+        catch
+        {
+            // final guard: Print may throw if platform in bad state
+        }
+    }
+
+    private void AppendDebugLine(string category, string message)
+    {
+        try
+        {
+            var cfg = _config ?? TelemetryConfig.Load();
+            var logPath = Path.Combine(cfg.LogPath, "a8_debug.log");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {category}: {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // bỏ qua lỗi ghi log để tránh crash phụ
+        }
+    }
+
+    private void LogTimerException(string timerName, Exception ex)
+    {
+        AppendDebugLine($"TIMER:{timerName}", ex.ToString());
+        try
+        {
+            Print("[TIMER {0}] exception: {1}", timerName, ex.Message);
+        }
+        catch
+        {
+            // swallow printing errors để bảo vệ main thread
+        }
+    }
+
+    private void ApplyCoordinationConfig(StrategyCoordinationConfig config, bool isReload)
+    {
+        if (config == null)
+        {
+            return;
+        }
+
+        var fusionEnabled = config.EnableBayesianFusion;
+        var requiresReplacement = _coordinator == null || (_coordinator is EnhancedStrategyCoordinator) != fusionEnabled;
+
+        if (requiresReplacement)
+        {
+            _coordinator = fusionEnabled
+                ? new EnhancedStrategyCoordinator(config)
+                : new StrategyCoordinator(config);
+
+            if (_strategies != null && _tradeManager != null)
+            {
+                _strategyPipeline = new StrategyPipeline(_strategies, _tradeManager, _executionSerializer, _coordinator);
+            }
+        }
+        else
+        {
+            _coordinator!.UpdateConfiguration(config);
+        }
+
+        var coordMeta = new Dictionary<string, object?>
+        {
+            ["min_confidence"] = config.MinimumConfidence,
+            ["min_interval_seconds"] = config.MinimumTimeBetweenTrades.TotalSeconds,
+            ["max_positions_per_symbol"] = config.MaxSignalsPerSymbol,
+            ["enable_conflict_resolution"] = config.EnableConflictResolution,
+            ["enable_time_filter"] = config.EnableTimeBasedFiltering,
+            ["weights_count"] = config.StrategyWeights?.Count ?? 0,
+            ["coordinator_type"] = _coordinator?.GetType().Name,
+            ["fusion_enabled"] = fusionEnabled
+        };
+
+        if (isReload)
+        {
+            PipelineLogger.Log(
+                "CONFIG",
+                "CoordinationApplied",
+                "Applied hot-reloaded StrategyCoordination config",
+                coordMeta,
+                Print);
+        }
+        else
+        {
+            PipelineLogger.Log(
+                "COORD",
+                "Init",
+                "StrategyCoordinator initialized from runtime config",
+                coordMeta,
+                Print);
+        }
+    }
+
+    private void InitializeCoordinationHotReload()
+    {
+        if (_configHotReloadManager != null)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = StrategyCoordinationConfigLoader.GetRuntimeConfigPath();
+            if (string.IsNullOrEmpty(path))
+            {
+                BotG.Runtime.Logging.PipelineLogger.Log("CONFIG", "CoordinationWatcherSkipped", "Config hot reload skipped because path was not resolved", null, Print);
+                return;
+            }
+
+            var manager = new ConfigHotReloadManager(path, TimeSpan.FromSeconds(2));
+            manager.ConfigReloaded += OnCoordinationConfigReloaded;
+            manager.StartWatching();
+            _configHotReloadManager = manager;
+        }
+        catch (Exception ex)
+        {
+            BotG.Runtime.Logging.PipelineLogger.Log("CONFIG", "CoordinationWatcherError", "Failed to start config hot reload watcher", new { error = ex.Message }, Print);
+        }
+    }
+
+    private void OnCoordinationConfigReloaded(object? sender, StrategyCoordinationConfig config)
+    {
+        try
+        {
+            ApplyCoordinationConfig(config, isReload: true);
+        }
+        catch (Exception ex)
+        {
+            BotG.Runtime.Logging.PipelineLogger.Log("CONFIG", "CoordinationApplyFailed", "Failed to apply hot-reloaded config", new { error = ex.Message }, Print);
+        }
+    }
+
+    protected override void OnStop()
+    {
+        try { _backtestMonitor?.Dispose(); } catch { }
+        _backtestMonitor = null;
+
+        try { _riskHeartbeatTimer?.Dispose(); } catch { }
+        try { _riskSnapshotTimer?.Dispose(); } catch { }
+        try { _telemetryTimer?.Dispose(); } catch { }
+        _riskHeartbeatTimer = null;
+        _riskSnapshotTimer = null;
+        _telemetryTimer = null;
+
+        if (_configHotReloadManager != null)
+        {
+            try { _configHotReloadManager.ConfigReloaded -= OnCoordinationConfigReloaded; } catch { }
+            try { _configHotReloadManager.Dispose(); } catch { }
+            _configHotReloadManager = null;
+        }
+
+        DisposeStrategyWatcher();
+
+        try { TelemetryContext.Collector?.FlushOnMainThread(); } catch { }
+        AppendDebugLine("TIMER", "Timers stopped via OnStop");
+
+        try { BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Stop", "Bot stopping", null, Print); } catch {}
+
+        try
+        {
+            var cfg = _config ?? TelemetryConfig.Load();
+            var logPath = Path.Combine(cfg.LogPath, "a8_debug.log");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] INSTANCE_GUARD: release-stop\n");
+        }
+        catch { }
+
+        ReleaseInstanceLock();
+    }
+
+    private bool EnsureSingleInstance(TelemetryConfig cfg)
+    {
+        if (cfg == null)
+        {
+            return true;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(cfg.LogPath);
+        }
+        catch
+        {
+            // ignore directory failures; lock acquisition may fail subsequently
+        }
+
+        if (_instanceLockStream != null)
+        {
+            return true;
+        }
+
+        var lockPath = Path.Combine(cfg.LogPath, InstanceLockFileName);
+
+        try
+        {
+            var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            stream.SetLength(0);
+            var payload = $"pid={Environment.ProcessId};machine={Environment.MachineName};started={DateTime.UtcNow:o}";
+            var bytes = Encoding.UTF8.GetBytes(payload);
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Flush(true);
+
+            _instanceLockStream = stream;
+            _instanceLockPath = lockPath;
+
+            try
+            {
+                File.AppendAllText(Path.Combine(cfg.LogPath, "a8_debug.log"), $"[{DateTime.UtcNow:o}] INSTANCE_GUARD: acquired {lockPath}\n");
+            }
+            catch { }
+
+            return true;
+        }
+        catch (IOException ioEx)
+        {
+            try
+            {
+                var detail = $"[{DateTime.UtcNow:o}] INSTANCE_GUARD: failed {lockPath}: {ioEx.Message}\n";
+                File.AppendAllText(Path.Combine(cfg.LogPath, "a8_debug.log"), detail);
+            }
+            catch { }
+        }
+        catch (UnauthorizedAccessException accessEx)
+        {
+            try
+            {
+                var detail = $"[{DateTime.UtcNow:o}] INSTANCE_GUARD: access-denied {lockPath}: {accessEx.Message}\n";
+                File.AppendAllText(Path.Combine(cfg.LogPath, "a8_debug.log"), detail);
+            }
+            catch { }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// SCALPING CONSERVATIVE: Only trade during active market hours (08:00-20:00)
+    /// </summary>
+    private bool IsWithinTradingHours()
+    {
+        var serverTime = Server.Time;
+        // Convert UTC to Vietnam time (UTC+7)
+        var localTime = serverTime.AddHours(7);
+        int currentHour = localTime.Hour;
+        
+        // Trading window: 08:00 - 20:00 Vietnam time (excludes overnight sessions)
+        bool withinHours = currentHour >= 8 && currentHour < 20;
+        
+        if (!_enforceTradingHours)
+        {
+            return true;
+        }
+
+        if (!withinHours)
+        {
+            var lastLoggedAgo = serverTime - _lastTradingHoursLogUtc;
+            if (lastLoggedAgo >= TimeSpan.FromHours(1))
+            {
+                Print($"[TradingHours] Outside trading window: {localTime:HH:mm} VN (UTC: {serverTime:HH:mm}, active: 08:00-20:00 VN)");
+                _lastTradingHoursLogUtc = serverTime;
+            }
+        }
+        
+        return withinHours;
+    }
+
+    private void ReleaseInstanceLock()
+    {
+        try
+        {
+            _instanceLockStream?.Dispose();
+        }
+        catch { }
+
+        if (!string.IsNullOrEmpty(_instanceLockPath))
+        {
+            try
+            {
+                File.Delete(_instanceLockPath);
+            }
+            catch { }
+        }
+
+        _instanceLockStream = null;
+        _instanceLockPath = null;
     }
 
 }

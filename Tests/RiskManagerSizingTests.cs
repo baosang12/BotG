@@ -1,5 +1,5 @@
 using Xunit;
-using RiskManager;
+using BotG.RiskManager;
 using System;
 using cAlgo.API;
 

@@ -7,4 +7,10 @@
   <ItemGroup>
     <ProjectReference Include="..\BotG\BotG.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="obj_locked_backup\**\*" />
+    <EmbeddedResource Remove="obj_locked_backup\**\*" />
+    <None Remove="obj_locked_backup\**\*" />
+    <Analyzer Remove="obj_locked_backup\**\*" />
+  </ItemGroup>
 </Project>

@@ -12,7 +12,9 @@ namespace Telemetry
         private static bool _initialized;
         public static TelemetryConfig Config { get; private set; } = new TelemetryConfig();
         public static OrderLifecycleLogger? OrderLogger { get; private set; }
-        public static RiskSnapshotPersister? RiskPersister { get; private set; }
+        public static RiskSnapshotPersister? RiskPersister { get; set; } // A8 FIX: Changed to public set for re-initialization with callback
+        public static PositionSnapshotPersister? PositionPersister { get; private set; } // A9: Position-level snapshots
+        public static MemoryProfiler? MemoryProfiler { get; private set; } // A10: Memory profiling
         public static TelemetryCollector? Collector { get; private set; }
         public static ClosedTradesWriter? ClosedTrades { get; private set; }
         public static Level1SnapshotLogger? Level1Snapshots { get; private set; }
@@ -42,8 +44,10 @@ namespace Telemetry
                 Config = cfg ?? TelemetryConfig.Load();
                 var runDir = RunInitializer.EnsureRunFolderAndMetadata(Config);
                 RunFolder = runDir;
-                // write runtime files inside runDir, but keep RiskSnapshot in base folder for continuity
-                OrderLogger = new OrderLifecycleLogger(runDir, "orders.csv");
+                // Write all runtime files (orders, telemetry, risk_snapshots) inside runDir for historical preservation.
+                // For monitoring continuity, use hard link: D:\botg\logs\risk_snapshots.csv -> artifacts\telemetry_run_TIMESTAMP\risk_snapshots.csv
+                // Auto-update link with: D:\botg\logs\update_risk_link.ps1
+                OrderLogger = new OrderLifecycleLogger(runDir, "orders.csv", null, null, null, Config);
                 ClosedTrades = new ClosedTradesWriter(runDir);
 
                 // Detect paper mode from config and setup RiskPersister with appropriate model
@@ -51,9 +55,40 @@ namespace Telemetry
                 Func<double>? getOpenPnlCallback = null; // TODO: Implement via RiskManager callback if needed
                 RiskPersister = new RiskSnapshotPersister(runDir, Config.RiskSnapshotFile, isPaperMode, getOpenPnlCallback);
 
+                // A9: Initialize position-level snapshot persister - DISABLED (causing restart loop)
+                // PositionPersister = new PositionSnapshotPersister(runDir, "position_snapshots.csv");
+
+                // A10: Initialize memory profiler - DISABLED (causing restart loop)
+                // MemoryProfiler = new MemoryProfiler(runDir, "memory_snapshots.csv", 512, 1024, 10);
+
                 Collector = new TelemetryCollector(runDir, Config.TelemetryFile, Config.FlushIntervalSeconds);
                 Level1Snapshots = new Level1SnapshotLogger(runDir);
                 _initialized = true;
+            }
+        }
+
+        public static void ResetForTesting()
+        {
+            lock (_lock)
+            {
+                DisposeIfNeeded(OrderLogger);
+                DisposeIfNeeded(RiskPersister);
+                DisposeIfNeeded(PositionPersister);
+                DisposeIfNeeded(MemoryProfiler);
+                DisposeIfNeeded(Collector);
+                DisposeIfNeeded(ClosedTrades);
+                DisposeIfNeeded(Level1Snapshots);
+                DisposeIfNeeded(QuoteTelemetry);
+                OrderLogger = null;
+                RiskPersister = null;
+                PositionPersister = null;
+                MemoryProfiler = null;
+                Collector = null;
+                ClosedTrades = null;
+                Level1Snapshots = null;
+                QuoteTelemetry = null;
+                RunFolder = string.Empty;
+                _initialized = false;
             }
         }
 
@@ -127,7 +162,7 @@ namespace Telemetry
             QuoteTelemetry?.Dispose();
             QuoteTelemetry = telemetry;
             var folder = string.IsNullOrEmpty(RunFolder) ? Config.LogPath : RunFolder;
-            OrderLogger ??= new OrderLifecycleLogger(folder, "orders.csv");
+            OrderLogger ??= new OrderLifecycleLogger(folder, "orders.csv", null, null, null, Config);
             OrderLogger.AttachConnectivity(QuoteTelemetry, executor);
         }
 
@@ -146,6 +181,21 @@ namespace Telemetry
             catch
             {
                 // swallow to avoid interfering with runtime
+            }
+        }
+
+        private static void DisposeIfNeeded(object? target)
+        {
+            if (target is IDisposable disposable)
+            {
+                try
+                {
+                    disposable.Dispose();
+                }
+                catch
+                {
+                    // swallow cleanup issues in tests
+                }
             }
         }
     }

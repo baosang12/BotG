@@ -12,6 +12,7 @@ namespace DataFetcher.Caching
 
         public int Capacity { get; }
         public int Count => count;
+        public bool IsEmpty => count == 0;
         /// <summary>
         /// Indicates whether the buffer has reached its capacity.
         /// </summary>
@@ -38,9 +39,42 @@ namespace DataFetcher.Caching
             get
             {
                 if (index < 0 || index >= count) throw new IndexOutOfRangeException();
-                int idx = (head - count + index + Capacity) % Capacity;
+                int idx = GetBufferIndex(index);
                 return buffer[idx];
             }
+        }
+
+        public T PeekLatest()
+        {
+            if (count == 0)
+            {
+                throw new InvalidOperationException("Buffer is empty.");
+            }
+
+            var idx = (head - 1 + Capacity) % Capacity;
+            return buffer[idx];
+        }
+
+        public bool TryPeekLatest(out T value)
+        {
+            if (count == 0)
+            {
+                value = default;
+                return false;
+            }
+
+            value = PeekLatest();
+            return true;
+        }
+
+        public IReadOnlyList<T> Snapshot()
+        {
+            var snapshot = new List<T>(count);
+            foreach (var item in this)
+            {
+                snapshot.Add(item);
+            }
+            return snapshot;
         }
 
         public IEnumerator<T> GetEnumerator()
@@ -50,5 +84,10 @@ namespace DataFetcher.Caching
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private int GetBufferIndex(int logicalIndex)
+        {
+            return (head - count + logicalIndex + Capacity) % Capacity;
+        }
     }
 }

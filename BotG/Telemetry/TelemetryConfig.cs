@@ -28,6 +28,7 @@ namespace Telemetry
     public TradingConfig? Trading { get; set; }
     public OpsConfig Ops { get; set; } = new OpsConfig();
     public DebugConfig Debug { get; set; } = new DebugConfig();
+    public StrategyRegistrySettings StrategyRegistry { get; set; } = new StrategyRegistrySettings();
 
     // Runtime, not from JSON: a per-run artifact folder under LogPath/artifacts/telemetry_run_yyyyMMdd_HHmmss
     public string? RunFolder { get; set; }
@@ -51,201 +52,327 @@ namespace Telemetry
             ? "D:\\botg\\logs"
             : "/var/log/botg";
 
+        private static readonly object _cacheLock = new object();
+        private static TelemetryConfig? _cachedConfig;
+        private static DateTime _cachedAtUtc;
+        private static TimeSpan _cacheTtl = TimeSpan.FromSeconds(60);
+        private static string? _cachedRunFolder;
+        private static readonly string _runFolderLog = Path.Combine(DefaultBasePath, "run_folder_debug.log");
+
     public static TelemetryConfig Load(string? rootHint = null)
+    {
+        return LoadCore(rootHint, ensureRunFolder: true, useCache: true);
+    }
+
+    public static TelemetryConfig Load(string? rootHint, bool ensureRunFolder, bool useCache)
+    {
+        return LoadCore(rootHint, ensureRunFolder, useCache);
+    }
+
+    public static TelemetryConfig LoadForGuard()
+    {
+        return LoadCore(null, ensureRunFolder: false, useCache: false);
+    }
+
+    private static TelemetryConfig LoadCore(string? rootHint, bool ensureRunFolder, bool useCache)
+    {
+        try
         {
+            if (useCache)
+            {
+                TelemetryConfig? cached = null;
+                lock (_cacheLock)
+                {
+                    if (_cachedConfig != null && (DateTime.UtcNow - _cachedAtUtc) < _cacheTtl)
+                    {
+                        cached = _cachedConfig;
+                    }
+                }
+
+                if (cached != null)
+                {
+                    if (ensureRunFolder && string.IsNullOrWhiteSpace(cached.RunFolder))
+                    {
+                        try { EnsureRunFolderCached(cached); } catch { }
+                    }
+
+                    return cached;
+                }
+            }
+
+            string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
+
+            var loadedFiles = new System.Collections.Generic.List<string>();
+            var cfg = new TelemetryConfig();
+
+            var configPaths = new[]
+            {
+                Path.Combine(baseDir, "config.runtime.json"),
+                "D:\\botg\\config\\config.runtime.json",
+                "D:\\botg\\logs\\config.runtime.json"
+            };
+
+            foreach (var path in configPaths)
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var json = File.ReadAllText(path);
+                    var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    if (loaded == null)
+                    {
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(loaded.Mode)) cfg.Mode = loaded.Mode;
+                    if (!string.IsNullOrWhiteSpace(loaded.LogPath)) cfg.LogPath = loaded.LogPath;
+                    if (loaded.FlushIntervalSeconds > 0) cfg.FlushIntervalSeconds = loaded.FlushIntervalSeconds;
+                    if (loaded.Hours > 0) cfg.Hours = loaded.Hours;
+                    if (loaded.SecondsPerHour > 0) cfg.SecondsPerHour = loaded.SecondsPerHour;
+                    cfg.UseSimulation = loaded.UseSimulation;
+                    if (loaded.Simulation != null) cfg.Simulation = loaded.Simulation;
+                    if (loaded.Execution != null) cfg.Execution = loaded.Execution;
+                    if (loaded.Account != null) cfg.Account = loaded.Account;
+                    if (loaded.Paper != null) cfg.Paper = loaded.Paper;
+                    if (loaded.Trading != null) cfg.Trading = loaded.Trading;
+                    if (loaded.Ops != null) cfg.Ops = loaded.Ops;
+                    if (loaded.Debug != null) cfg.Debug = loaded.Debug;
+                    if (loaded.StrategyRegistry != null)
+                    {
+                        cfg.StrategyRegistry ??= new StrategyRegistrySettings();
+                        if (!string.IsNullOrWhiteSpace(loaded.StrategyRegistry.ConfigPath))
+                        {
+                            cfg.StrategyRegistry.ConfigPath = loaded.StrategyRegistry.ConfigPath;
+                        }
+
+                        cfg.StrategyRegistry.HotReloadEnabled = loaded.StrategyRegistry.HotReloadEnabled;
+
+                        if (loaded.StrategyRegistry.WatchDebounceSeconds > 0)
+                        {
+                            cfg.StrategyRegistry.WatchDebounceSeconds = loaded.StrategyRegistry.WatchDebounceSeconds;
+                        }
+                    }
+                    loadedFiles.Add(path);
+                }
+                catch { }
+            }
+
+            var envPath = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
+            var envMode = Environment.GetEnvironmentVariable("BOTG_MODE")
+                           ?? Environment.GetEnvironmentVariable("Mode");
+            var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
+            var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled")
+                                 ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
+            var envCanaryEnabled = Environment.GetEnvironmentVariable("PREFLIGHT__Canary__Enabled");
+
+            var envOverrides = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(envPath))
+            {
+                cfg.LogPath = envPath!;
+                envOverrides.Add($"BOTG_LOG_PATH={envPath}");
+            }
+            if (!string.IsNullOrWhiteSpace(envMode))
+            {
+                cfg.Mode = envMode!;
+                envOverrides.Add($"Mode={envMode}");
+            }
+            if (int.TryParse(envFlush, out var sec) && sec > 0)
+            {
+                cfg.FlushIntervalSeconds = sec;
+                envOverrides.Add($"FlushIntervalSeconds={sec}");
+            }
+
+            bool simFromFile = cfg.Simulation?.Enabled ?? cfg.UseSimulation;
+            bool? simFromEnv = null;
+            if (!string.IsNullOrWhiteSpace(envSimEnabled) && bool.TryParse(envSimEnabled, out var envSim))
+            {
+                simFromEnv = envSim;
+                envOverrides.Add($"Simulation__Enabled={envSim}");
+            }
+
+            bool finalSim;
+            if (simFromEnv.HasValue)
+            {
+                finalSim = simFromEnv.Value;
+            }
+            else
+            {
+                string mode = cfg.Mode?.ToLowerInvariant() ?? "paper";
+                finalSim = mode == "paper" ? false : simFromFile;
+            }
+
+            cfg.UseSimulation = finalSim;
+            if (cfg.Simulation == null) cfg.Simulation = new SimulationConfig();
+            cfg.Simulation.Enabled = finalSim;
+
+            if (!string.IsNullOrWhiteSpace(envCanaryEnabled) && bool.TryParse(envCanaryEnabled, out var canaryEnabled))
+            {
+                if (cfg.Preflight == null) cfg.Preflight = new PreflightConfig();
+                if (cfg.Preflight.Canary == null) cfg.Preflight.Canary = new CanaryConfig();
+                cfg.Preflight.Canary.Enabled = canaryEnabled;
+                envOverrides.Add($"Preflight__Canary__Enabled={canaryEnabled}");
+            }
+
+            var sourcesLog = loadedFiles.Count > 0
+                ? $"Files=[{string.Join(", ", loadedFiles)}]"
+                : "Files=[]";
+            var envLog = envOverrides.Count > 0
+                ? $"ENV=[{string.Join(", ", envOverrides)}]"
+                : "ENV=[]";
+            Console.WriteLine($"[ECHO+] {sourcesLog}; {envLog}; Mode={cfg.Mode}; Simulation.Enabled={finalSim}");
+
             try
             {
-                // Priority: ENV > file (logs > config > workspace)
-                // Step 1: Load from file (lowest priority)
-                string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
-                string searchRoot = !string.IsNullOrWhiteSpace(rootHint) ? rootHint : baseDir;
-                
-                var loadedFiles = new System.Collections.Generic.List<string>();
-                TelemetryConfig cfg = new TelemetryConfig();
-                
-                // Try multiple config locations in precedence order (later overrides earlier)
-                var configPaths = new[]
+                Directory.CreateDirectory(cfg.LogPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    Path.Combine(baseDir, "config.runtime.json"),
-                    "D:\\botg\\config\\config.runtime.json",
-                    "D:\\botg\\logs\\config.runtime.json"
-                };
-                
-                foreach (var path in configPaths)
-                {
-                    if (File.Exists(path))
-                    {
-                        try
-                        {
-                            var json = File.ReadAllText(path);
-                            var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
-                            {
-                                PropertyNameCaseInsensitive = true
-                            });
-                            if (loaded != null)
-                            {
-                                // Merge non-null properties
-                                if (!string.IsNullOrWhiteSpace(loaded.Mode)) cfg.Mode = loaded.Mode;
-                                if (!string.IsNullOrWhiteSpace(loaded.LogPath)) cfg.LogPath = loaded.LogPath;
-                                if (loaded.FlushIntervalSeconds > 0) cfg.FlushIntervalSeconds = loaded.FlushIntervalSeconds;
-                                if (loaded.Hours > 0) cfg.Hours = loaded.Hours;
-                                if (loaded.SecondsPerHour > 0) cfg.SecondsPerHour = loaded.SecondsPerHour;
-                                cfg.UseSimulation = loaded.UseSimulation;
-                                if (loaded.Simulation != null) cfg.Simulation = loaded.Simulation;
-                                if (loaded.Execution != null) cfg.Execution = loaded.Execution;
-                                if (loaded.Account != null) cfg.Account = loaded.Account;
-                                if (loaded.Paper != null) cfg.Paper = loaded.Paper;
-                                if (loaded.Trading != null) cfg.Trading = loaded.Trading;
-                                if (loaded.Ops != null) cfg.Ops = loaded.Ops;
-                                if (loaded.Debug != null) cfg.Debug = loaded.Debug;
-                                loadedFiles.Add(path);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                
-                // Step 2: ENV overrides (highest priority)
-                var envPath = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
-                var envMode = Environment.GetEnvironmentVariable("BOTG_MODE") 
-                           ?? Environment.GetEnvironmentVariable("Mode");
-                var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
-                var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled") 
-                                 ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
-                var envCanaryEnabled = Environment.GetEnvironmentVariable("PREFLIGHT__Canary__Enabled");
-                
-                var envOverrides = new System.Collections.Generic.List<string>();
-                if (!string.IsNullOrWhiteSpace(envPath)) 
-                {
-                    cfg.LogPath = envPath!;
-                    envOverrides.Add($"BOTG_LOG_PATH={envPath}");
-                }
-                if (!string.IsNullOrWhiteSpace(envMode)) 
-                {
-                    cfg.Mode = envMode!;
-                    envOverrides.Add($"Mode={envMode}");
-                }
-                if (int.TryParse(envFlush, out var sec) && sec > 0) 
-                {
-                    cfg.FlushIntervalSeconds = sec;
-                    envOverrides.Add($"FlushIntervalSeconds={sec}");
-                }
-                
-                // Step 3: Simulation.Enabled with ENV override + paper default
-                bool simFromFile = cfg.Simulation?.Enabled ?? cfg.UseSimulation;
-                bool? simFromEnv = null;
-                if (!string.IsNullOrWhiteSpace(envSimEnabled))
-                {
-                    if (bool.TryParse(envSimEnabled, out var envSim))
-                    {
-                        simFromEnv = envSim;
-                        envOverrides.Add($"Simulation__Enabled={envSim}");
-                    }
-                }
-                
-                // Resolve final sim value: ENV > file > (paper default=false, others=true)
-                bool finalSim;
-                if (simFromEnv.HasValue)
-                {
-                    finalSim = simFromEnv.Value; // ENV wins
+                    var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
+                    Directory.CreateDirectory(local);
+                    cfg.LogPath = local;
                 }
                 else
                 {
-                    // Use file value if set explicitly, otherwise default by mode
-                    string mode = cfg.Mode?.ToLowerInvariant() ?? "paper";
-                    finalSim = mode == "paper" ? false : simFromFile;
+                    var tmp = Path.Combine(Path.GetTempPath(), "botg", "logs");
+                    Directory.CreateDirectory(tmp);
+                    cfg.LogPath = tmp;
                 }
-                
-                cfg.UseSimulation = finalSim;
-                if (cfg.Simulation == null) cfg.Simulation = new SimulationConfig();
-                cfg.Simulation.Enabled = finalSim;
-                
-                // Step 4: Preflight.Canary.Enabled with ENV override (default false)
-                if (!string.IsNullOrWhiteSpace(envCanaryEnabled))
-                {
-                    if (bool.TryParse(envCanaryEnabled, out var canaryEnabled))
-                    {
-                        if (cfg.Preflight == null) cfg.Preflight = new PreflightConfig();
-                        if (cfg.Preflight.Canary == null) cfg.Preflight.Canary = new CanaryConfig();
-                        cfg.Preflight.Canary.Enabled = canaryEnabled;
-                        envOverrides.Add($"Preflight__Canary__Enabled={canaryEnabled}");
-                    }
-                }
-                
-                // Log sources for forensics
-                var sourcesLog = loadedFiles.Count > 0 
-                    ? $"Files=[{string.Join(", ", loadedFiles)}]" 
-                    : "Files=[]";
-                var envLog = envOverrides.Count > 0 
-                    ? $"ENV=[{string.Join(", ", envOverrides)}]" 
-                    : "ENV=[]";
-                Console.WriteLine($"[ECHO+] {sourcesLog}; {envLog}; Mode={cfg.Mode}; Simulation.Enabled={finalSim}");
+            }
 
-                // Ensure directory exists; fallback if access denied
-                try
+            if (ensureRunFolder)
+            {
+                try { EnsureRunFolderCached(cfg); } catch { }
+            }
+
+            if (useCache)
+            {
+                lock (_cacheLock)
                 {
-                    Directory.CreateDirectory(cfg.LogPath);
+                    _cachedConfig = cfg;
+                    _cachedAtUtc = DateTime.UtcNow;
                 }
-                catch (UnauthorizedAccessException)
-                {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {
-                        var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
-                        Directory.CreateDirectory(local);
-                        cfg.LogPath = local;
-                    }
-                    else
-                    {
-                        var tmp = Path.Combine(Path.GetTempPath(), "botg", "logs");
-                        Directory.CreateDirectory(tmp);
-                        cfg.LogPath = tmp;
-                    }
-                }
-                // create a run folder if not already set
-                try
-                {
-                    if (string.IsNullOrEmpty(cfg.RunFolder))
-                    {
-                        var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-                        var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
-                        Directory.CreateDirectory(runDir);
-                        cfg.RunFolder = runDir;
-                    }
-                }
-                catch { }
-                return cfg;
+            }
+
+            return cfg;
+        }
+        catch
+        {
+            var cfg = new TelemetryConfig();
+            try
+            {
+                Directory.CreateDirectory(cfg.LogPath);
             }
             catch
             {
-                // Fallback defaults
-                var cfg = new TelemetryConfig();
                 try
                 {
-                    Directory.CreateDirectory(cfg.LogPath);
+                    var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
+                    Directory.CreateDirectory(local);
+                    cfg.LogPath = local;
                 }
-                catch
+                catch { }
+            }
+
+            if (ensureRunFolder)
+            {
+                try { EnsureRunFolderCached(cfg); } catch { }
+            }
+
+            if (useCache)
+            {
+                lock (_cacheLock)
+                {
+                    _cachedConfig = cfg;
+                    _cachedAtUtc = DateTime.UtcNow;
+                }
+            }
+
+            return cfg;
+        }
+    }
+
+        private static void EnsureRunFolderCached(TelemetryConfig cfg)
+        {
+            lock (_cacheLock)
+            {
+                if (!string.IsNullOrWhiteSpace(cfg.RunFolder))
+                {
+                    Directory.CreateDirectory(cfg.RunFolder);
+                    _cachedRunFolder = cfg.RunFolder;
+                    LogRunFolderEvent(cfg, $"reuse-config-runfolder|{cfg.RunFolder}");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_cachedRunFolder) && Directory.Exists(_cachedRunFolder))
+                {
+                    cfg.RunFolder = _cachedRunFolder;
+                    LogRunFolderEvent(cfg, $"reuse-cached-runfolder|{_cachedRunFolder}");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_cachedRunFolder) && !Directory.Exists(_cachedRunFolder))
+                {
+                    LogRunFolderEvent(cfg, $"cached-runfolder-missing|{_cachedRunFolder}");
+                    _cachedRunFolder = null;
+                }
+
+                var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
+                Directory.CreateDirectory(runDir);
+                cfg.RunFolder = runDir;
+                _cachedRunFolder = runDir;
+                LogRunFolderEvent(cfg, $"create-runfolder|{runDir}");
+            }
+        }
+
+        private static void LogRunFolderEvent(TelemetryConfig cfg, string message)
+        {
+            LogRunFolderEventInternal(message, cfg);
+        }
+
+        private static void LogRunFolderEvent(string message)
+        {
+            LogRunFolderEventInternal(message, null);
+        }
+
+        private static void LogRunFolderEventInternal(string message, TelemetryConfig? cfg)
+        {
+            try
+            {
+                var utcNow = DateTime.UtcNow.ToString("o");
+                var line = $"{utcNow}|{message}{Environment.NewLine}";
+                var dir = Path.GetDirectoryName(_runFolderLog);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir!);
+                }
+                File.AppendAllText(_runFolderLog, line);
+
+                if (cfg != null && !string.IsNullOrWhiteSpace(cfg.LogPath))
                 {
                     try
                     {
-                        var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BotG", "logs");
-                        Directory.CreateDirectory(local);
-                        cfg.LogPath = local;
+                        var stack = Environment.StackTrace?.Replace(Environment.NewLine, " => ");
+                        var debugPath = Path.Combine(cfg.LogPath!, "a8_debug.log");
+                        var debugLine = $"{utcNow}|RUN_FOLDER|{message}|stack={stack}{Environment.NewLine}";
+                        File.AppendAllText(debugPath, debugLine);
                     }
                     catch { }
                 }
-                // assign run folder
-                try
-                {
-                    if (string.IsNullOrEmpty(cfg.RunFolder))
-                    {
-                        var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-                        var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
-                        Directory.CreateDirectory(runDir);
-                        cfg.RunFolder = runDir;
-                    }
-                }
-                catch { }
-                return cfg;
+            }
+            catch
+            {
+                // ignore logging errors
             }
         }
 
@@ -278,6 +405,9 @@ namespace Telemetry
     public class PreflightConfig
     {
         public CanaryConfig Canary { get; set; } = new CanaryConfig();
+
+        [JsonPropertyName("TTLMinutes")]
+        public int TtlMinutes { get; set; } = 10;
     }
 
     public class CanaryConfig
@@ -315,6 +445,24 @@ namespace Telemetry
 
         [JsonPropertyName("fee_roundturn_usd_per_lot")]
         public double FeeRoundturnUsdPerLot { get; set; } = 0.0;
+
+        [JsonPropertyName("fee_pips_per_roundtrip")]
+        public double FeePipsPerRoundtrip { get; set; } = 0.0;
+
+        [JsonPropertyName("fee_pips_per_side")]
+        public double FeePipsPerSide { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_long_pips_per_day")]
+        public double SwapLongPipsPerDay { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_short_pips_per_day")]
+        public double SwapShortPipsPerDay { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_type")]
+        public string? SwapType { get; set; }
+
+        [JsonPropertyName("swap_triple_day")]
+        public string? SwapTripleDay { get; set; }
     }
 
     public class AccountConfig
@@ -345,5 +493,12 @@ namespace Telemetry
     {
         [JsonPropertyName("smoke_once")]
         public bool SmokeOnce { get; set; } = false; // Default: disabled
+    }
+
+    public class StrategyRegistrySettings
+    {
+        public string? ConfigPath { get; set; }
+        public bool HotReloadEnabled { get; set; } = true;
+        public double WatchDebounceSeconds { get; set; } = 2.0;
     }
 }
