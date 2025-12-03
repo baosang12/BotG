@@ -1,0 +1,57 @@
+name: Deploy PatternLayer to Staging
+
+trigger:
+  branches:
+    include:
+      - phase1-safety-deployment
+  paths:
+    include:
+      - k8s/staging/*
+      - .azuredevops/pipelines/deploy-patternlayer-staging.yml
+
+variables:
+  clusterName: 'staging-botg-cluster'
+  namespace: 'botg-staging'
+  configMapName: 'trend-analyzer-config'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: Deploy
+    displayName: 'Deploy PatternLayer Config'
+    jobs:
+      - job: DeployConfig
+        displayName: 'Deploy Configuration'
+        steps:
+          - task: KubernetesManifest@0
+            displayName: 'Deploy ConfigMap'
+            inputs:
+              action: 'deploy'
+              namespace: '$(namespace)'
+              manifests: '$(Build.SourcesDirectory)/k8s/staging/patternlayer-configmap.yaml'
+              kubernetesServiceConnection: 'staging-botg-service-connection'
+
+          - task: Kubernetes@1
+            displayName: 'Restart Deployment'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'staging-botg-service-connection'
+              namespace: '$(namespace)'
+              command: 'rollout'
+              arguments: 'restart deployment/analysis-module'
+
+          - task: Kubernetes@1
+            displayName: 'Verify Deployment'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'staging-botg-service-connection'
+              namespace: '$(namespace)'
+              command: 'rollout'
+              arguments: 'status deployment/analysis-module --timeout=300s'
+
+          - task: PowerShell@2
+            displayName: 'Run Health Check'
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(Build.SourcesDirectory)/scripts/validate-deployment.ps1'
