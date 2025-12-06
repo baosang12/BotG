@@ -100,7 +100,8 @@ config.runtime.json.backup_*
 scripts/.pr_trigger_for_pr.txt
 
 # Local runtime artifacts (keep repo clean during Gate runs)
-path_issues/
+path_issues/*
+!path_issues/reconstruct_fifo.py
 current_*.txt
 POSTMERGE_REPORT_*.md
 pr_body_*.txt
