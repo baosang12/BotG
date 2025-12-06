@@ -10,7 +10,7 @@ namespace Connectivity
         public string Mode { get; }
         public IMarketDataProvider MarketData { get; }
         public IOrderExecutor OrderExecutor { get; }
-    internal ICTraderTickPump? TickPump { get; }
+        internal ICTraderTickPump? TickPump { get; }
 
         private ConnectorBundle(string mode, IMarketDataProvider md, IOrderExecutor ex, ICTraderTickPump? pump)
         {

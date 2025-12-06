@@ -16,11 +16,11 @@ namespace TradeManager
         /// <param name="stopLossPips">Stop loss (pips).</param>
         /// <param name="symbol">Đối tượng Symbol từ cAlgo để lấy pip value và volume min.</param>
         /// <returns>Khối lượng lệnh (units) tối thiểu đạt broker yêu cầu.</returns>
-    public static double Calculate(double riskUsd, double stopLossPips, cAlgo.API.Internals.Symbol symbol)
+        public static double Calculate(double riskUsd, double stopLossPips, cAlgo.API.Internals.Symbol symbol)
         {
             if (symbol == null)
                 throw new ArgumentNullException(nameof(symbol));
-            
+
             // ========================================
             // 🚨 BTCUSD VOLUME FIX - Friday Night 2025-11-07
             // Bitcoin price: >$100,000 USD
@@ -42,7 +42,7 @@ namespace TradeManager
 
                 return safeVolume;
             }
-            
+
             // ========================================
             // 📋 ORIGINAL FOREX CALCULATION (preserved)
             // Used for EURUSD and other forex pairs

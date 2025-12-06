@@ -206,7 +206,7 @@ namespace Tests
                 sb.AppendLine($"timestamp,EURUSD,1.0850,line_{i}");
             }
             sb.Append("timestamp,GBPUSD,1.2650,LAST_LINE");
-            
+
             var file = CreateTestFile(sb.ToString());
             using var reader = new CsvTailReader(file);
 
@@ -538,7 +538,7 @@ namespace Tests
             // Assert
             Assert.Contains("USDJPY", lastLine);
             Assert.Contains("149.50", lastLine);
-            
+
             var parts = lastLine!.Split(',');
             Assert.Equal(5, parts.Length);
         }

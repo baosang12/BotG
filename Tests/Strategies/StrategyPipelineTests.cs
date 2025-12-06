@@ -17,7 +17,7 @@ namespace BotG.Tests.Strategies
         [Fact]
         public async Task SmaCrossoverStrategy_GeneratesBuySignal_OnBullishCross()
         {
-            var strategy = new SmaCrossoverStrategy("SMA", fastPeriod:2, slowPeriod:3);
+            var strategy = new SmaCrossoverStrategy("SMA", fastPeriod: 2, slowPeriod: 3);
             var now = DateTime.UtcNow;
 
             await strategy.EvaluateAsync(CreateMarketData(1.1000, now), CancellationToken.None);
@@ -33,7 +33,7 @@ namespace BotG.Tests.Strategies
         [Fact]
         public async Task RsiStrategy_GeneratesSellSignal_OnOverboughtExit()
         {
-            var strategy = new RsiStrategy("RSI", period:4, oversold:30, overbought:70);
+            var strategy = new RsiStrategy("RSI", period: 4, oversold: 30, overbought: 70);
             var now = DateTime.UtcNow;
             double price = 1.1000;
 

@@ -15,14 +15,14 @@ public static class PathUtil
     /// </summary>
     public static string GetLogRoot()
     {
-        var root = Environment.GetEnvironmentVariable("BOTG_LOG_PATH") 
+        var root = Environment.GetEnvironmentVariable("BOTG_LOG_PATH")
                    ?? @"D:\botg\logs";
-        
+
         if (!Directory.Exists(root))
         {
             Directory.CreateDirectory(root);
         }
-        
+
         return root;
     }
 

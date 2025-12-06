@@ -17,16 +17,16 @@ namespace Analysis.Wyckoff
         public Bar Bar { get; set; }
         public int ClimaxIndex { get; set; }
         public double Score { get; set; }
-    // --- Enriched metrics ---
-    public double MoveFrac { get; set; }           // |move| / climax range
-    public double MoveAtr { get; set; }            // |move| / ATR (nếu có)
-    public double BodyRatio { get; set; }          // body / range của AR bar
-    public double VolumeRatio { get; set; }        // volume / avgVolume
-    public string Tier { get; set; }               // Tiny / Normal / Deep
-    public bool StructureBreak { get; set; }       // phá micro high/low cụm climax
-    public bool Immediate { get; set; }            // có phải bar ngay sau climax
-    public bool IsClusterAr { get; set; }          // AR/ARc dạng cụm 2-3 bar
-    public int ClusterSize { get; set; }           // số bar trong cụm
+        // --- Enriched metrics ---
+        public double MoveFrac { get; set; }           // |move| / climax range
+        public double MoveAtr { get; set; }            // |move| / ATR (nếu có)
+        public double BodyRatio { get; set; }          // body / range của AR bar
+        public double VolumeRatio { get; set; }        // volume / avgVolume
+        public string Tier { get; set; }               // Tiny / Normal / Deep
+        public bool StructureBreak { get; set; }       // phá micro high/low cụm climax
+        public bool Immediate { get; set; }            // có phải bar ngay sau climax
+        public bool IsClusterAr { get; set; }          // AR/ARc dạng cụm 2-3 bar
+        public int ClusterSize { get; set; }           // số bar trong cụm
     }
 
     public class ARDetector
@@ -36,20 +36,20 @@ namespace Analysis.Wyckoff
         public double MinBodyRatio { get; set; } = 0.5; // thân nến >= MinBodyRatio * range
         public int LookaheadBars { get; set; } = 10; // số bar tối đa sau climax để tìm AR
         public bool DebugMode { get; set; } = true;
-    // New configurable thresholds
-    public double TinyFracMax { get; set; } = 0.30;     // MoveFrac < TinyFracMax => Tiny
-    public double DeepFracMin { get; set; } = 0.60;     // MoveFrac >= DeepFracMin => Deep
-    public double BreakBufferFrac { get; set; } = 0.05; // thêm 5% climax range làm buffer phá cấu trúc
-    public double MinVolumeRatio { get; set; } = 0.0;   // 0 = tắt filter volume (dùng log)
-    public int VolumeLookback { get; set; } = 10;       // lookback tính avgVolume
-    public double MinAtrMove { get; set; } = 0.0;       // yêu cầu tối thiểu theo ATR (0 = tắt)
-    public bool PreferImmediate { get; set; } = true;   // ưu tiên bar ngay sau climax nếu đạt body & direction
-    public bool ReturnImmediateIfValid { get; set; } = true; // nếu true: trả về ngay nến đầu tiên đạt điều kiện (AR/ARc tức thì)
-    // Adaptive body ratio theo thanh khoản (ATR thấp / cao)
-    public double AtrLowFactor { get; set; } = 0.7;
-    public double AtrHighFactor { get; set; } = 1.3;
-    public double LowLiquidityBodyRelax { get; set; } = 0.1; // giảm yêu cầu body khi ATR thấp
-    public double HighLiquidityBodyAdd { get; set; } = 0.05;  // tăng yêu cầu body khi ATR cao
+        // New configurable thresholds
+        public double TinyFracMax { get; set; } = 0.30;     // MoveFrac < TinyFracMax => Tiny
+        public double DeepFracMin { get; set; } = 0.60;     // MoveFrac >= DeepFracMin => Deep
+        public double BreakBufferFrac { get; set; } = 0.05; // thêm 5% climax range làm buffer phá cấu trúc
+        public double MinVolumeRatio { get; set; } = 0.0;   // 0 = tắt filter volume (dùng log)
+        public int VolumeLookback { get; set; } = 10;       // lookback tính avgVolume
+        public double MinAtrMove { get; set; } = 0.0;       // yêu cầu tối thiểu theo ATR (0 = tắt)
+        public bool PreferImmediate { get; set; } = true;   // ưu tiên bar ngay sau climax nếu đạt body & direction
+        public bool ReturnImmediateIfValid { get; set; } = true; // nếu true: trả về ngay nến đầu tiên đạt điều kiện (AR/ARc tức thì)
+                                                                 // Adaptive body ratio theo thanh khoản (ATR thấp / cao)
+        public double AtrLowFactor { get; set; } = 0.7;
+        public double AtrHighFactor { get; set; } = 1.3;
+        public double LowLiquidityBodyRelax { get; set; } = 0.1; // giảm yêu cầu body khi ATR thấp
+        public double HighLiquidityBodyAdd { get; set; } = 0.05;  // tăng yêu cầu body khi ATR cao
 
         private readonly Action<string> _logger;
         public ARDetector(double atrMultiplier = double.NaN, double minBodyRatio = 0.5, Action<string> logger = null)
@@ -71,7 +71,8 @@ namespace Analysis.Wyckoff
         /// <returns>AREvent hoặc null nếu không tìm thấy</returns>
         public AREvent DetectAR(IList<Bar> bars, ClimaxEvent climax, IList<int> swings = null, IList<double> atr = null)
         {
-            if (bars == null || climax == null) {
+            if (bars == null || climax == null)
+            {
                 _logger?.Invoke($"[ARDetector] Input bars or climax is null. bars: {(bars == null ? "null" : bars.Count.ToString())}, climax: {(climax == null ? "null" : climax.Index.ToString())}");
                 return null;
             }
@@ -162,7 +163,7 @@ namespace Analysis.Wyckoff
                             IsClusterAr = false,
                             ClusterSize = 1
                         };
-                        _logger?.Invoke($"[ARDetector] AR_SINGLE_ACCEPT idx={evt.Index} bodyRetraceFrac={(body/ rangeClimax):0.00} moveFrac={evt.MoveFrac:0.00}");
+                        _logger?.Invoke($"[ARDetector] AR_SINGLE_ACCEPT idx={evt.Index} bodyRetraceFrac={(body / rangeClimax):0.00} moveFrac={evt.MoveFrac:0.00}");
                         return evt;
                     }
                 }
@@ -175,9 +176,9 @@ namespace Analysis.Wyckoff
             int maxScan = Math.Min(n - 1, i + 1 + LookaheadBars);
             for (int start = firstIdx; start <= maxScan - clusterMin; start++)
             {
-                for (int size = clusterMin; size <= clusterMax && start + size -1 <= maxScan; size++)
+                for (int size = clusterMin; size <= clusterMax && start + size - 1 <= maxScan; size++)
                 {
-                    int endIdx = start + size -1;
+                    int endIdx = start + size - 1;
                     // kiểm tra tất cả bar trong cụm đều có hướng kỳ vọng (hoặc cho phép 1 bar doji nhỏ?)
                     bool allDir = true; double peakPrice = 0; double bodySum = 0;
                     double rangeClimax2 = climaxBar.High - climaxBar.Low;
@@ -338,7 +339,7 @@ namespace Analysis.Wyckoff
             if (DebugMode) _logger?.Invoke($"[ARDetector] No AR event found after climax idx={i} ({climaxBar.OpenTime})");
             return null;
         }
-        
+
         // Load VolumeMultiplier from systemRules.json located at working directory
         private double LoadVolumeMultiplierFromConfig()
         {

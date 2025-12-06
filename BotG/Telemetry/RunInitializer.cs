@@ -20,7 +20,7 @@ namespace Telemetry
                     cfg.RunFolder = runDir;
                 }
                 var metaPath = Path.Combine(runDir!, "run_metadata.json");
-                
+
                 // FORCE CREATE metadata - ignore File.Exists to fix restart loop
                 // if (!File.Exists(metaPath))
                 {
@@ -100,7 +100,7 @@ namespace Telemetry
                         throw;
                     }
                 }
-                
+
                 // Handle extra metadata update separately
                 if (extra != null && File.Exists(metaPath))
                 {

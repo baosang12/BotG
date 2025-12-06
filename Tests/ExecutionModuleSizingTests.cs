@@ -23,7 +23,11 @@ namespace BotG.Tests
             Directory.CreateDirectory(temp);
             Environment.SetEnvironmentVariable("BOTG_LOG_PATH", temp);
             TelemetryContext.ResetForTesting();
-            TelemetryContext.InitOnce(TelemetryConfig.Load());
+            var cfg = TelemetryConfig.Load(null, ensureRunFolder: true, useCache: false);
+            TelemetryContext.InitOnce(cfg);
+            var logFolder = string.IsNullOrWhiteSpace(TelemetryContext.RunFolder)
+                ? TelemetryContext.Config.LogPath
+                : TelemetryContext.RunFolder;
 
             var strategies = new List<IStrategy>();
 
@@ -57,7 +61,7 @@ namespace BotG.Tests
             Assert.InRange(fakeExec.LastVolume, expectedUnits - 0.6, expectedUnits + 0.6);
 
             // Assert: orders.csv has a REQUEST row with requestedVolume
-            var ordersPath = Path.Combine(temp, "orders.csv");
+            var ordersPath = Path.Combine(logFolder, "orders.csv");
             Assert.True(File.Exists(ordersPath));
             var lines = File.ReadAllLines(ordersPath);
             Assert.True(lines.Length >= 2);
@@ -77,7 +81,7 @@ namespace BotG.Tests
             Directory.CreateDirectory(temp);
             Environment.SetEnvironmentVariable("BOTG_LOG_PATH", temp);
             TelemetryContext.ResetForTesting();
-            TelemetryContext.InitOnce(TelemetryConfig.Load());
+            TelemetryContext.InitOnce(TelemetryConfig.Load(null, ensureRunFolder: true, useCache: false));
 
             var strategies = new List<IStrategy>();
             var rm = new RiskManager.RiskManager();
@@ -116,6 +120,6 @@ namespace BotG.Tests
             Assert.InRange(signal.TakeProfit!.Value, expectedTp - 1e-6, expectedTp + 1e-6);
         }
 
-    // no Robot shim needed; tests use injected executor and null bot
+        // no Robot shim needed; tests use injected executor and null bot
     }
 }

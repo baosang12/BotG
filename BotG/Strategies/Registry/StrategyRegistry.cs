@@ -154,6 +154,9 @@ namespace Strategies.Registry
             Register(CreateTrendFollowingStrategy,
                 "TrendFollowing", "TrendFollowingStrategy", "Strategies.TrendFollowingStrategy");
 
+            Register(CreateTrendPullbackRsiStrategy,
+                "TrendPullbackRsi", "TrendPullbackRsiStrategy", "Strategies.TrendPullbackRsiStrategy");
+
             Register(CreateEma200BreakoutStrategy,
                 "Ema200Breakout", "Ema200BreakoutStrategy", "Strategies.Ema200BreakoutStrategy");
         }
@@ -227,7 +230,9 @@ namespace Strategies.Registry
                 context.TimeframeSynchronizer,
                 context.SessionAnalyzer,
                 breakoutConfig,
-                confirmation);
+                confirmation,
+                null,
+                context.PreprocessorBridge);
         }
 
         private IStrategy CreateTrendFollowingStrategy(StrategyDefinition definition, StrategyFactoryContext context)
@@ -256,6 +261,35 @@ namespace Strategies.Registry
                 context.TimeframeSynchronizer,
                 context.SessionAnalyzer,
                 config);
+        }
+
+        private IStrategy CreateTrendPullbackRsiStrategy(StrategyDefinition definition, StrategyFactoryContext context)
+        {
+            if (context.TimeframeManager == null || context.TimeframeSynchronizer == null || context.SessionAnalyzer == null)
+            {
+                throw new InvalidOperationException("TrendPullbackRsiStrategy requires multi-timeframe components");
+            }
+
+            TrendPullbackRsiStrategyConfig? config = null;
+
+            if (definition.Parameters.HasValue && definition.Parameters.Value.ValueKind == JsonValueKind.Object)
+            {
+                try
+                {
+                    config = definition.Parameters.Value.Deserialize<TrendPullbackRsiStrategyConfig>(_jsonOptions);
+                }
+                catch
+                {
+                    config = null;
+                }
+            }
+
+            return new TrendPullbackRsiStrategy(
+                context.TimeframeManager,
+                context.TimeframeSynchronizer,
+                context.SessionAnalyzer,
+                config,
+                context.PreprocessorBridge);
         }
 
         private IStrategy CreateEma200BreakoutStrategy(StrategyDefinition definition, StrategyFactoryContext context)

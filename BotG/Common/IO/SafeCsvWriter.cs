@@ -21,16 +21,16 @@ public class SafeCsvWriter
     private readonly object _lock = new object();
 
     // Gate2 canonical headers (frozen spec)
-    private static readonly string OrdersCanonicalHeader = 
+    private static readonly string OrdersCanonicalHeader =
         "event,status,reason,latency,price_requested,price_filled,order_id,side,requested_lots,filled_lots";
-    private static readonly string RiskCanonicalHeader = 
+    private static readonly string RiskCanonicalHeader =
         "timestamp_iso,equity,R_used,exposure,drawdown";
 
     public SafeCsvWriter(string path, string[] header)
     {
         _path = path ?? throw new ArgumentNullException(nameof(path));
         _header = header ?? throw new ArgumentNullException(nameof(header));
-        
+
         // Coerce canonical headers for known Gate2 files
         _headerString = GetCanonicalHeader(path) ?? string.Join(",", _header);
     }
@@ -66,13 +66,13 @@ public class SafeCsvWriter
                 {
                     using var reader = new StreamReader(_path, _encoding, detectEncodingFromByteOrderMarks: true);
                     var firstLine = reader.ReadLine()?.Trim();
-                    
+
                     // If header matches, do nothing (idempotent)
                     if (string.Equals(firstLine, _headerString, StringComparison.Ordinal))
                     {
                         return;
                     }
-                    
+
                     // Header mismatch: truncate and rewrite canonical header
                     // (This ensures Gate2 compliance by correcting legacy/wrong headers)
                 }
@@ -106,7 +106,7 @@ public class SafeCsvWriter
             lock (_lock)
             {
                 using var stream = new FileStream(_path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-                
+
                 // Seek to end before appending
                 stream.Seek(0, SeekOrigin.End);
 
@@ -134,7 +134,7 @@ public class SafeCsvWriter
         for (int i = 0; i < fields.Length; i++)
         {
             var field = fields[i] ?? string.Empty;
-            
+
             // Quote if contains comma, quote, or newline
             if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
             {
@@ -145,7 +145,7 @@ public class SafeCsvWriter
                 escaped[i] = field;
             }
         }
-        
+
         return string.Join(",", escaped);
     }
 
@@ -156,7 +156,7 @@ public class SafeCsvWriter
     private async Task RetryAsync(Func<Task> action)
     {
         var delays = new[] { 50, 100, 200, 400, 800 };
-        
+
         for (int attempt = 0; attempt < 5; attempt++)
         {
             try

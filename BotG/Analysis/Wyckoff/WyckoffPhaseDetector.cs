@@ -81,11 +81,13 @@ namespace Analysis.Wyckoff
 
         private void ChangePhase(WyckoffPhase newPhase, DateTime time, string note)
         {
-            if (CurrentPhase == newPhase) {
+            if (CurrentPhase == newPhase)
+            {
                 _logger?.Invoke($"[WyckoffPhaseDetector] Phase unchanged: {newPhase} (already current phase)");
                 return;
             }
-            if (!CanTransitionTo(newPhase)) {
+            if (!CanTransitionTo(newPhase))
+            {
                 _logger?.Invoke($"[WyckoffPhaseDetector] Invalid phase transition: {CurrentPhase} -> {newPhase}");
                 return;
             }
@@ -194,7 +196,7 @@ namespace Analysis.Wyckoff
                 WyckoffPhase.LPS_ACC,
                 e => true,
                 e => e.Time,
-                e => $"LPS xác nhận tại {e.Time:yyyy-MM-dd HH:mm}" );
+                e => $"LPS xác nhận tại {e.Time:yyyy-MM-dd HH:mm}");
         }
 
         /// <summary>

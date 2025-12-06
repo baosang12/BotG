@@ -119,7 +119,7 @@ namespace Telemetry
                 try
                 {
                     await using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, _bufferSize, useAsync: true);
-                    
+
                     if (fs.Length == 0)
                         return null;
 
@@ -261,7 +261,7 @@ namespace Telemetry
         public async Task<List<string>> ReadLastLinesAsync(int lineCount, CancellationToken ct = default)
         {
             var result = new List<string>(lineCount);
-            
+
             if (!File.Exists(_filePath) || lineCount <= 0)
                 return result;
 
@@ -271,7 +271,7 @@ namespace Telemetry
                 try
                 {
                     await using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, _bufferSize, useAsync: true);
-                    
+
                     if (fs.Length == 0)
                         return result;
 
@@ -286,7 +286,7 @@ namespace Telemetry
 
                         int chunkSize = (int)Math.Min(_bufferSize, currentPos);
                         currentPos -= chunkSize;
-                        
+
                         fs.Seek(currentPos, SeekOrigin.Begin);
                         int bytesRead = await fs.ReadAsync(buffer, 0, chunkSize, ct);
 
@@ -300,7 +300,7 @@ namespace Telemetry
                                 {
                                     string line = partialLine.ToString().TrimEnd('\r');
                                     partialLine.Clear();
-                                    
+
                                     if (!string.IsNullOrWhiteSpace(line))
                                     {
                                         lines.Add(line);
@@ -349,44 +349,44 @@ namespace Telemetry
             _lastPosition = 0;
         }
 
-    /// <summary>
-    /// Finds the first newline character in buffer.
-    /// </summary>
-    private static int FindNewline(byte[] buffer, int offset, int count)
-    {
-        for (int i = offset; i < offset + count; i++)
+        /// <summary>
+        /// Finds the first newline character in buffer.
+        /// </summary>
+        private static int FindNewline(byte[] buffer, int offset, int count)
         {
-            if (buffer[i] == '\n')
-                return i;
+            for (int i = offset; i < offset + count; i++)
+            {
+                if (buffer[i] == '\n')
+                    return i;
+            }
+            return -1;
         }
-        return -1;
-    }
 
-    private static string TrimBom(string text)
-    {
-        if (!string.IsNullOrEmpty(text) && text[0] == '\uFEFF')
+        private static string TrimBom(string text)
         {
-            return text.Substring(1);
+            if (!string.IsNullOrEmpty(text) && text[0] == '\uFEFF')
+            {
+                return text.Substring(1);
+            }
+            return text;
         }
-        return text;
-    }
 
-    private static (string signature, int length) ComputeSignature(FileStream stream, int previousLength, int maxBytes = 64)
-    {
-        if (stream.Length == 0)
-            return (string.Empty, 0);
+        private static (string signature, int length) ComputeSignature(FileStream stream, int previousLength, int maxBytes = 64)
+        {
+            if (stream.Length == 0)
+                return (string.Empty, 0);
 
-        long original = stream.Position;
-        stream.Seek(0, SeekOrigin.Begin);
-        int toRead = previousLength > 0
-            ? Math.Min(previousLength, (int)Math.Min(stream.Length, maxBytes))
-            : (int)Math.Min(maxBytes, stream.Length);
-        var buffer = new byte[toRead];
-        int read = stream.Read(buffer, 0, toRead);
-        stream.Seek(original, SeekOrigin.Begin);
+            long original = stream.Position;
+            stream.Seek(0, SeekOrigin.Begin);
+            int toRead = previousLength > 0
+                ? Math.Min(previousLength, (int)Math.Min(stream.Length, maxBytes))
+                : (int)Math.Min(maxBytes, stream.Length);
+            var buffer = new byte[toRead];
+            int read = stream.Read(buffer, 0, toRead);
+            stream.Seek(original, SeekOrigin.Begin);
 
-        return read > 0 ? (Convert.ToBase64String(buffer, 0, read), read) : (string.Empty, 0);
-    }
+            return read > 0 ? (Convert.ToBase64String(buffer, 0, read), read) : (string.Empty, 0);
+        }
 
         /// <summary>
         /// Finds the start of the last complete line in buffer.

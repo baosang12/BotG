@@ -8,7 +8,7 @@ namespace Telemetry
 {
     public class TelemetryCollector : IDisposable
     {
-    private readonly string _filePath;
+        private readonly string _filePath;
 
         // rolling counters within window
         private long _ticksReceived;
@@ -60,13 +60,13 @@ namespace Telemetry
                 // ticksPerSec approximate over flush window
                 // If flush interval != 60, column name still ticksPerSec for simplicity
                 double ticksPerSec = ticks / 60.0;
-                
+
                 // EMERGENCY: Capture memory metrics for profiling
                 long memoryMB = GC.GetTotalMemory(false) / (1024 * 1024);
                 int gen0 = GC.CollectionCount(0);
                 int gen1 = GC.CollectionCount(1);
                 int gen2 = GC.CollectionCount(2);
-                
+
                 var line = string.Join(",",
                     ts.ToString("o", CultureInfo.InvariantCulture),
                     ticksPerSec.ToString(CultureInfo.InvariantCulture),

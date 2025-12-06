@@ -37,7 +37,8 @@ namespace Analysis.Wyckoff
         /// <returns>LPSEvent hoặc null nếu không tìm thấy</returns>
         public LPSEvent DetectLPS(IList<Bar> bars, StrengthSignalEvent breakout, SecondaryTestEvent st = null)
         {
-            if (bars == null || breakout == null) {
+            if (bars == null || breakout == null)
+            {
                 _logger?.Invoke($"[LPSDetector] Input bars or breakout is null. bars: {(bars == null ? "null" : bars.Count.ToString())}, breakout: {(breakout == null ? "null" : breakout.Index.ToString())}");
                 return null;
             }

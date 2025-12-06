@@ -3,6 +3,21 @@
     "Enabled": false
   },
   "Mode": "paper",
+  "Preprocessor": {
+    "Enabled": true,
+    "UseForMultiTimeframe": true,
+    "Timeframes": ["M1", "M5", "M15"],
+    "RecentTickCapacity": 4096,
+    "BarHistoryCapacity": 100,
+    "SnapshotDebounceMs": 25,
+    "EnabledIndicators": ["SMA", "RSI", "ATR"],
+    "LogLevel": "Information",
+    "Indicators": [
+      { "Type": "SMA", "Timeframe": "M1", "Period": 14 },
+      { "Type": "RSI", "Timeframe": "M5", "Period": 14 },
+      { "Type": "ATR", "Timeframe": "M15", "Period": 14 }
+    ]
+  },
   "StrategyRegistry": {
     "ConfigPath": "D:\\botg\\strategy_registry.json",
     "HotReloadEnabled": true,

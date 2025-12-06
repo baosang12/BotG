@@ -8,7 +8,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Detects Equal Lows where last two lows are within a small threshold.
     /// </summary>
-public class EqualLowsDetector : ISmartMoneyDetector
+    public class EqualLowsDetector : ISmartMoneyDetector
     {
         public SmartMoneyType Type => SmartMoneyType.EqualLows;
         public bool IsEnabled { get; set; } = true;

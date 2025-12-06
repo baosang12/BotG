@@ -44,7 +44,7 @@ namespace Connectivity.Synthetic
         public void Start()
         {
             if (_heartbeat != null) return;
-            
+
             // JUSTIFICATION: Fire-and-forget Task.Run acceptable here because:
             // 1. SIMULATION MODE ONLY: SyntheticProvider used for testing, not production
             // 2. BACKGROUND HEARTBEAT: Quote generation loop, no trading operations

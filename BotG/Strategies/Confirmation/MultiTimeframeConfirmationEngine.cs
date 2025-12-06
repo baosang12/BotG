@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using BotG.MultiTimeframe;
+using BotG.Runtime.Preprocessor;
 using ModelBar = DataFetcher.Models.Bar;
 using ModelTimeFrame = DataFetcher.Models.TimeFrame;
 using Strategies.Templates;
@@ -77,21 +78,62 @@ namespace Strategies.Confirmation
         private MultiTimeframeSeriesContext BuildSeriesContext(MultiTimeframeEvaluationContext context)
         {
             var snapshot = context.Snapshot;
-            var h4 = BuildSeriesData(snapshot, ModelTimeFrame.H4, _config.VolumeSmaPeriodH1);
-            var h1 = BuildSeriesData(snapshot, ModelTimeFrame.H1, _config.VolumeSmaPeriodH1);
-            var m15 = BuildSeriesData(snapshot, ModelTimeFrame.M15, _config.VolumeSmaPeriodM15);
+            var h4 = BuildSeriesData(context, snapshot, ModelTimeFrame.H4, _config.VolumeSmaPeriodH1);
+            var h1 = BuildSeriesData(context, snapshot, ModelTimeFrame.H1, _config.VolumeSmaPeriodH1);
+            var m15 = BuildSeriesData(context, snapshot, ModelTimeFrame.M15, _config.VolumeSmaPeriodM15);
             return new MultiTimeframeSeriesContext(h4, h1, m15);
         }
 
-        private TimeframeSeriesData BuildSeriesData(TimeframeSnapshot snapshot, ModelTimeFrame timeframe, int volumePeriod)
+        private TimeframeSeriesData BuildSeriesData(
+            MultiTimeframeEvaluationContext context,
+            TimeframeSnapshot snapshot,
+            ModelTimeFrame timeframe,
+            int volumePeriod)
         {
             var bars = snapshot.GetBars(timeframe) ?? Array.Empty<ModelBar>();
             var data = new TimeframeSeriesData(timeframe, bars);
-            data.VolumeSma = CalculateSma(bars, volumePeriod, b => Math.Max(1.0, b.Volume));
-            data.Atr = CalculateAtr(bars, _config.MomentumAtrPeriod);
-            data.Rsi = CalculateRsi(bars, _config.MomentumRsiPeriod) ?? double.NaN;
+            data.VolumeSma = TryGetIndicator(context, PreprocessorIndicatorNames.Sma(timeframe, volumePeriod))
+                ?? CalculateSma(bars, volumePeriod, b => Math.Max(1.0, b.Volume));
+            data.Atr = TryGetIndicator(context, PreprocessorIndicatorNames.Atr(timeframe, _config.MomentumAtrPeriod))
+                ?? CalculateAtr(bars, _config.MomentumAtrPeriod);
+            data.Rsi = TryGetIndicator(context, PreprocessorIndicatorNames.Rsi(timeframe, _config.MomentumRsiPeriod))
+                ?? (CalculateRsi(bars, _config.MomentumRsiPeriod) ?? double.NaN);
             data.PriceSlope = CalculatePriceSlope(bars, _config.MomentumLookbackBars);
             return data;
+        }
+
+        private double? TryGetIndicator(MultiTimeframeEvaluationContext context, string indicatorName)
+        {
+            if (string.IsNullOrWhiteSpace(indicatorName))
+            {
+                return null;
+            }
+
+            var bridge = context.PreprocessorBridge;
+            if (bridge == null)
+            {
+                return null;
+            }
+
+            var snapshotTime = bridge.LatestSnapshotTime;
+            if (!snapshotTime.HasValue)
+            {
+                return null;
+            }
+
+            var age = context.MarketData.TimestampUtc - snapshotTime.Value;
+            if (age < TimeSpan.Zero || age > TimeSpan.FromSeconds(2))
+            {
+                return null;
+            }
+
+            var value = bridge.GetIndicator(indicatorName);
+            if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+            {
+                return null;
+            }
+
+            return value.Value;
         }
 
         private double CheckTrendAlignment(MultiTimeframeSeriesContext series, IDictionary<string, string> details)
@@ -492,7 +534,7 @@ namespace Strategies.Confirmation
                 return 0.0;
             }
 
-            double atr = 0; 
+            double atr = 0;
             var start = bars.Count - period - 1;
             for (int i = start + 1; i < bars.Count; i++)
             {

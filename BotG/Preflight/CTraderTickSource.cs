@@ -17,7 +17,7 @@ namespace BotG.Preflight
         public void OnTick(DateTime serverTime)
         {
             _lastTickUtc = serverTime;
-            
+
             // Signal waiting task
             _tickEvent.Set();
         }

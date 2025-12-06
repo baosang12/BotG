@@ -231,7 +231,8 @@ namespace BotG.Tests.Strategies
                 marketData,
                 snapshot,
                 alignment,
-                TradingSession.Overlap);
+                TradingSession.Overlap,
+                null);
         }
     }
 }

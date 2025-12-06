@@ -1,5 +1,6 @@
 using BotG.MarketRegime;
 using BotG.MultiTimeframe;
+using BotG.Runtime.Preprocessor;
 
 namespace Strategies.Registry
 {
@@ -16,17 +17,20 @@ namespace Strategies.Registry
             TimeframeManager? timeframeManager,
             TimeframeSynchronizer? timeframeSynchronizer,
             SessionAwareAnalyzer? sessionAnalyzer,
-            MarketRegimeDetector? regimeDetector)
+            MarketRegimeDetector? regimeDetector,
+            IPreprocessorStrategyDataBridge? preprocessorBridge)
         {
             TimeframeManager = timeframeManager;
             TimeframeSynchronizer = timeframeSynchronizer;
             SessionAnalyzer = sessionAnalyzer;
             RegimeDetector = regimeDetector;
+            PreprocessorBridge = preprocessorBridge;
         }
 
         public TimeframeManager? TimeframeManager { get; }
         public TimeframeSynchronizer? TimeframeSynchronizer { get; }
         public SessionAwareAnalyzer? SessionAnalyzer { get; }
         public MarketRegimeDetector? RegimeDetector { get; }
+        public IPreprocessorStrategyDataBridge? PreprocessorBridge { get; }
     }
 }

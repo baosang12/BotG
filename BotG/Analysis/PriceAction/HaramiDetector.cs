@@ -4,7 +4,7 @@ using DataFetcher.Models;
 
 namespace Analysis.PriceAction
 {
-public class HaramiDetector : ICandlePatternDetector
+    public class HaramiDetector : ICandlePatternDetector
     {
         public CandlePattern Pattern => CandlePattern.HaramiBullish;
         public bool IsEnabled { get; set; } = true;

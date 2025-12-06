@@ -4,7 +4,7 @@ using DataFetcher.Models;
 using Bot3.Core;
 namespace Analysis.PriceAction
 {
-public class MorningStarDetector : ICandlePatternDetector, IModule
+    public class MorningStarDetector : ICandlePatternDetector, IModule
     {
         public CandlePattern Pattern => CandlePattern.MorningStar;
         public bool IsEnabled { get; set; } = true;

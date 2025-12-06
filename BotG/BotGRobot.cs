@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using AnalysisModule.Preprocessor.Core;
+using AnalysisModule.Preprocessor.TrendAnalysis;
 using cAlgo.API;
 using MarketSeries = cAlgo.API.Internals.MarketSeries;
 using Telemetry;
@@ -23,6 +25,7 @@ using BotG.MarketRegime;
 using BotG.Strategies.Coordination;
 using BotG.Config;
 using BotG.Runtime.Logging;
+using BotG.Runtime.TrendAnalysis;
 using BotG.MultiTimeframe;
 using BotG.Performance;
 using BotG.Performance.Monitoring;
@@ -31,6 +34,7 @@ using Strategies.Config;
 using RiskManager = BotG.RiskManager;
 using ModelBar = DataFetcher.Models.Bar;
 using ModelTimeFrame = DataFetcher.Models.TimeFrame;
+using BotG.Runtime.Preprocessor;
 
 [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
 public class BotGRobot : Robot
@@ -75,10 +79,16 @@ public class BotGRobot : Robot
     private const string InstanceLockFileName = "botg_instance.lock";
     private static bool _exceptionSinksRegistered;
     private static readonly object _exceptionSinksLock = new object();
-    
+    private PreprocessorRuntimeManager? _preprocessorRuntime;
+    private PreprocessorSnapshot? _latestPreprocessorSnapshot;
+    private bool _usePreprocessorMultiTimeframe;
+    private PreprocessorTimeframeAdapter? _preprocessorTimeframeAdapter;
+    private IPreprocessorStrategyDataBridge? _preprocessorBridge;
+    private TrendAnalysisService? _trendAnalysisService;
+
     // Preflight live tick tracking
     private readonly CTraderTickSource _tickSource = new CTraderTickSource();
-    
+
     // Thread safety: Serializes all async operations to prevent race conditions
     private readonly ExecutionSerializer _executionSerializer = new ExecutionSerializer();
 
@@ -148,6 +158,38 @@ public class BotGRobot : Robot
         // Load config early
         _config = TelemetryConfig.Load();
         var cfg = _config;
+        _usePreprocessorMultiTimeframe = cfg?.Preprocessor?.UseForMultiTimeframe == true;
+
+        if (cfg?.Preprocessor?.Enabled == true)
+        {
+            _preprocessorRuntime = new PreprocessorRuntimeManager(Print);
+            if (_preprocessorRuntime.TryStart(cfg.Preprocessor))
+            {
+                _preprocessorRuntime.SnapshotGenerated += OnPreprocessorSnapshot;
+                EnsurePreprocessorBridge();
+                TryStartTrendAnalysisService();
+            }
+            else
+            {
+                PipelineLogger.Log(
+                    "PREPROCESSOR",
+                    "Unavailable",
+                    "Analysis preprocessor disabled due to startup failure",
+                    null,
+                    Print);
+                _preprocessorRuntime.Dispose();
+                _preprocessorRuntime = null;
+            }
+        }
+        else
+        {
+            PipelineLogger.Log(
+                "PREPROCESSOR",
+                "Disabled",
+                "Analysis preprocessor disabled via config",
+                new { enabled = cfg?.Preprocessor?.Enabled ?? false },
+                Print);
+        }
 
         try
         {
@@ -175,7 +217,7 @@ public class BotGRobot : Robot
                 Print);
         }
 
-    // CRITICAL SAFETY: Validate trading gate BEFORE any execution
+        // CRITICAL SAFETY: Validate trading gate BEFORE any execution
         TradingGateValidator.ValidateOrThrow(cfg);
         bool isPaper = cfg.Mode.Equals("paper", StringComparison.OrdinalIgnoreCase);
         bool simEnabled = cfg.UseSimulation || (cfg.Simulation != null && cfg.Simulation.Enabled);
@@ -192,7 +234,7 @@ public class BotGRobot : Robot
             BotG.Runtime.Logging.PipelineLogger.Log("TRADING_HOURS", "GateDisabled", "Trading hours guard disabled", new { cfg.Mode }, Print);
         }
 
-    RegisterGlobalExceptionSinks(cfg);
+        RegisterGlobalExceptionSinks(cfg);
 
         // Ensure preflight directory exists
         var preflightDir = Path.Combine(cfg.LogPath, "preflight");
@@ -206,6 +248,7 @@ public class BotGRobot : Robot
                 PositionSizeMultiplier = 0.5
             };
             _riskManager.Initialize(riskSettings);
+            _riskManager.AttachPreprocessorBridge(_preprocessorBridge);
             try { _riskManager.SetSymbolReference(this.Symbol); } catch { }
             BotG.Runtime.Logging.PipelineLogger.Log("RISK", "Ready", "RiskManager initialized", null, Print);
         }
@@ -223,7 +266,7 @@ public class BotGRobot : Robot
             File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] A8_DEBUG: RiskPersister is {(TelemetryContext.RiskPersister == null ? "NULL" : "NOT NULL")}\n");
         }
         catch { }
-        
+
         Print("[A8_DEBUG] TelemetryContext.RiskPersister is " + (TelemetryContext.RiskPersister == null ? "NULL" : "NOT NULL"));
         if (TelemetryContext.RiskPersister != null)
         {
@@ -291,7 +334,7 @@ public class BotGRobot : Robot
                 heartbeatSec = hb;
             }
 
-            _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, TelemetryContext.PositionPersister, heartbeatSec, riskCfg);
+            _riskHeartbeat = new BotG.Runtime.RiskHeartbeatService(this, TelemetryContext.RiskPersister, TelemetryContext.PositionPersister, heartbeatSec, riskCfg, _preprocessorBridge);
             _riskHeartbeatTimer = new MainThreadTimer(this, () =>
             {
                 try
@@ -397,7 +440,7 @@ public class BotGRobot : Robot
                 ["ops_enable_trading"] = cfg.Ops.EnableTrading
             }, Print);
             Print("[GATE] trading_enabled={0} policy=ops_only; ops_enable_trading={1}", tradingEnabled, cfg.Ops.EnableTrading);
-            
+
             Print("[ECHO+] TradingEnabled={0}", tradingEnabled);
             Print("[ECHO+] ExecutorReady={0}; EventsAttached={1}", executorReady, eventsAttached);
 
@@ -489,7 +532,7 @@ public class BotGRobot : Robot
                     }, Print);
 
                 Print("[DEBUG] About to initialize PositionManager...");
-                
+
                 // Initialize PositionManager with compound exit strategy (SL/TP + Time-based)
                 try
                 {
@@ -578,7 +621,7 @@ public class BotGRobot : Robot
             var json = JsonSerializer.Serialize(wireproof, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(wireproofPath, json, _utf8NoBom);
 
-            Print("[ECHO+] ExecutorReady trading_enabled={0} ops_enable_trading={1} executor={2}", 
+            Print("[ECHO+] ExecutorReady trading_enabled={0} ops_enable_trading={1} executor={2}",
                 tradingEnabled, tradingEnabled, executorType);
         }
         catch (Exception ex)
@@ -589,7 +632,7 @@ public class BotGRobot : Robot
         // ========== STARTUP ECHO ==========
         var echo = ComposeStartupEcho();
         Print("[ECHO] BuildStamp={0} ConfigSource={1} Mode={2} Simulation.Enabled={3} Env={4}",
-            echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled, 
+            echo.BuildStamp, echo.ConfigSource, echo.ResolvedMode, echo.ResolvedSimulationEnabled,
             JsonSerializer.Serialize(echo.Env));
         Print("[ECHO+] Policy=ops_only | RiskStops=ENABLED | ExecutorReady={0} | ops.enable_trading={1} | smoke_once={2}",
             _connector?.OrderExecutor != null, cfg.Ops.EnableTrading, cfg.Debug.SmokeOnce);
@@ -603,7 +646,7 @@ public class BotGRobot : Robot
             // TODO: Capture Server.Time on main thread before passing to PreflightLiveFreshness
             Print("[A47_EMERGENCY] Preflight async check DISABLED - Server.Time threading violation");
             _preflightPassed = true; // Set to true to allow bot to continue
-            
+
             /*
             Print("[PREFLIGHT] Starting async live freshness check (paper mode, simulation disabled)...");
             
@@ -658,15 +701,15 @@ public class BotGRobot : Robot
         {
             Print("[PREFLIGHT] Skipped (mode={0}, sim={1})", cfg.Mode, simEnabled);
             _preflightPassed = true; // allow trading
-        var bootData = new Dictionary<string, object>
-        {
-            ["executor_ready"] = _connector?.OrderExecutor != null,
-            ["ops_enable_trading"] = cfg.Ops.EnableTrading,
-            ["debug_smoke_once"] = cfg.Debug.SmokeOnce,
-            ["mode"] = cfg.Mode ?? "",
-            ["simulation_enabled"] = simEnabled
-        };
-        BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Complete", "OnStart complete, AutoStart ready", bootData, Print);
+            var bootData = new Dictionary<string, object>
+            {
+                ["executor_ready"] = _connector?.OrderExecutor != null,
+                ["ops_enable_trading"] = cfg.Ops.EnableTrading,
+                ["debug_smoke_once"] = cfg.Debug.SmokeOnce,
+                ["mode"] = cfg.Mode ?? "",
+                ["simulation_enabled"] = simEnabled
+            };
+            BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Complete", "OnStart complete, AutoStart ready", bootData, Print);
 
         }
 
@@ -694,24 +737,24 @@ public class BotGRobot : Robot
                 AntiRepaintGuard = TimeSpan.FromSeconds(30)
             };
 
-                    var synchronizerConfig = new TimeframeSynchronizerConfig
-                    {
-                        MinimumAlignedTimeframes = 2,
-                        MinimumBarsPerTimeframe = 1,
-                        MaximumAllowedSkew = TimeSpan.FromHours(4),
-                        AntiRepaintGuard = TimeSpan.FromMinutes(5),
-                        WarmupBarsRequired = 12,
-                        WarmupBarsPerTimeframe = new Dictionary<ModelTimeFrame, int>
-                        {
-                            [ModelTimeFrame.H4] = 8,
-                            [ModelTimeFrame.H1] = 20,
-                            [ModelTimeFrame.M15] = 48
-                        },
-                        RequiredAlignmentRatio = 0.67,
-                        EnableAntiRepaint = true,
-                        EnableSkewCheck = true,
-                        IgnoreSkewDuringWarmup = true
-                    };
+            var synchronizerConfig = new TimeframeSynchronizerConfig
+            {
+                MinimumAlignedTimeframes = 2,
+                MinimumBarsPerTimeframe = 1,
+                MaximumAllowedSkew = TimeSpan.FromHours(4),
+                AntiRepaintGuard = TimeSpan.FromMinutes(1),
+                WarmupBarsRequired = 12,
+                WarmupBarsPerTimeframe = new Dictionary<ModelTimeFrame, int>
+                {
+                    [ModelTimeFrame.H4] = 8,
+                    [ModelTimeFrame.H1] = 20,
+                    [ModelTimeFrame.M15] = 48
+                },
+                RequiredAlignmentRatio = 0.67,
+                EnableAntiRepaint = true,
+                EnableSkewCheck = true,
+                IgnoreSkewDuringWarmup = true
+            };
 
             _timeframeManager = new TimeframeManager(config);
             _timeframeSynchronizer = new TimeframeSynchronizer(synchronizerConfig);
@@ -720,7 +763,16 @@ public class BotGRobot : Robot
             _multiTimeframeBenchmark = new MultiTimeframeBenchmark(Symbol.Name, 50.0, BenchmarkLogIntervalTicks);
 
             var bootstrapTimestamp = DateTime.UtcNow;
-            _lastSnapshot = TimeframeSnapshot.Empty(Symbol.Name, bootstrapTimestamp, config.Timeframes);
+            if (_usePreprocessorMultiTimeframe)
+            {
+                InitializePreprocessorAdapter(Symbol.Name, bootstrapTimestamp);
+            }
+            else
+            {
+                _preprocessorBridge = null;
+                BackfillTimeframeSeries(Symbol.Name, bootstrapTimestamp);
+            }
+            _lastSnapshot = _timeframeManager.CaptureSnapshot(Symbol.Name, bootstrapTimestamp);
             _lastAlignment = _timeframeSynchronizer.GetAlignmentResult(_lastSnapshot);
             _lastSession = _sessionAnalyzer.GetCurrentSession(bootstrapTimestamp);
             _lastSessionMultiplier = _sessionAnalyzer.GetPositionSizeMultiplier(_lastSession);
@@ -878,7 +930,8 @@ public class BotGRobot : Robot
             _timeframeManager,
             _timeframeSynchronizer,
             _sessionAnalyzer,
-            _regimeDetector);
+            _regimeDetector,
+            _preprocessorBridge);
     }
 
     private string ResolveStrategyRegistryPath(TelemetryConfig cfg)
@@ -1085,7 +1138,12 @@ public class BotGRobot : Robot
         if (_timeframeManager != null && _timeframeSynchronizer != null && _sessionAnalyzer != null)
         {
             var breakoutConfig = new BreakoutStrategyConfig();
-            list.Add(new BreakoutStrategy(_timeframeManager, _timeframeSynchronizer, _sessionAnalyzer, breakoutConfig));
+            list.Add(new BreakoutStrategy(
+                _timeframeManager,
+                _timeframeSynchronizer,
+                _sessionAnalyzer,
+                breakoutConfig,
+                preprocessorBridge: _preprocessorBridge));
         }
 
         return list;
@@ -1105,9 +1163,16 @@ public class BotGRobot : Robot
 
         var symbol = Symbol.Name;
 
-        foreach (var pair in MultiTimeframePairs)
+        if (_usePreprocessorMultiTimeframe && _preprocessorTimeframeAdapter != null)
         {
-            IngestTimeframeSeries(symbol, pair, serverTimeUtc);
+            _preprocessorTimeframeAdapter.FlushPending(symbol, serverTimeUtc);
+        }
+        else
+        {
+            foreach (var pair in MultiTimeframePairs)
+            {
+                IngestTimeframeSeries(symbol, pair, serverTimeUtc);
+            }
         }
 
         var snapshot = _timeframeManager.CaptureSnapshot(symbol, serverTimeUtc);
@@ -1219,10 +1284,9 @@ public class BotGRobot : Robot
 
         var lastClosedIndex = count - 2;
         _lastIngestedOpenTimes.TryGetValue(pair.Model, out var lastRecordedOpenTime);
-        var maxCatchUp = Math.Min(lastClosedIndex + 1, 16);
         var pending = new Stack<ModelBar>();
 
-        for (int index = lastClosedIndex; index >= 0 && pending.Count < maxCatchUp; index--)
+        for (int index = lastClosedIndex; index >= 0; index--)
         {
             var openTime = series.OpenTime[index];
             if (openTime <= lastRecordedOpenTime)
@@ -1244,6 +1308,230 @@ public class BotGRobot : Robot
             {
                 break;
             }
+        }
+    }
+
+    private void BackfillTimeframeSeries(string symbol, DateTime serverTimeUtc)
+    {
+        if (_timeframeManager == null || _timeframeSynchronizerConfig == null)
+        {
+            return;
+        }
+
+        if (Symbol == null)
+        {
+            return;
+        }
+
+        var warmupDefaults = _timeframeSynchronizerConfig.WarmupBarsPerTimeframe;
+        var fallbackWarmup = _timeframeSynchronizerConfig.WarmupBarsRequired;
+        var logData = new List<object>();
+
+        foreach (var pair in MultiTimeframePairs)
+        {
+            var warmupTarget = 0;
+            if (warmupDefaults != null && warmupDefaults.TryGetValue(pair.Model, out var specific) && specific > 0)
+            {
+                warmupTarget = specific;
+            }
+            else if (fallbackWarmup > 0)
+            {
+                warmupTarget = fallbackWarmup;
+            }
+
+            if (warmupTarget <= 0)
+            {
+                continue;
+            }
+
+            MarketSeries series;
+            try
+            {
+                series = MarketData.GetSeries(Symbol, pair.CTrader);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (series == null)
+            {
+                continue;
+            }
+
+            var count = series.Close.Count;
+            if (count < 2)
+            {
+                continue;
+            }
+
+            var lastClosedIndex = count - 2;
+            var pending = new Stack<ModelBar>();
+
+            for (int index = lastClosedIndex; index >= 0 && pending.Count < warmupTarget; index--)
+            {
+                pending.Push(ConvertToBar(series, index, pair));
+            }
+
+            var added = 0;
+            while (pending.Count > 0)
+            {
+                var bar = pending.Pop();
+                if (_timeframeManager.TryAddBar(symbol, bar, serverTimeUtc, isClosedBar: true))
+                {
+                    _lastIngestedOpenTimes[pair.Model] = bar.OpenTime;
+                    added++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (added > 0)
+            {
+                logData.Add(new
+                {
+                    timeframe = pair.Model.ToString(),
+                    bars_added = added,
+                    warmup_target = warmupTarget
+                });
+            }
+        }
+
+        if (logData.Count > 0)
+        {
+            PipelineLogger.Log(
+                "MTF",
+                "Backfill",
+                "Initial timeframe backfill completed",
+                new { batches = logData },
+                Print);
+        }
+    }
+
+    private void InitializePreprocessorAdapter(string symbol, DateTime serverTimeUtc)
+    {
+        if (_timeframeManager == null)
+        {
+            return;
+        }
+
+        if (_preprocessorRuntime == null)
+        {
+            PipelineLogger.Log(
+                "PREPROCESSOR",
+                "AdapterUnavailable",
+                "Requested multi-timeframe adapter but preprocessor runtime is missing",
+                null,
+                Print);
+            _preprocessorBridge = null;
+            BackfillTimeframeSeries(symbol, serverTimeUtc);
+            return;
+        }
+
+        _preprocessorTimeframeAdapter?.Dispose();
+        _preprocessorTimeframeAdapter = new PreprocessorTimeframeAdapter(
+            _timeframeManager,
+            MultiTimeframePairs.Select(p => p.Model));
+        EnsurePreprocessorBridge();
+
+        try
+        {
+            var history = _preprocessorRuntime.GetBarHistorySnapshot();
+            if (history.Count > 0)
+            {
+                _preprocessorTimeframeAdapter.SeedHistory(history);
+                _preprocessorTimeframeAdapter.FlushPending(symbol, serverTimeUtc);
+            }
+
+            PipelineLogger.Log(
+                "PREPROCESSOR",
+                "AdapterReady",
+                "Preprocessor timeframe adapter initialized",
+                new
+                {
+                    symbol,
+                    timeframes = string.Join(",", MultiTimeframePairs.Select(p => p.Model))
+                },
+                Print);
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log(
+                "PREPROCESSOR",
+                "AdapterInitError",
+                "Failed to prime timeframe adapter from preprocessor history",
+                new { error = ex.Message },
+                Print);
+        }
+    }
+
+    private void EnsurePreprocessorBridge()
+    {
+        if (_preprocessorBridge != null)
+        {
+            return;
+        }
+
+        _preprocessorBridge = new PreprocessorStrategyDataBridge(
+            () => _latestPreprocessorSnapshot,
+            () => _preprocessorTimeframeAdapter,
+            logger: null,
+            isTrendAnalysisEnabled: TrendAnalysisFeatureEnabled);
+
+        _riskManager?.AttachPreprocessorBridge(_preprocessorBridge);
+        _riskHeartbeat?.AttachPreprocessorBridge(_preprocessorBridge);
+    }
+
+    private bool TrendAnalysisFeatureEnabled()
+    {
+        var disableFlag = Environment.GetEnvironmentVariable("BOTG_DISABLE_TREND_ANALYSIS");
+        if (IsTruthyEnvFlag(disableFlag))
+        {
+            return false;
+        }
+
+        var enableFlag = Environment.GetEnvironmentVariable("BOTG_ENABLE_TREND_ANALYSIS");
+        if (!string.IsNullOrWhiteSpace(enableFlag))
+        {
+            return IsTruthyEnvFlag(enableFlag);
+        }
+
+        return true;
+    }
+
+    private void TryStartTrendAnalysisService()
+    {
+        if (_trendAnalysisService != null)
+        {
+            return;
+        }
+
+        if (!TrendAnalysisFeatureEnabled())
+        {
+            PipelineLogger.Log("TREND", "Disabled", "TrendAnalysisService bị tắt qua flag", null, Print);
+            return;
+        }
+
+        if (_preprocessorBridge is not ITrendAnalysisBridge trendBridge)
+        {
+            PipelineLogger.Log("TREND", "BridgeMissing", "TrendAnalysisService bỏ qua vì thiếu bridge", null, Print);
+            return;
+        }
+
+        try
+        {
+            var configPath = TrendAnalysisService.ResolveConfigPath(null);
+            var service = new TrendAnalysisService(trendBridge, configPath, Print);
+            if (service.Start())
+            {
+                _trendAnalysisService = service;
+            }
+        }
+        catch (Exception ex)
+        {
+            PipelineLogger.Log("TREND", "InitFailed", "TrendAnalysisService khởi động thất bại", new { error = ex.Message }, Print);
         }
     }
 
@@ -1352,7 +1640,8 @@ public class BotGRobot : Robot
                 marketData,
                 _lastSnapshot,
                 _lastAlignment,
-                _lastSession);
+                _lastSession,
+                _preprocessorBridge);
         }
 
         var context = new MarketContext(marketData, equity, exposure, drawdown, _currentRegime, regimeAnalysis, metrics, metadata)
@@ -1433,15 +1722,64 @@ public class BotGRobot : Robot
         }
     }
 
+    private void OnPreprocessorSnapshot(object? sender, PreprocessorSnapshot snapshot)
+    {
+        _latestPreprocessorSnapshot = snapshot;
+        if (_riskManager != null && snapshot?.Account != null)
+        {
+            try
+            {
+                var info = new DataFetcher.Models.AccountInfo
+                {
+                    Equity = snapshot.Account.Equity,
+                    Balance = snapshot.Account.Balance,
+                    Margin = snapshot.Account.Margin,
+                    Positions = snapshot.Account.OpenPositions
+                };
+                _riskManager.UpdateAccountInfo(info);
+            }
+            catch
+            {
+                // Snapshot propagation best-effort; ignore conversion issues.
+            }
+        }
+
+        if (_usePreprocessorMultiTimeframe)
+        {
+            try
+            {
+                _preprocessorTimeframeAdapter?.HandleSnapshot(snapshot);
+            }
+            catch (Exception ex)
+            {
+                PipelineLogger.Log("PREPROCESSOR", "AdapterError", "Failed to buffer snapshot for timeframe adapter", new { error = ex.Message }, Print);
+            }
+        }
+
+        _trendAnalysisService?.ProcessSnapshot(snapshot);
+    }
+
     private void SafeOnTick()
     {
         // Track tick for preflight live freshness
         _tickSource.OnTick(Server.Time);
-        
+
         try { _connector?.TickPump?.Pump(); } catch { }
         try { TelemetryContext.Collector?.IncTick(); } catch { }
 
         var serverTimeUtc = GetServerTimeUtc();
+
+        var preprocessorSymbol = Symbol;
+        if (preprocessorSymbol != null)
+        {
+            var preprocessorBid = preprocessorSymbol.Bid;
+            var preprocessorAsk = preprocessorSymbol.Ask;
+            if (preprocessorBid > 0 && preprocessorAsk > 0)
+            {
+                _preprocessorRuntime?.PublishTick(serverTimeUtc, preprocessorBid, preprocessorAsk);
+            }
+        }
+
         var mtfSw = Stopwatch.StartNew();
         var mtfState = UpdateMultiTimeframeState(serverTimeUtc);
         mtfSw.Stop();
@@ -1542,7 +1880,7 @@ public class BotGRobot : Robot
             {
                 // 1. Sync cTrader positions → PositionManager (detect new positions)
                 SyncPositionsWithManager();
-                
+
                 // 2. Check exit conditions for all tracked positions
                 double currentBid = Symbol.Bid;
                 double currentAsk = Symbol.Ask;
@@ -1698,7 +2036,7 @@ public class BotGRobot : Robot
             }
             catch { }
         }
-        
+
         // Heartbeat: always tick at start of loop
         _riskHeartbeat?.Tick();
 
@@ -1722,7 +2060,7 @@ public class BotGRobot : Robot
         // Guard: _tradeManager must be initialized
         if (_tradeManager == null) return;
 
-    var cfg = _config ?? TelemetryConfig.Load();
+        var cfg = _config ?? TelemetryConfig.Load();
 
         // CRITICAL SAFETY: Runtime preflight check - validates trading conditions every tick
         // This catches config changes, sentinel files, or stale preflight results during execution
@@ -1795,7 +2133,7 @@ public class BotGRobot : Robot
                 _requestedUnitsLast = units;
 
                 // Evidence log in expected format
-                try { Print("[SMOKE_ONCE] firing symbol={0} units={1}", symbol.Name, units); } catch {}
+                try { Print("[SMOKE_ONCE] firing symbol={0} units={1}", symbol.Name, units); } catch { }
 
                 // ORDER pipeline logging: PREPARED
                 BotG.Runtime.Logging.PipelineLogger.Log("ORDER", "PREPARED", "units_ready", new System.Collections.Generic.Dictionary<string, object>
@@ -1866,7 +2204,7 @@ public class BotGRobot : Robot
                 try
                 {
                     executor.SendAsync(newOrder).GetAwaiter().GetResult();
-                    try { Print("[EXECUTOR] request sent tag={0} requestId={1}", newOrder.ClientTag ?? "", orderId); } catch {}
+                    try { Print("[EXECUTOR] request sent tag={0} requestId={1}", newOrder.ClientTag ?? "", orderId); } catch { }
                 }
                 catch (Exception ex)
                 {
@@ -2032,7 +2370,7 @@ public class BotGRobot : Robot
                 ["requestedUnitsLast"] = _requestedUnitsLast,
                 ["lastRejectReason"] = _lastRejectReason == null ? null : System.Text.Json.Nodes.JsonValue.Create(_lastRejectReason)
             };
-            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions{WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping}), _utf8NoBom);
+            File.WriteAllText(path, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }), _utf8NoBom);
         }
         catch { }
     }
@@ -2048,11 +2386,11 @@ public class BotGRobot : Robot
         try
         {
             var trackedIds = _positionManager.GetOpenPositions().Select(p => p.Id).ToHashSet();
-            
+
             foreach (var ctraderPos in Positions)
             {
                 string posId = ctraderPos.Id.ToString();
-                
+
                 // Nếu position chưa được track, thêm vào PositionManager
                 if (!trackedIds.Contains(posId))
                 {
@@ -2302,7 +2640,7 @@ public class BotGRobot : Robot
         {
             // 1. Infrastructure checks
             Print("[PREFLIGHT] Running infrastructure checks...");
-            
+
             // Sentinel files
             var sentinelStop = Path.Combine(logPath, "RUN_STOP");
             var sentinelPause = Path.Combine(logPath, "RUN_PAUSE");
@@ -2375,7 +2713,7 @@ public class BotGRobot : Robot
                 result.FailReason = $"FILL test failed: {result.Fill.ErrorMessage}";
                 return result;
             }
-            Print("[PREFLIGHT] FILL test PASSED (latency: {0}ms, slippage: {1} pips)", 
+            Print("[PREFLIGHT] FILL test PASSED (latency: {0}ms, slippage: {1} pips)",
                 result.Fill.LatencyMs, result.Fill.SlippagePips);
 
             // All checks passed
@@ -2453,7 +2791,7 @@ public class BotGRobot : Robot
             using var reader = new Telemetry.CsvTailReader(csvPath);
             var firstLine = await reader.ReadFirstLineAsync();
             var match = string.Equals(firstLine, expectedHeader, StringComparison.Ordinal);
-            
+
             if (!match)
             {
                 Print("[PREFLIGHT] Schema mismatch in {0}", Path.GetFileName(csvPath));
@@ -2480,7 +2818,7 @@ public class BotGRobot : Robot
             var symbol = this.SymbolName ?? "EURUSD";
             var pipSize = this.Symbol?.PipSize ?? 0.0001;
             var minVol = this.Symbol?.VolumeInUnitsMin ?? 1000;
-            
+
             // Get current bid
             var bid = this.Symbol?.Bid ?? 0;
             if (bid <= 0)
@@ -2509,7 +2847,7 @@ public class BotGRobot : Robot
             {
                 result.Ok = true;
                 result.OrderId = tradeResult.Position.Id.ToString();
-                
+
                 // THREAD SAFETY: Use ExecutionSerializer for position close
                 await _executionSerializer.RunAsync(() => ClosePosition(tradeResult.Position));
                 Print("[PREFLIGHT] ACK test order closed");
@@ -2542,9 +2880,9 @@ public class BotGRobot : Robot
             Print("[PREFLIGHT] Placing FILL test: MARKET BUY {0} lots", volume / 100000.0);
 
             var entryPrice = this.Symbol?.Ask ?? 0;
-            
+
             // THREAD SAFETY: Use ExecutionSerializer to prevent concurrent trade operations
-            var tradeResult = await _executionSerializer.RunAsync(() => 
+            var tradeResult = await _executionSerializer.RunAsync(() =>
                 ExecuteMarketOrder(TradeType.Buy, symbol, volume, "PREFLIGHT_FILL")
             );
 
@@ -2556,7 +2894,7 @@ public class BotGRobot : Robot
                 var fillPrice = tradeResult.Position.EntryPrice;
                 var pipSize = this.Symbol?.PipSize ?? 0.0001;
                 result.SlippagePips = Math.Abs(fillPrice - entryPrice) / pipSize;
-                
+
                 // THREAD SAFETY: Use ExecutionSerializer for position close
                 var closeStart = DateTime.UtcNow;
                 await _executionSerializer.RunAsync(() => ClosePosition(tradeResult.Position));
@@ -2851,6 +3189,19 @@ public class BotGRobot : Robot
 
     protected override void OnStop()
     {
+        try { _trendAnalysisService?.Dispose(); } catch { }
+        _trendAnalysisService = null;
+        _preprocessorTimeframeAdapter?.Dispose();
+        _preprocessorTimeframeAdapter = null;
+        _preprocessorBridge = null;
+
+        if (_preprocessorRuntime != null)
+        {
+            try { _preprocessorRuntime.SnapshotGenerated -= OnPreprocessorSnapshot; } catch { }
+            try { _preprocessorRuntime.Dispose(); } catch { }
+            _preprocessorRuntime = null;
+        }
+
         try { _backtestMonitor?.Dispose(); } catch { }
         _backtestMonitor = null;
 
@@ -2873,7 +3224,7 @@ public class BotGRobot : Robot
         try { TelemetryContext.Collector?.FlushOnMainThread(); } catch { }
         AppendDebugLine("TIMER", "Timers stopped via OnStop");
 
-        try { BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Stop", "Bot stopping", null, Print); } catch {}
+        try { BotG.Runtime.Logging.PipelineLogger.Log("BOOT", "Stop", "Bot stopping", null, Print); } catch { }
 
         try
         {
@@ -2960,10 +3311,10 @@ public class BotGRobot : Robot
         // Convert UTC to Vietnam time (UTC+7)
         var localTime = serverTime.AddHours(7);
         int currentHour = localTime.Hour;
-        
+
         // Trading window: 08:00 - 20:00 Vietnam time (excludes overnight sessions)
         bool withinHours = currentHour >= 8 && currentHour < 20;
-        
+
         if (!_enforceTradingHours)
         {
             return true;
@@ -2978,7 +3329,7 @@ public class BotGRobot : Robot
                 _lastTradingHoursLogUtc = serverTime;
             }
         }
-        
+
         return withinHours;
     }
 

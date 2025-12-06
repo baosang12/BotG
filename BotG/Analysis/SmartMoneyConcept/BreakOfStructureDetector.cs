@@ -9,7 +9,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Phát hiện Break of Structure (BOS): phá vỡ mức swing high/low trước đó.
     /// </summary>
-public class BreakOfStructureDetector : ISmartMoneyDetector
+    public class BreakOfStructureDetector : ISmartMoneyDetector
     {
         public SmartMoneyType Type => SmartMoneyType.InternalBreakOfStructure;
         public bool IsEnabled { get; set; } = true;

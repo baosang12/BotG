@@ -23,6 +23,32 @@
       }
     },
     {
+      "name": "TrendPullbackRsi",
+      "type": "Strategies.TrendPullbackRsiStrategy",
+      "enabled": true,
+      "dependencies": [
+        "MultiTimeframe"
+      ],
+      "parameters": {
+        "TrendEmaFast": 50,
+        "TrendEmaSlow": 200,
+        "MinimumTrendSeparationRatio": 0.0008,
+        "TargetTrendSeparationRatio": 0.0016,
+        "AtrPeriod": 14,
+        "AtrStopMultiplier": 1.6,
+        "AtrTakeProfitMultiplier": 3.0,
+        "MinimumAtr": 0.0004,
+        "EntryRsiPeriod": 14,
+        "Oversold": 30,
+        "Overbought": 70,
+        "TriggerReleaseRange": 20,
+        "MinimumAlignmentRatio": 0.55,
+        "MinimumConfidence": 0.5,
+        "ReentryCooldownMinutes": 45,
+        "ExitCooldownMinutes": 20
+      }
+    },
+    {
       "name": "Rsi",
       "type": "Strategies.RsiStrategy",
       "enabled": false
@@ -52,7 +78,7 @@
     {
       "name": "Ema200Breakout",
       "type": "Strategies.Ema200BreakoutStrategy",
-      "enabled": true,
+      "enabled": false,
       "dependencies": [
         "MultiTimeframe"
       ],

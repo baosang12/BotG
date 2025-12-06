@@ -11,12 +11,12 @@ namespace BotG.Runtime.Logging;
 /// </summary>
 public class OrdersWriter
 {
-    private static readonly string[] Header = 
-    { 
-        "timestamp_iso", "action", "symbol", "qty", "price", 
-        "status", "reason", "latency_ms", "price_requested", "price_filled" 
+    private static readonly string[] Header =
+    {
+        "timestamp_iso", "action", "symbol", "qty", "price",
+        "status", "reason", "latency_ms", "price_requested", "price_filled"
     };
-    
+
     private readonly SafeCsvWriter _writer;
 
     public OrdersWriter()

@@ -7,7 +7,7 @@ namespace BotG.Tests
 {
     public class RiskManagerSizingTests
     {
-    // Use cAlgo.API.Symbol shim for tests
+        // Use cAlgo.API.Symbol shim for tests
         [Fact]
         public void CalculateOrderSize_UsesRiskPercentAndMinRisk_WithStopDistAndPointValue()
         {

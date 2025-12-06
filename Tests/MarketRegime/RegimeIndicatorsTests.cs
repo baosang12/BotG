@@ -9,7 +9,7 @@ namespace BotG.Tests.MarketRegime
 {
     public class RegimeIndicatorsTests
     {
-    private static readonly TimeSpan PerformanceBaseline = TimeSpan.FromMilliseconds(20);
+        private static readonly TimeSpan PerformanceBaseline = TimeSpan.FromMilliseconds(20);
 
         [Fact]
         public void CalculateRollingAverageAtr_MatchesNaiveImplementation()

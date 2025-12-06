@@ -9,6 +9,7 @@ using Bar = DataFetcher.Models.Bar;            // Data bar type for IRiskManager
 using Bot3.Core;
 using DataFetcher.Models; // added
 using Telemetry; // added
+using BotG.Runtime.Preprocessor;
 
 namespace BotG.RiskManager
 {
@@ -35,20 +36,21 @@ namespace BotG.RiskManager
 
         private int _snapshotIntervalSeconds = 60;
         private AccountInfo _lastAccountInfo;
-    // testing-only equity override (used by unit tests where cAlgo AccountInfo isn't available)
-    private double? _equityOverride;
-    // optional runtime symbol reference for auto-compute of PointValuePerUnit
-    private object _symbolRef;
+        private IPreprocessorStrategyDataBridge? _preprocessorBridge;
+        // testing-only equity override (used by unit tests where cAlgo AccountInfo isn't available)
+        private double? _equityOverride;
+        // optional runtime symbol reference for auto-compute of PointValuePerUnit
+        private object _symbolRef;
 
         // IModule implementation from Bot3.Core
         void IModule.Initialize(BotContext ctx)
         {
             Initialize(new RiskSettings());
             TelemetryContext.InitOnce();
-            
+
             // KICKOFF: Write immediate snapshot at startup
             PersistSnapshotIfAvailable();
-            
+
             // Read risk-specific flush interval from environment or use default 60s
             int riskFlushSec = 60;
             var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
@@ -56,7 +58,7 @@ namespace BotG.RiskManager
             {
                 riskFlushSec = sec;
             }
-            
+
             _snapshotIntervalSeconds = riskFlushSec;
         }
         void IModule.OnBar(IReadOnlyList<cAlgo.API.Bar> bars)
@@ -66,12 +68,18 @@ namespace BotG.RiskManager
         void IModule.OnTick(cAlgo.API.Tick tick)
         {
             // No-op on tick event for risk manager
-            try { TelemetryContext.Collector?.IncTick(); } catch {}
+            try { TelemetryContext.Collector?.IncTick(); } catch { }
         }
 
         public RiskManager()
         {
             // EMERGENCY A47: timer sẽ được quản lý bởi BotGRobot thông qua MainThreadTimer
+        }
+
+        public void AttachPreprocessorBridge(IPreprocessorStrategyDataBridge? bridge)
+        {
+            _preprocessorBridge = bridge;
+            TryRefreshAccountFromBridge();
         }
 
         public void Initialize(RiskSettings settings)
@@ -125,7 +133,7 @@ namespace BotG.RiskManager
             {
                 riskFlushSec = sec;
             }
-            
+
             _snapshotIntervalSeconds = riskFlushSec;
         }
 
@@ -314,6 +322,27 @@ namespace BotG.RiskManager
             }
         }
 
+        private void TryRefreshAccountFromBridge()
+        {
+            if (_preprocessorBridge == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var info = _preprocessorBridge.GetAccountInfo();
+                if (info != null)
+                {
+                    _lastAccountInfo = info;
+                }
+            }
+            catch
+            {
+                // Snapshot access failures should not block risk sizing; retain last known values.
+            }
+        }
+
         /// <summary>
         /// Expose current immutable settings snapshot for read-only usage (logging).
         /// </summary>
@@ -336,6 +365,7 @@ namespace BotG.RiskManager
         {
             try
             {
+                TryRefreshAccountFromBridge();
                 double equity = 0.0;
                 if (_equityOverride.HasValue) equity = _equityOverride.Value;
                 else if (_lastAccountInfo != null) equity = (double)_lastAccountInfo.Equity;
@@ -383,7 +413,7 @@ namespace BotG.RiskManager
                         // convert to units using symbol LotSize or default
                         double lotSize = GetSymbolLotSizeOrDefault();
                         units = lots * lotSize;
-                        try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot={tickValuePerLotPerPriceUnit:G} lotSize={lotSize:G} lots={lots:G} units={units:G}"); } catch {}
+                        try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot={tickValuePerLotPerPriceUnit:G} lotSize={lotSize:G} lots={lots:G} units={units:G}"); } catch { }
                         return ApplyVolumeConstraints(units);
                     }
                 }
@@ -397,12 +427,12 @@ namespace BotG.RiskManager
                     if (_settings != null && _settings.PointValuePerUnit > 0)
                     {
                         effectivePointValue = _settings.PointValuePerUnit;
-                        try { Console.WriteLine("[RiskManager] Using PointValuePerUnit from settings: " + effectivePointValue.ToString("G")); } catch {}
+                        try { Console.WriteLine("[RiskManager] Using PointValuePerUnit from settings: " + effectivePointValue.ToString("G")); } catch { }
                     }
                     else
                     {
                         effectivePointValue = 1.0;
-                        try { Console.WriteLine("[RiskManager] Using fallback PointValuePerUnit=1.0; configure Risk.PointValuePerUnit to correct broker value"); } catch {}
+                        try { Console.WriteLine("[RiskManager] Using fallback PointValuePerUnit=1.0; configure Risk.PointValuePerUnit to correct broker value"); } catch { }
                     }
                 }
                 double riskPerUnit = Math.Max(1e-8, stopDistancePriceUnits * effectivePointValue);
@@ -410,7 +440,7 @@ namespace BotG.RiskManager
                 double capUnits = 1_000_000; // safe cap for units in fallback mode
                 if (units > capUnits) units = capUnits;
                 units = ApplyVolumeConstraints(units);
-                try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot=0 lots=0 units={units:G}"); } catch {}
+                try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot=0 lots=0 units={units:G}"); } catch { }
                 return units;
             }
             catch
@@ -632,6 +662,7 @@ namespace BotG.RiskManager
         {
             try
             {
+                TryRefreshAccountFromBridge();
                 var info = _lastAccountInfo;
                 if (info == null)
                 {

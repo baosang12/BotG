@@ -39,7 +39,8 @@ namespace Analysis.Wyckoff
         /// <returns>StrengthSignalEvent hoặc null nếu không tìm thấy</returns>
         public StrengthSignalEvent DetectStrengthSignal(IList<Bar> bars, AREvent ar)
         {
-            if (bars == null || ar == null) {
+            if (bars == null || ar == null)
+            {
                 _logger?.Invoke($"[StrengthSignalDetector] Input bars or ar is null. bars: {(bars == null ? "null" : bars.Count.ToString())}, ar: {(ar == null ? "null" : ar.Index.ToString())}");
                 return null;
             }

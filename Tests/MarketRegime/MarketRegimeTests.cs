@@ -38,7 +38,7 @@ namespace BotG.Tests.MarketRegime
                 MaxSignalsPerSymbol = 2
             };
             var coordinator = new StrategyCoordinator(config);
-            var pipeline = new StrategyPipeline(new List<IStrategy>{ s1, s2 }, tm, new BotG.Threading.ExecutionSerializer(), coordinator);
+            var pipeline = new StrategyPipeline(new List<IStrategy> { s1, s2 }, tm, new BotG.Threading.ExecutionSerializer(), coordinator);
 
             var data = new MarketData("EURUSD", 1.1000, 1.1002, DateTime.UtcNow);
             var analysis = new RegimeAnalysisResult { Regime = RegimeType.Trending, Confidence = 0.9 };
@@ -69,7 +69,7 @@ namespace BotG.Tests.MarketRegime
             public StubStrategy(string name) { _name = name; }
             public string Name => _name;
             public Task<Signal?> EvaluateAsync(MarketData data, CancellationToken ct)
-                => Task.FromResult<Signal?>(new Signal{ StrategyName = _name, Action = TradeAction.Buy, Price = data.Mid, Confidence = 0.5, TimestampUtc = DateTime.UtcNow });
+                => Task.FromResult<Signal?>(new Signal { StrategyName = _name, Action = TradeAction.Buy, Price = data.Mid, Confidence = 0.5, TimestampUtc = DateTime.UtcNow });
             public RiskScore CalculateRisk(MarketContext context)
                 => new RiskScore(5.0, RiskLevel.Normal, true);
         }

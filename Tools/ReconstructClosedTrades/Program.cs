@@ -9,7 +9,7 @@ namespace BotG.Tools
 {
     class Program
     {
-    static int Main(string[] args)
+        static int Main(string[] args)
         {
             if (args.Length < 2)
             {
@@ -137,7 +137,7 @@ namespace BotG.Tools
                     tradeId, s.id, s.id, s.ts.ToString("o"), s.ts.ToString("o"), "SELL-BUY", F(s.size), F(s.price), F(s.price), F(0), "0", "reconstructed-self-pair"));
                 closed++;
             }
-        // Write simple report if requested
+            // Write simple report if requested
             try
             {
                 if (!string.IsNullOrEmpty(report))
@@ -158,10 +158,10 @@ namespace BotG.Tools
             }
             catch { }
             Console.WriteLine($"Reconstructed {closed} closed trades -> {output}");
-        // Exit 0 if no orphans remain by estimate; else 2 as per contract
-        var remain = fills - closed*2;
-        if (fills <= 0) return 0;
-        return (remain <= 0) ? 0 : 2;
+            // Exit 0 if no orphans remain by estimate; else 2 as per contract
+            var remain = fills - closed * 2;
+            if (fills <= 0) return 0;
+            return (remain <= 0) ? 0 : 2;
         }
 
         static string[] SplitCsv(string s)

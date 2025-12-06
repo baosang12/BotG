@@ -13,12 +13,12 @@ namespace BotG.Tests
             // Arrange: Set ENV to override file
             Environment.SetEnvironmentVariable("Simulation__Enabled", "false");
             Environment.SetEnvironmentVariable("Mode", "paper");
-            
+
             try
             {
                 // Act
                 var cfg = TelemetryConfig.Load();
-                
+
                 // Assert: ENV wins over file
                 Assert.False(cfg.UseSimulation);
                 Assert.False(cfg.Simulation.Enabled);
@@ -31,7 +31,7 @@ namespace BotG.Tests
                 Environment.SetEnvironmentVariable("Mode", null);
             }
         }
-        
+
         [Fact]
         public void Default_paper_false()
         {
@@ -39,12 +39,12 @@ namespace BotG.Tests
             Environment.SetEnvironmentVariable("Simulation__Enabled", null);
             Environment.SetEnvironmentVariable("BOTG__Simulation__Enabled", null);
             Environment.SetEnvironmentVariable("Mode", "paper");
-            
+
             try
             {
                 // Act
                 var cfg = TelemetryConfig.Load();
-                
+
                 // Assert: paper mode defaults to sim=false
                 Assert.False(cfg.UseSimulation);
                 Assert.False(cfg.Simulation.Enabled);
@@ -55,7 +55,7 @@ namespace BotG.Tests
                 Environment.SetEnvironmentVariable("Mode", null);
             }
         }
-        
+
         [Fact]
         public void File_only_false()
         {
@@ -63,7 +63,7 @@ namespace BotG.Tests
             Environment.SetEnvironmentVariable("Simulation__Enabled", null);
             Environment.SetEnvironmentVariable("BOTG__Simulation__Enabled", null);
             Environment.SetEnvironmentVariable("Mode", null);
-            
+
             // Create temp config file with sim=false
             var tempConfig = Path.Combine(Path.GetTempPath(), "config.runtime.json");
             File.WriteAllText(tempConfig, @"{
@@ -73,12 +73,12 @@ namespace BotG.Tests
                 },
                 ""UseSimulation"": false
             }");
-            
+
             try
             {
                 // Act: Load with temp directory as hint
                 var cfg = TelemetryConfig.Load(Path.GetTempPath());
-                
+
                 // Assert: File value should be respected (sim=false)
                 Assert.False(cfg.UseSimulation);
                 Assert.False(cfg.Simulation.Enabled);

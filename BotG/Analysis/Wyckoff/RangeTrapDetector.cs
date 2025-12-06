@@ -34,7 +34,8 @@ namespace Analysis.Wyckoff
         /// <returns>true nếu có sweep hai đầu trong range window</returns>
         public bool UpdateAndCheck(SmartMoneySignal signal)
         {
-            if (signal == null || signal.Type != SmartMoneyType.LiquiditySweep) {
+            if (signal == null || signal.Type != SmartMoneyType.LiquiditySweep)
+            {
                 _logger?.Invoke($"[RangeTrapDetector] Input signal is null or not LiquiditySweep. signal: {(signal == null ? "null" : signal.Type.ToString())}");
                 return false;
             }

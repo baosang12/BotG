@@ -18,7 +18,7 @@ namespace Telemetry
         public double UsedMargin { get; set; }
         public DateTime OpenTime { get; set; }
         public long Id { get; set; }
-        
+
         /// <summary>
         /// Create position snapshot from cTrader Position object
         /// </summary>
@@ -51,7 +51,7 @@ namespace Telemetry
                 };
             }
         }
-        
+
         /// <summary>
         /// Format as CSV row: symbol,direction,volume,entry,current,pnl,pips,margin,open_time,id
         /// </summary>
@@ -81,7 +81,7 @@ namespace Telemetry
             return value;
         }
     }
-    
+
     /// <summary>
     /// Portfolio-level aggregations for risk analysis
     /// </summary>
@@ -97,7 +97,7 @@ namespace Telemetry
         public int TotalPositions { get; set; }
         public int LongPositions { get; set; }
         public int ShortPositions { get; set; }
-        
+
         /// <summary>
         /// Calculate portfolio metrics from position snapshots
         /// </summary>
@@ -107,15 +107,15 @@ namespace Telemetry
             {
                 TotalPositions = positions.Length
             };
-            
+
             if (positions.Length == 0)
                 return metrics;
-            
+
             // Calculate exposures
             foreach (var pos in positions)
             {
                 var notional = Math.Abs(pos.Volume * pos.CurrentPrice);
-                
+
                 if (pos.Direction.Contains("Buy") || pos.Direction.Contains("Long"))
                 {
                     metrics.TotalLongExposure += notional;
@@ -126,7 +126,7 @@ namespace Telemetry
                     metrics.TotalShortExposure += notional;
                     metrics.ShortPositions++;
                 }
-                
+
                 // Track largest position
                 if (Math.Abs(pos.UnrealizedPnL) > Math.Abs(metrics.LargestPositionPnL))
                 {
@@ -137,9 +137,9 @@ namespace Telemetry
                     }
                 }
             }
-            
+
             metrics.NetExposure = metrics.TotalLongExposure - metrics.TotalShortExposure;
-            
+
             // Find most exposed symbol
             var symbolGroups = new System.Collections.Generic.Dictionary<string, double>();
             foreach (var pos in positions)
@@ -149,7 +149,7 @@ namespace Telemetry
                     symbolGroups[pos.Symbol] = 0.0;
                 symbolGroups[pos.Symbol] += notional;
             }
-            
+
             foreach (var kvp in symbolGroups)
             {
                 if (kvp.Value > metrics.MostExposedSymbolVolume)
@@ -158,10 +158,10 @@ namespace Telemetry
                     metrics.MostExposedSymbolVolume = kvp.Value;
                 }
             }
-            
+
             return metrics;
         }
-        
+
         /// <summary>
         /// Format as CSV row for appending to risk snapshot
         /// </summary>

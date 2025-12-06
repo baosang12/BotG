@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using BotG.MultiTimeframe;
+using BotG.Runtime.Preprocessor;
+using ModelBar = DataFetcher.Models.Bar;
+using ModelTimeFrame = DataFetcher.Models.TimeFrame;
 using Strategies;
 
 namespace Strategies.Templates
@@ -15,6 +18,8 @@ namespace Strategies.Templates
         private readonly TimeframeManager _timeframeManager;
         private readonly TimeframeSynchronizer _synchronizer;
         private readonly SessionAwareAnalyzer _sessionAnalyzer;
+        private readonly IPreprocessorStrategyDataBridge? _preprocessorBridge;
+        private static readonly TimeSpan DefaultIndicatorFreshness = TimeSpan.FromSeconds(2);
         private readonly int _minimumAlignedTimeframes;
 
         protected MultiTimeframeStrategyBase(
@@ -22,6 +27,7 @@ namespace Strategies.Templates
             TimeframeManager timeframeManager,
             TimeframeSynchronizer synchronizer,
             SessionAwareAnalyzer sessionAnalyzer,
+            IPreprocessorStrategyDataBridge? preprocessorBridge = null,
             int minimumAlignedTimeframes = 2)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -38,6 +44,7 @@ namespace Strategies.Templates
             _timeframeManager = timeframeManager ?? throw new ArgumentNullException(nameof(timeframeManager));
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _sessionAnalyzer = sessionAnalyzer ?? throw new ArgumentNullException(nameof(sessionAnalyzer));
+            _preprocessorBridge = preprocessorBridge;
             _minimumAlignedTimeframes = minimumAlignedTimeframes;
         }
 
@@ -60,7 +67,8 @@ namespace Strategies.Templates
                 data,
                 snapshot,
                 alignment,
-                session);
+                session,
+                _preprocessorBridge);
 
             var signal = await EvaluateMultiTimeframeAsync(evaluationContext, ct).ConfigureAwait(false);
             return signal;
@@ -103,11 +111,70 @@ namespace Strategies.Templates
             CancellationToken ct);
 
         protected double GetSessionMultiplier(TradingSession session) => _sessionAnalyzer.GetPositionSizeMultiplier(session);
+
+        protected double? GetPreprocessorIndicatorValue(
+            MultiTimeframeEvaluationContext context,
+            string indicatorName,
+            TimeSpan? maxStaleness = null)
+        {
+            if (string.IsNullOrWhiteSpace(indicatorName) || context?.PreprocessorBridge == null)
+            {
+                return null;
+            }
+
+            var snapshotTime = context.PreprocessorBridge.LatestSnapshotTime;
+            if (!snapshotTime.HasValue)
+            {
+                return null;
+            }
+
+            var freshnessBudget = maxStaleness ?? DefaultIndicatorFreshness;
+            if (freshnessBudget > TimeSpan.Zero)
+            {
+                var age = context.MarketData.TimestampUtc - snapshotTime.Value;
+                if (age < TimeSpan.Zero || age > freshnessBudget)
+                {
+                    return null;
+                }
+            }
+
+            var value = context.PreprocessorBridge.GetIndicator(indicatorName);
+            if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+            {
+                return null;
+            }
+
+            return value.Value;
+        }
+
+        protected ModelBar? GetPreprocessorBar(
+            MultiTimeframeEvaluationContext context,
+            ModelTimeFrame timeframe,
+            TimeSpan? maxStaleness = null)
+        {
+            if (context?.PreprocessorBridge == null)
+            {
+                return null;
+            }
+
+            var snapshotTime = context.PreprocessorBridge.LatestSnapshotTime;
+            if (maxStaleness.HasValue && snapshotTime.HasValue)
+            {
+                var age = context.MarketData.TimestampUtc - snapshotTime.Value;
+                if (age < TimeSpan.Zero || age > maxStaleness.Value)
+                {
+                    return null;
+                }
+            }
+
+            return context.PreprocessorBridge.GetLatestBar(timeframe);
+        }
     }
 
     public sealed record MultiTimeframeEvaluationContext(
         MarketData MarketData,
         TimeframeSnapshot Snapshot,
         TimeframeAlignmentResult Alignment,
-        TradingSession Session);
+        TradingSession Session,
+        IPreprocessorStrategyDataBridge? PreprocessorBridge);
 }

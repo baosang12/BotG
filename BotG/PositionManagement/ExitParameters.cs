@@ -84,7 +84,7 @@ namespace BotG.PositionManagement
             // SCALPING CONSERVATIVE SETTINGS (Alpha Arena Proven)
             // SL = 15 pips, TP = 30 pips (Risk:Reward = 1:2)
             double pipSize = symbol.Contains("JPY") ? 0.01 : 0.0001;
-            
+
             double stopDistance = 15 * pipSize; // 15 pips SL
             double takeProfitDistance = 30 * pipSize; // 30 pips TP (1:2 RR)
 

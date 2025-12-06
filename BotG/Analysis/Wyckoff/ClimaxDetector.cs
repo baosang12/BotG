@@ -28,7 +28,7 @@ namespace Analysis.Wyckoff
         public Bar Bar { get; set; }
         public double Score { get; set; } // Đánh giá mức độ mạnh/yếu
         public SwingType Swing { get; set; } // Phân biệt swing high/low
-    public bool IsCluster { get; set; } // Climax hình thành từ cụm (cluster) hay đơn lẻ
+        public bool IsCluster { get; set; } // Climax hình thành từ cụm (cluster) hay đơn lẻ
     }
 
     public class ClimaxDetector
@@ -41,21 +41,21 @@ namespace Analysis.Wyckoff
         // Number of bars to cluster for climax detection (e.g., 6-7 for H1 timeframe)
         public int ClusterWindowSize { get; set; } = 6;
         // Minimum aggregated score for cluster to qualify as Selling Climax
-    public double SellingClimaxClusterMinScore { get; set; } = 3; // raised to reduce weak clusters
+        public double SellingClimaxClusterMinScore { get; set; } = 3; // raised to reduce weak clusters
         // Enable cluster-based detection for Selling Climax
         public bool UseCluster { get; set; } = true;
 
-    // --- New consecutive bearish cluster SC mode (2-4 red bars then green AR) ---
-    public bool UseConsecutiveBearScMode { get; set; } = true; // bật logic mới
-    public int ScClusterMinBars { get; set; } = 2; // tối thiểu 2 nến đỏ
-    public int ScClusterMaxBars { get; set; } = 4; // tối đa 4 nến đỏ liên tiếp
-    public double ScClusterVolSpike { get; set; } = 1.3; // tổng vol / avgVol >= 1.3
-    public double ScClusterRangeSpike { get; set; } = 1.2; // avg range hoặc max range / avgLocalRange >= 1.2
-    public double ScClusterBodyMin { get; set; } = 0.5; // ít nhất 1 nến bodyRatio >= 50%
-    public double ArBodyMin { get; set; } = 0.5; // nến xanh AR body >=50% range
-    public int ArMaxWaitBars { get; set; } = 0; // 0 = chỉ chấp nhận nến xanh ngay sau cụm
-    public bool ScRequireSwing { get; set; } = false; // tùy chọn yêu cầu trùng swing low
-    public bool LogNewScMode { get; set; } = true; // bật log chi tiết
+        // --- New consecutive bearish cluster SC mode (2-4 red bars then green AR) ---
+        public bool UseConsecutiveBearScMode { get; set; } = true; // bật logic mới
+        public int ScClusterMinBars { get; set; } = 2; // tối thiểu 2 nến đỏ
+        public int ScClusterMaxBars { get; set; } = 4; // tối đa 4 nến đỏ liên tiếp
+        public double ScClusterVolSpike { get; set; } = 1.3; // tổng vol / avgVol >= 1.3
+        public double ScClusterRangeSpike { get; set; } = 1.2; // avg range hoặc max range / avgLocalRange >= 1.2
+        public double ScClusterBodyMin { get; set; } = 0.5; // ít nhất 1 nến bodyRatio >= 50%
+        public double ArBodyMin { get; set; } = 0.5; // nến xanh AR body >=50% range
+        public int ArMaxWaitBars { get; set; } = 0; // 0 = chỉ chấp nhận nến xanh ngay sau cụm
+        public bool ScRequireSwing { get; set; } = false; // tùy chọn yêu cầu trùng swing low
+        public bool LogNewScMode { get; set; } = true; // bật log chi tiết
 
         private readonly Action<string> _logger;
         public ClimaxDetector(int lookback = 20, double volumeSpikeMultiplier = 1.5, double atrMultiplier = 1.2, double marubozuBodyRatio = 0.6, Action<string> logger = null)
@@ -157,7 +157,7 @@ namespace Analysis.Wyckoff
                                 bool swingOk = !ScRequireSwing || idxList.Any(ix => swings != null && swings.Contains(ix));
                                 if (LogNewScMode)
                                 {
-                                    _logger?.Invoke($"[ClimaxDetector] SC_CLUSTER cand={len} idx[{clusterStart}->{idxList[len-1]}] volSpikeRatio={volSpikeRatio:0.00} rangeSpikeRatio={rangeSpikeRatio:0.00} maxBodyRatio={maxBodyRatio:0.00} bodyOk={bodyOk} volOk={volOk} rangeOk={rangeOk} swingOk={swingOk}");
+                                    _logger?.Invoke($"[ClimaxDetector] SC_CLUSTER cand={len} idx[{clusterStart}->{idxList[len - 1]}] volSpikeRatio={volSpikeRatio:0.00} rangeSpikeRatio={rangeSpikeRatio:0.00} maxBodyRatio={maxBodyRatio:0.00} bodyOk={bodyOk} volOk={volOk} rangeOk={rangeOk} swingOk={swingOk}");
                                 }
                                 if (bodyOk && volOk && rangeOk && swingOk)
                                 {
@@ -227,7 +227,7 @@ namespace Analysis.Wyckoff
                     var localRanges = ranges.Skip(Math.Max(0, ranges.Count - 4)).ToList();
                     bool isVolumeSpike = bar.Volume >= avgVolume * VolumeSpikeMultiplier && bar.Volume >= maxVolume;
                     bool isAtrSpike = range >= atr[i] * AtrMultiplier || range >= localRanges.Average() * AtrMultiplier;
-                    double score = (isVolumeSpike?1:0)+(isMaru?1:0)+(isAtrSpike?1:0);
+                    double score = (isVolumeSpike ? 1 : 0) + (isMaru ? 1 : 0) + (isAtrSpike ? 1 : 0);
                     if (UseCluster)
                     {
                         double clusterScore = score;
@@ -241,24 +241,24 @@ namespace Analysis.Wyckoff
                             bool isVol2 = b2.Volume >= avgVolume * VolumeSpikeMultiplier && b2.Volume >= maxVolume;
                             bool isMaru2 = range2 > 0 && (body2 / range2) >= MarubozuBodyRatio;
                             bool isAtr2 = range2 >= atr[end] * AtrMultiplier || range2 >= localRanges.Average() * AtrMultiplier;
-                            int s2 = (isVol2?1:0)+(isMaru2?1:0)+(isAtr2?1:0);
-                            if (s2>0) clusterScore += s2; else break;
+                            int s2 = (isVol2 ? 1 : 0) + (isMaru2 ? 1 : 0) + (isAtr2 ? 1 : 0);
+                            if (s2 > 0) clusterScore += s2; else break;
                         }
                         if (clusterScore >= SellingClimaxClusterMinScore && swings.Any(sw => sw >= i && sw < end))
                         {
-                            int idxMaxAny = i; double maxRangeAny = bars[i].High - bars[i].Low; int idxMaxBear = bars[i].Close < bars[i].Open ? i : -1; double maxRangeBear = idxMaxBear==i?maxRangeAny:0;
-                            for (int k=i+1;k<end;k++)
-                            { double r=bars[k].High - bars[k].Low; if (r>maxRangeAny){maxRangeAny=r;idxMaxAny=k;} if (bars[k].Close<bars[k].Open && r>maxRangeBear){maxRangeBear=r;idxMaxBear=k;} }
-                            int chosenIdx = idxMaxBear!=-1?idxMaxBear:idxMaxAny; if (!(bars[chosenIdx].Close<bars[chosenIdx].Open)) chosenIdx=i; var cb=bars[chosenIdx];
+                            int idxMaxAny = i; double maxRangeAny = bars[i].High - bars[i].Low; int idxMaxBear = bars[i].Close < bars[i].Open ? i : -1; double maxRangeBear = idxMaxBear == i ? maxRangeAny : 0;
+                            for (int k = i + 1; k < end; k++)
+                            { double r = bars[k].High - bars[k].Low; if (r > maxRangeAny) { maxRangeAny = r; idxMaxAny = k; } if (bars[k].Close < bars[k].Open && r > maxRangeBear) { maxRangeBear = r; idxMaxBear = k; } }
+                            int chosenIdx = idxMaxBear != -1 ? idxMaxBear : idxMaxAny; if (!(bars[chosenIdx].Close < bars[chosenIdx].Open)) chosenIdx = i; var cb = bars[chosenIdx];
                             _logger?.Invoke($"[ClimaxDetector] FOUND SellingClimax Cluster (legacy) idx={chosenIdx} time={cb.OpenTime:yyyy-MM-dd HH:mm} price={cb.Low} score={clusterScore}");
-                            result.Add(new ClimaxEvent{Index=chosenIdx,Time=cb.OpenTime,Price=cb.Low,Type=ClimaxType.SellingClimax,Bar=cb,Score=clusterScore,Swing=SwingType.Unknown});
+                            result.Add(new ClimaxEvent { Index = chosenIdx, Time = cb.OpenTime, Price = cb.Low, Type = ClimaxType.SellingClimax, Bar = cb, Score = clusterScore, Swing = SwingType.Unknown });
                         }
-                        i = end -1;
+                        i = end - 1;
                     }
                     else if (swings.Contains(i) && isMaru && score >= 3)
                     {
                         _logger?.Invoke($"[ClimaxDetector] FOUND SellingClimax (legacy simple) idx={i} time={bar.OpenTime:yyyy-MM-dd HH:mm} price={bar.Low} score={score}");
-                        result.Add(new ClimaxEvent{Index=i,Time=bar.OpenTime,Price=bar.Low,Type=ClimaxType.SellingClimax,Bar=bar,Score=score,Swing=SwingType.Unknown});
+                        result.Add(new ClimaxEvent { Index = i, Time = bar.OpenTime, Price = bar.Low, Type = ClimaxType.SellingClimax, Bar = bar, Score = score, Swing = SwingType.Unknown });
                     }
                 }
             }

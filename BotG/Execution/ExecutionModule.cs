@@ -6,34 +6,35 @@ using cAlgo.API;
 using Strategies;
 using Telemetry; // added
 using BotG.PositionManagement;
+using DataFetcher.Models;
 using RiskManager = BotG.RiskManager; // allow optional RiskManager injection (alias)
 
 namespace Execution
 {
     public class ExecutionModule
     {
-    private readonly IReadOnlyList<IStrategy> _strategies;
-    private readonly Robot? _bot;
-    private readonly IOrderExecutor _executor;
+        private readonly IReadOnlyList<IStrategy> _strategies;
+        private readonly Robot? _bot;
+        private readonly IOrderExecutor _executor;
 
         // telemetry
         private readonly OrderLifecycleLogger _orderLogger;
         private readonly TelemetryCollector _telemetry;
         private readonly int _retryLimit = 1;
         // optional risk manager for order sizing
-    private readonly RiskManager.RiskManager? _riskManager;
-    private bool _pointValuePrinted = false; // ensure single startup print
-    private double _feePipsRoundtrip = 0.0;
-    private double _symbolPipSize = 0.0;
-    private const double MinEffectiveStopLossPips = 0.1;
-    private const double MinEffectiveTakeProfitPips = 0.1;
+        private readonly RiskManager.RiskManager? _riskManager;
+        private bool _pointValuePrinted = false; // ensure single startup print
+        private double _feePipsRoundtrip = 0.0;
+        private double _symbolPipSize = 0.0;
+        private const double MinEffectiveStopLossPips = 0.1;
+        private const double MinEffectiveTakeProfitPips = 0.1;
 
         // backward-compatible constructor
-    public ExecutionModule(IReadOnlyList<IStrategy> strategies, Robot? bot)
-            : this(strategies, bot, null) {}
+        public ExecutionModule(IReadOnlyList<IStrategy> strategies, Robot? bot)
+                : this(strategies, bot, null) { }
 
         // new constructor with optional RiskManager for sizing
-    public ExecutionModule(IReadOnlyList<IStrategy> strategies, Robot? bot, RiskManager.RiskManager? riskManager)
+        public ExecutionModule(IReadOnlyList<IStrategy> strategies, Robot? bot, RiskManager.RiskManager? riskManager)
         {
             _strategies = strategies ?? Array.Empty<IStrategy>();
             _bot = bot;
@@ -48,7 +49,7 @@ namespace Execution
             {
                 if (_riskManager != null && !_pointValuePrinted && _bot != null)
                 {
-            try { _riskManager.SetSymbolReference(_bot.Symbol); } catch {}
+                    try { _riskManager.SetSymbolReference(_bot.Symbol); } catch { }
                     // Prefer SetPointValueFromSymbol if available; otherwise fallback to SetPointValueFromParams using reflection
                     var rmType = _riskManager.GetType();
                     object sym = _bot != null ? (object)_bot.Symbol : new cAlgo.API.Symbol();
@@ -88,7 +89,7 @@ namespace Execution
                     }
 
                     // Print the effective PointValuePerUnit once
-                    try { _bot?.Print($"[Startup] PointValuePerUnit = {_riskManager.GetSettings().PointValuePerUnit}"); _pointValuePrinted = true; } catch {}
+                    try { _bot?.Print($"[Startup] PointValuePerUnit = {_riskManager.GetSettings().PointValuePerUnit}"); _pointValuePrinted = true; } catch { }
                 }
                 // Dump Symbol properties for diagnostics
                 if (_bot != null)
@@ -98,19 +99,19 @@ namespace Execution
             }
             catch (Exception ex)
             {
-                try { _bot?.Print("[Startup] Could not compute PointValuePerUnit: " + ex.Message); } catch {}
+                try { _bot?.Print("[Startup] Could not compute PointValuePerUnit: " + ex.Message); } catch { }
             }
         }
 
         // New constructor overload for tests or DI: provide an IOrderExecutor directly.
-    public ExecutionModule(IReadOnlyList<IStrategy> strategies, IOrderExecutor executor, Robot? bot, RiskManager.RiskManager? riskManager = null)
+        public ExecutionModule(IReadOnlyList<IStrategy> strategies, IOrderExecutor executor, Robot? bot, RiskManager.RiskManager? riskManager = null)
         {
             _strategies = strategies ?? Array.Empty<IStrategy>();
             _bot = bot;
             _executor = executor;
-            var cfg = TelemetryConfig.Load();
-            _orderLogger = new OrderLifecycleLogger(cfg.LogPath, cfg.OrderLogFile, null, null, null, cfg);
-            _telemetry = new TelemetryCollector(cfg.LogPath, cfg.TelemetryFile, cfg.FlushIntervalSeconds);
+            var cfg = TelemetryContext.Config ?? TelemetryConfig.Load();
+            _orderLogger = TelemetryContext.OrderLogger ?? new OrderLifecycleLogger(cfg.LogPath, cfg.OrderLogFile, null, null, null, cfg);
+            _telemetry = TelemetryContext.Collector ?? new TelemetryCollector(cfg.LogPath, cfg.TelemetryFile, cfg.FlushIntervalSeconds);
             _riskManager = riskManager;
             ApplySymbolDerivedExecutionConfig(cfg);
         }
@@ -126,12 +127,13 @@ namespace Execution
                 double requestedUnits;
                 double theoreticalLots = 0.0;
                 double lotSize = 0.0;
-        if (_riskManager != null)
+                if (_riskManager != null)
                 {
                     try
                     {
-            double stopDist = 0.0;
-            double pointValue = 0.0; // let RM use defaults
+                        SyncRiskManagerAccountFromRobot();
+                        double stopDist = 0.0;
+                        double pointValue = 0.0; // let RM use defaults
 
                         // a) From signal if available (StopLoss is a price level; convert to distance from current price)
                         if (signal != null && signal.StopLoss.HasValue && signal.StopLoss.Value > 0)
@@ -283,7 +285,7 @@ namespace Execution
                 {
                     try
                     {
-            ExecuteResult result;
+                        ExecuteResult result;
                         try
                         {
                             var diag = new System.Collections.Generic.Dictionary<string, object?>
@@ -307,13 +309,13 @@ namespace Execution
                             case TradeAction.Exit:
                                 if (_bot != null)
                                 {
-                                foreach (var pos in _bot.Positions)
-                                {
-                                    if (pos.SymbolName == _bot.SymbolName)
+                                    foreach (var pos in _bot.Positions)
                                     {
-                                        _bot.ClosePosition(pos);
+                                        if (pos.SymbolName == _bot.SymbolName)
+                                        {
+                                            _bot.ClosePosition(pos);
+                                        }
                                     }
-                                }
                                 }
                                 _orderLogger.LogV2("ACK", orderId, orderId, sideStr, act.ToString(), "Exit",
                                     price, stopLossLog, null, theoreticalLots, requestedUnits, requestedUnits, null, "ACK", "Exit processed", GetSymbolName());
@@ -364,13 +366,44 @@ namespace Execution
             catch (Exception ex)
             {
                 _bot?.Print($"Execution error: {ex.Message}");
-                try { _telemetry.IncError(); } catch {}
+                try { _telemetry.IncError(); } catch { }
             }
         }
 
         private string GetSymbolName()
         {
             try { return _bot?.SymbolName ?? "TEST"; } catch { return "TEST"; }
+        }
+
+        private void SyncRiskManagerAccountFromRobot()
+        {
+            if (_riskManager == null || _bot == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var account = _bot.Account;
+                if (account == null)
+                {
+                    return;
+                }
+
+                var info = new AccountInfo
+                {
+                    Equity = account.Equity,
+                    Balance = account.Balance,
+                    Margin = account.Margin,
+                    Positions = _bot.Positions?.Count ?? 0
+                };
+
+                _riskManager.UpdateAccountInfo(info);
+            }
+            catch
+            {
+                // best effort: risk sizing should continue even if telemetry fails
+            }
         }
 
         private void ApplySymbolDerivedExecutionConfig(TelemetryConfig? telemetryConfig)

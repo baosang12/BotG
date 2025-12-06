@@ -1,0 +1,65 @@
+{
+  "Description": "Development configuration với telemetry PatternLayer phục vụ kiểm thử",
+  "Version": "1.0.0",
+  "FeatureFlags": {
+    "UsePatternLayer": true,
+    "UseStructureLayer": true,
+    "UseMALayer": true,
+    "UseMomentumLayer": true,
+    "EnableTelemetry": true,
+    "EnableDetailedLogging": true
+  },
+  "PatternTelemetry": {
+    "EnablePatternLogging": true,
+    "LogPatternScores": true,
+    "LogPatternFlags": true,
+    "LogProcessingTime": true,
+    "SampleRate": 10,
+    "LogDirectory": ".\\Logs\\PatternLayer\\",
+    "EnableConsoleOutput": true,
+    "MinScoreThreshold": 0.0,
+    "MaxScoreThreshold": 100.0,
+    "EnableDebugMode": true,
+    "DebugSampleRate": 10,
+    "DebugMinScoreThreshold": 30.0,
+    "DebugIncludeDetectorDetails": true,
+    "DebugIncludeRawMetrics": false
+  },
+  "LayerWeights": {
+    "Structure": 0.4,
+    "MovingAverages": 0.3,
+    "Momentum": 0.2,
+    "Patterns": 0.1
+  },
+  "PatternLayer": {
+    "Liquidity": {
+      "Enabled": true,
+      "Weight": 0.16
+    },
+    "BreakoutQuality": {
+      "Enabled": false,
+      "Weight": 0.0
+    },
+    "AccumulationDistribution": {
+      "Enabled": false,
+      "Weight": 0.0
+    },
+    "MarketStructure": {
+      "Enabled": false,
+      "Weight": 0.0
+    },
+    "VolumeProfile": {
+      "Enabled": true,
+      "Weight": 0.16,
+      "Parameters": {
+        "LookbackBars": 150,
+        "MinBars": 100,
+        "NumberOfBuckets": 30,
+        "ValueAreaPercentage": 0.70,
+        "HighVolumeThreshold": 1.35,
+        "LowVolumeThreshold": 0.55,
+        "PrimaryTimeFrame": "H1"
+      }
+    }
+  }
+}

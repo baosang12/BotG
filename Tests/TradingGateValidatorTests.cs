@@ -14,20 +14,20 @@ namespace BotG.Tests
             // Arrange
             var tempDir = Path.Combine(Path.GetTempPath(), "botg-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = true },
                 Mode = "live",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act & Assert
-                var ex = Assert.Throws<InvalidOperationException>(() => 
+                var ex = Assert.Throws<InvalidOperationException>(() =>
                     TradingGateValidator.ValidateOrThrow(cfg));
-                
+
                 Assert.Contains("TRADING_VIOLATION", ex.Message);
                 Assert.Contains("paper", ex.Message);
             }
@@ -36,27 +36,27 @@ namespace BotG.Tests
                 Directory.Delete(tempDir, true);
             }
         }
-        
-        [Fact] 
+
+        [Fact]
         public void ValidateOrThrow_PassesWhen_TradingDisabled()
         {
             // Arrange
             var tempDir = Path.Combine(Path.GetTempPath(), "botg-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = false },
                 Mode = "live",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act & Assert (should not throw)
-                var exception = Record.Exception(() => 
+                var exception = Record.Exception(() =>
                     TradingGateValidator.ValidateOrThrow(cfg));
-                    
+
                 Assert.Null(exception);
             }
             finally
@@ -64,7 +64,7 @@ namespace BotG.Tests
                 Directory.Delete(tempDir, true);
             }
         }
-        
+
         [Fact]
         public void ValidateOrThrow_ThrowsWhen_StopSentinelExists()
         {
@@ -73,20 +73,20 @@ namespace BotG.Tests
             Directory.CreateDirectory(tempDir);
             var stopFile = Path.Combine(tempDir, "RUN_STOP");
             File.WriteAllText(stopFile, "STOP");
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = true },
                 Mode = "paper",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act & Assert
-                var ex = Assert.Throws<InvalidOperationException>(() => 
+                var ex = Assert.Throws<InvalidOperationException>(() =>
                     TradingGateValidator.ValidateOrThrow(cfg));
-                
+
                 Assert.Contains("SENTINEL_VIOLATION", ex.Message);
             }
             finally
@@ -96,27 +96,27 @@ namespace BotG.Tests
                 Directory.Delete(tempDir, true);
             }
         }
-        
+
         [Fact]
         public void ValidateOrThrow_ThrowsWhen_NoRecentPreflight()
         {
             // Arrange
             var tempDir = Path.Combine(Path.GetTempPath(), "botg-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = true },
                 Mode = "paper",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act & Assert
-                var ex = Assert.Throws<InvalidOperationException>(() => 
+                var ex = Assert.Throws<InvalidOperationException>(() =>
                     TradingGateValidator.ValidateOrThrow(cfg));
-                
+
                 Assert.Contains("PREFLIGHT_VIOLATION", ex.Message);
             }
             finally
@@ -124,7 +124,7 @@ namespace BotG.Tests
                 Directory.Delete(tempDir, true);
             }
         }
-        
+
         [Fact]
         public void ValidateOrThrow_PassesWhen_RecentPreflightExists()
         {
@@ -132,24 +132,24 @@ namespace BotG.Tests
             var tempDir = Path.Combine(Path.GetTempPath(), "botg-tests", Guid.NewGuid().ToString("N"));
             var preflightDir = Path.Combine(tempDir, "preflight");
             Directory.CreateDirectory(preflightDir);
-            
+
             // Create recent preflight file
             var wireproofFile = Path.Combine(preflightDir, "executor_wireproof.json");
             File.WriteAllText(wireproofFile, "{\"ok\": true}");
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = true },
                 Mode = "paper",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act & Assert (should not throw)
-                var exception = Record.Exception(() => 
+                var exception = Record.Exception(() =>
                     TradingGateValidator.ValidateOrThrow(cfg));
-                    
+
                 Assert.Null(exception);
             }
             finally
@@ -157,7 +157,7 @@ namespace BotG.Tests
                 Directory.Delete(tempDir, true);
             }
         }
-        
+
         [Fact]
         public void ValidateOrThrow_PassesInPaperModeWithPreflight()
         {
@@ -165,26 +165,26 @@ namespace BotG.Tests
             var tempDir = Path.Combine(Path.GetTempPath(), "botg-tests", Guid.NewGuid().ToString("N"));
             var preflightDir = Path.Combine(tempDir, "preflight");
             Directory.CreateDirectory(preflightDir);
-            
+
             var connectionFile = Path.Combine(preflightDir, "connection_ok.json");
             File.WriteAllText(connectionFile, "{\"ok\": true}");
-            
-            var cfg = new TelemetryConfig 
-            { 
+
+            var cfg = new TelemetryConfig
+            {
                 Ops = new OpsConfig { EnableTrading = true },
                 Mode = "paper",
                 LogPath = tempDir
             };
-            
+
             try
             {
                 // Act
                 TradingGateValidator.ValidateOrThrow(cfg);
-                
+
                 // Assert - Check log was written
                 var logFile = Path.Combine(tempDir, "trading_gate.log");
                 Assert.True(File.Exists(logFile));
-                
+
                 var logContent = File.ReadAllText(logFile);
                 Assert.Contains("TRADING GATE VALIDATION PASSED", logContent);
             }

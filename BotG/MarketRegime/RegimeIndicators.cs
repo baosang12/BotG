@@ -25,7 +25,7 @@ namespace BotG.MarketRegime
         {
             if (high == null || low == null || close == null)
                 throw new ArgumentNullException("Price arrays cannot be null");
-            
+
             if (high.Count < period + 1 || low.Count < period + 1 || close.Count < period + 1)
                 throw new ArgumentException($"Insufficient data: need at least {period + 1} bars");
 

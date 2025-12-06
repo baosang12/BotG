@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BotG.MarketRegime;
 using BotG.MultiTimeframe;
+using BotG.Runtime.Preprocessor;
 using ModelBar = DataFetcher.Models.Bar;
 using ModelTimeFrame = DataFetcher.Models.TimeFrame;
 using Strategies.Config;
@@ -27,8 +28,9 @@ namespace Strategies.Breakout
             SessionAwareAnalyzer sessionAnalyzer,
             BreakoutStrategyConfig? config = null,
             ConfirmationConfig? confirmationConfig = null,
-            MultiTimeframeConfirmationEngine? confirmationEngine = null)
-            : base("Breakout", timeframeManager, synchronizer, sessionAnalyzer, minimumAlignedTimeframes: 2)
+            MultiTimeframeConfirmationEngine? confirmationEngine = null,
+            IPreprocessorStrategyDataBridge? preprocessorBridge = null)
+            : base("Breakout", timeframeManager, synchronizer, sessionAnalyzer, preprocessorBridge, minimumAlignedTimeframes: 2)
         {
             _config = config ?? new BreakoutStrategyConfig();
             _config.Validate();
@@ -63,6 +65,20 @@ namespace Strategies.Breakout
             return effective;
         }
 
+        private double? TryGetAtrFromPreprocessor(MultiTimeframeEvaluationContext context)
+        {
+            return GetPreprocessorIndicatorValue(
+                context,
+                PreprocessorIndicatorNames.Atr(ModelTimeFrame.H1, _config.AtrPeriod));
+        }
+
+        private double? TryGetTrendEmaFromPreprocessor(MultiTimeframeEvaluationContext context, int period)
+        {
+            return GetPreprocessorIndicatorValue(
+                context,
+                PreprocessorIndicatorNames.Ema(ModelTimeFrame.H4, period));
+        }
+
         protected override Task<Signal?> EvaluateMultiTimeframeAsync(
             MultiTimeframeEvaluationContext context,
             CancellationToken ct)
@@ -81,15 +97,15 @@ namespace Strategies.Breakout
                 return Task.FromResult<Signal?>(null);
             }
 
-            var atr = Technicals.CalculateAtr(h1, _config.AtrPeriod);
+            var atr = TryGetAtrFromPreprocessor(context) ?? Technicals.CalculateAtr(h1, _config.AtrPeriod);
             if (atr <= double.Epsilon)
             {
                 SaveDiagnostics(null);
                 return Task.FromResult<Signal?>(null);
             }
 
-            var emaFast = Technicals.CalculateEma(h4, _config.TrendEmaFast);
-            var emaSlow = Technicals.CalculateEma(h4, _config.TrendEmaSlow);
+            var emaFast = TryGetTrendEmaFromPreprocessor(context, _config.TrendEmaFast) ?? Technicals.CalculateEma(h4, _config.TrendEmaFast);
+            var emaSlow = TryGetTrendEmaFromPreprocessor(context, _config.TrendEmaSlow) ?? Technicals.CalculateEma(h4, _config.TrendEmaSlow);
             if (emaFast == null || emaSlow == null)
             {
                 SaveDiagnostics(null);

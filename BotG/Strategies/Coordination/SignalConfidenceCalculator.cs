@@ -87,42 +87,42 @@ namespace BotG.Strategies.Coordination
             var direction = MapDirection(signal.Action);
             var clampedTimeSinceTrade = timeSinceLastTrade < TimeSpan.Zero ? TimeSpan.Zero : timeSinceLastTrade;
 
-                // If time-based filtering is enabled and we're within the cooldown window, block the signal
-                if (_config.EnableTimeBasedFiltering && signal.Action != TradeAction.Exit && clampedTimeSinceTrade < _config.MinimumTimeBetweenTrades)
+            // If time-based filtering is enabled and we're within the cooldown window, block the signal
+            if (_config.EnableTimeBasedFiltering && signal.Action != TradeAction.Exit && clampedTimeSinceTrade < _config.MinimumTimeBetweenTrades)
+            {
+                metrics["cooldown_blocked"] = 1.0;
+                _cooldownRecovery.RecordCooldownBlock();
+                LogConfidenceBreakdown(
+                    signal,
+                    evaluation,
+                    context,
+                    baseConfidence,
+                    boostedConfidence,
+                    strategyWeight,
+                    weightedConfidence,
+                    riskAdjustment,
+                    regimeAdjustment,
+                    exposurePenalty,
+                    cooldownPenalty,
+                    latencyPenalty,
+                    0.0,
+                    clampedTimeSinceTrade,
+                    cooldownBlocked: true,
+                    thresholdOverride: threshold);
+                return new TradingSignal
                 {
-                    metrics["cooldown_blocked"] = 1.0;
-                    _cooldownRecovery.RecordCooldownBlock();
-                    LogConfidenceBreakdown(
-                        signal,
-                        evaluation,
-                        context,
-                        baseConfidence,
-                        boostedConfidence,
-                        strategyWeight,
-                        weightedConfidence,
-                        riskAdjustment,
-                        regimeAdjustment,
-                        exposurePenalty,
-                        cooldownPenalty,
-                        latencyPenalty,
-                        0.0,
-                        clampedTimeSinceTrade,
-                        cooldownBlocked: true,
-                        thresholdOverride: threshold);
-                    return new TradingSignal
-                    {
-                        StrategyName = evaluation.StrategyName,
-                        Direction = direction,
-                        Symbol = context.LatestTick.Symbol,
-                        ConfidenceScore = 0.0,
-                        GeneratedTime = signal.TimestampUtc,
-                        RegimeContext = context.CurrentRegime,
-                        SignalMetrics = metrics,
-                        IsConfirmed = false,
-                        TimeSinceLastTrade = clampedTimeSinceTrade,
-                        SourceSignal = signal
-                    };
-                }
+                    StrategyName = evaluation.StrategyName,
+                    Direction = direction,
+                    Symbol = context.LatestTick.Symbol,
+                    ConfidenceScore = 0.0,
+                    GeneratedTime = signal.TimestampUtc,
+                    RegimeContext = context.CurrentRegime,
+                    SignalMetrics = metrics,
+                    IsConfirmed = false,
+                    TimeSinceLastTrade = clampedTimeSinceTrade,
+                    SourceSignal = signal
+                };
+            }
 
             var tradingSignal = new TradingSignal
             {
@@ -297,15 +297,15 @@ namespace BotG.Strategies.Coordination
                     "ConfidenceBreakdown",
                     $"Confidence breakdown for {sourceSignal.StrategyName}",
                     new
-                {
-                    strategy = sourceSignal.StrategyName,
-                    action = sourceSignal.Action.ToString(),
-                    symbol = context.LatestTick.Symbol,
-                    regime = context.CurrentRegime.ToString(),
-                    base_confidence = baseConfidence,
-                    boosted_confidence = boostedConfidence,
-                    strategy_weight = strategyWeight,
-                    weighted_confidence = weightedConfidence,
+                    {
+                        strategy = sourceSignal.StrategyName,
+                        action = sourceSignal.Action.ToString(),
+                        symbol = context.LatestTick.Symbol,
+                        regime = context.CurrentRegime.ToString(),
+                        base_confidence = baseConfidence,
+                        boosted_confidence = boostedConfidence,
+                        strategy_weight = strategyWeight,
+                        weighted_confidence = weightedConfidence,
                         risk_adjustment = riskAdjustment,
                         regime_adjustment = regimeAdjustment,
                         exposure_penalty = exposurePenalty,

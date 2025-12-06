@@ -334,30 +334,30 @@ namespace BotG.PositionManagement
             {
                 double accountBalance = _robot.Account.Balance;
                 double riskPerTrade = accountBalance * 0.005; // 0.5% risk per trade
-                
+
                 // Calculate stop distance in price
                 double stopDistance = Math.Abs(entryPrice - stopLossPrice);
-                
+
                 // Calculate pip value (standard for forex)
                 double pipSize = symbol.Contains("JPY") ? 0.01 : 0.0001;
                 double pipValue = _robot.Symbol.PipValue; // USD per pip for 1 standard lot
-                
+
                 // Calculate pips in stop distance
                 double pipsInStop = stopDistance / pipSize;
-                
+
                 // Volume calculation: Risk / (Pips * PipValue)
                 // For 0.01 lot = 1000 units, pipValue for EURUSD is ~0.0001 per unit
                 double volumeInUnits = (riskPerTrade / pipsInStop) / (pipValue / 100000); // Adjust for unit size
-                
+
                 // Apply broker constraints
                 volumeInUnits = Math.Max(_robot.Symbol.VolumeInUnitsMin, volumeInUnits);
                 volumeInUnits = Math.Min(_robot.Symbol.VolumeInUnitsMax, volumeInUnits);
-                
+
                 // Normalize to step size
                 volumeInUnits = _robot.Symbol.NormalizeVolumeInUnits(volumeInUnits, RoundingMode.Down);
-                
+
                 _robot.Print($"[PositionSize] Balance: {accountBalance:F2} | Risk: {riskPerTrade:F2} | SL: {pipsInStop:F1}p | Volume: {volumeInUnits} units");
-                
+
                 return volumeInUnits;
             }
             catch (Exception ex)

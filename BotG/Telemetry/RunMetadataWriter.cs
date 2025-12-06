@@ -19,7 +19,7 @@ namespace Telemetry
             try
             {
                 if (File.Exists(_filePath)) return;
-                var line = JsonSerializer.Serialize(metadata, new JsonSerializerOptions{ WriteIndented = true });
+                var line = JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_filePath, line);
             }
             catch { }

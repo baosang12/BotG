@@ -12,9 +12,9 @@ namespace TradeManager
         private int _tradeCountToday = 0;
         private DateTime _lastTradeDate;
         private int _maxTradesPerDay = 100;
-    private Execution.ExecutionModule _executionModule;
-    private readonly IMarketDataProvider? _marketData;
-    private readonly IOrderExecutor? _orderExecutor;
+        private Execution.ExecutionModule _executionModule;
+        private readonly IMarketDataProvider? _marketData;
+        private readonly IOrderExecutor? _orderExecutor;
         private readonly Func<DateTime> _getCurrentTime;
         private readonly object _executionModuleLock = new object();
         private readonly cAlgo.API.Robot? _bot;
@@ -97,7 +97,7 @@ namespace TradeManager
             if (!cfg.Ops.EnableTrading)
             {
                 // Log to pipeline when blocked by ops gate
-                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "CanTrade", "CanTrade=false (ops gate)", 
+                BotG.Runtime.Logging.PipelineLogger.Log("TRADE", "CanTrade", "CanTrade=false (ops gate)",
                     new { ops_enable_trading = false }, null);
                 return false;
             }
@@ -140,7 +140,7 @@ namespace TradeManager
 
         public void Process(Signal signal, RiskScore riskScore)
         {
-            try { TelemetryContext.Collector?.IncSignal(); } catch {}
+            try { TelemetryContext.Collector?.IncSignal(); } catch { }
             if (!CanTrade(signal, riskScore)) return;
             _tradeCountToday++;
             PipelineLogger.Log(

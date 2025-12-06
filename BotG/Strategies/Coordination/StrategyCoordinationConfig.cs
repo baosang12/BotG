@@ -62,19 +62,19 @@ namespace BotG.Strategies.Coordination
         /// </summary>
         public double ConfidenceFloor { get; init; } = 0.15;
 
-    /// <summary>
-    /// Enable or disable conflict resolution.
-    /// </summary>
-    public bool EnableConflictResolution { get; init; } = true;
+        /// <summary>
+        /// Enable or disable conflict resolution.
+        /// </summary>
+        public bool EnableConflictResolution { get; init; } = true;
 
-    /// <summary>
-    /// Enable or disable time-based filtering (cooldowns).
-    /// </summary>
-    public bool EnableTimeBasedFiltering { get; init; } = true;
+        /// <summary>
+        /// Enable or disable time-based filtering (cooldowns).
+        /// </summary>
+        public bool EnableTimeBasedFiltering { get; init; } = true;
 
-    /// <summary>
-    /// Per-strategy weight multipliers applied to base confidence when combining signals.
-    /// </summary>
+        /// <summary>
+        /// Per-strategy weight multipliers applied to base confidence when combining signals.
+        /// </summary>
         public Dictionary<string, double>? StrategyWeights { get; init; } = null;
 
         /// <summary>
@@ -159,11 +159,11 @@ namespace BotG.Strategies.Coordination
         /// Progressive threshold reduction when hệ thống “khát lệnh” quá lâu.
         /// </summary>
         public DroughtAdaptiveOptions DroughtAdaptive { get; init; } = new();
-        
-            /// <summary>
-            /// Options controlling the fusion method used to aggregate strategy evidence.
-            /// </summary>
-            public BayesianFusionConfig Fusion { get; init; } = new();
+
+        /// <summary>
+        /// Options controlling the fusion method used to aggregate strategy evidence.
+        /// </summary>
+        public BayesianFusionConfig Fusion { get; init; } = new();
     }
 
     public sealed class AdaptiveConfidenceOptions

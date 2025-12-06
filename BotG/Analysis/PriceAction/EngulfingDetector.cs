@@ -4,7 +4,7 @@ using DataFetcher.Models;
 
 namespace Analysis.PriceAction
 {
-public class EngulfingDetector : ICandlePatternDetector
+    public class EngulfingDetector : ICandlePatternDetector
     {
         public CandlePattern Pattern => CandlePattern.BullishEngulfing;
         public bool IsEnabled { get; set; } = true;

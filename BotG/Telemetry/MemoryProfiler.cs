@@ -14,12 +14,12 @@ namespace Telemetry
         private readonly string _filePath;
         private readonly object _lock = new object();
         private readonly Process _currentProcess;
-        
+
         // Thresholds for alerts
         private readonly long _heapSizeLimitMB;
         private readonly long _processSizeLimitMB;
         private readonly int _gen2CollectionThreshold;
-        
+
         // Tracking
         private int _lastGen2Count = 0;
         private long _peakHeapSizeMB = 0;
@@ -35,7 +35,7 @@ namespace Telemetry
             _heapSizeLimitMB = heapLimitMB;
             _processSizeLimitMB = processLimitMB;
             _gen2CollectionThreshold = gen2Threshold;
-            
+
             EnsureHeader();
         }
 
@@ -61,37 +61,37 @@ namespace Telemetry
             try
             {
                 _currentProcess.Refresh();
-                
+
                 var snapshot = new MemorySnapshot
                 {
                     Timestamp = DateTime.UtcNow,
-                    
+
                     // GC Heap metrics
                     HeapSizeMB = GC.GetTotalMemory(false) / (1024 * 1024),
                     Gen0Collections = GC.CollectionCount(0),
                     Gen1Collections = GC.CollectionCount(1),
                     Gen2Collections = GC.CollectionCount(2),
                     Gen2Delta = GC.CollectionCount(2) - _lastGen2Count,
-                    
+
                     // Process metrics
                     WorkingSetMB = _currentProcess.WorkingSet64 / (1024 * 1024),
                     PrivateBytesMB = _currentProcess.PrivateMemorySize64 / (1024 * 1024),
                     VirtualMemoryMB = _currentProcess.VirtualMemorySize64 / (1024 * 1024),
                     TotalMemoryMB = (_currentProcess.WorkingSet64 + _currentProcess.PrivateMemorySize64) / (1024 * 1024)
                 };
-                
+
                 // Update tracking
                 _lastGen2Count = snapshot.Gen2Collections;
                 if (snapshot.HeapSizeMB > _peakHeapSizeMB)
                     _peakHeapSizeMB = snapshot.HeapSizeMB;
                 if (snapshot.PrivateBytesMB > _peakProcessSizeMB)
                     _peakProcessSizeMB = snapshot.PrivateBytesMB;
-                
+
                 // Check thresholds
                 snapshot.HeapAlert = snapshot.HeapSizeMB > _heapSizeLimitMB;
                 snapshot.ProcessAlert = snapshot.PrivateBytesMB > _processSizeLimitMB;
                 snapshot.Gen2Alert = snapshot.Gen2Delta > _gen2CollectionThreshold;
-                
+
                 return snapshot;
             }
             catch
@@ -129,7 +129,7 @@ namespace Telemetry
                 try
                 {
                     File.AppendAllText(_filePath, line + Environment.NewLine);
-                    
+
                     // Log alerts
                     if ((snapshot.HeapAlert || snapshot.ProcessAlert || snapshot.Gen2Alert) &&
                         (DateTime.UtcNow - _lastAlert) > _alertCooldown)
@@ -158,7 +158,7 @@ namespace Telemetry
                               $"  Process: {snapshot.PrivateBytesMB}MB (limit: {_processSizeLimitMB}MB) - {(snapshot.ProcessAlert ? "EXCEEDED" : "OK")}{Environment.NewLine}" +
                               $"  Gen2: {snapshot.Gen2Delta} collections (threshold: {_gen2CollectionThreshold}) - {(snapshot.Gen2Alert ? "EXCEEDED" : "OK")}{Environment.NewLine}" +
                               $"  Peak Heap: {_peakHeapSizeMB}MB, Peak Process: {_peakProcessSizeMB}MB{Environment.NewLine}{Environment.NewLine}";
-                
+
                 File.AppendAllText(alertLog, message);
             }
             catch
@@ -190,7 +190,7 @@ namespace Telemetry
         public (long heapMB, long processMB, int gen2, bool anyAlert) GetStatus()
         {
             var snapshot = CaptureSnapshot();
-            return (snapshot.HeapSizeMB, snapshot.PrivateBytesMB, snapshot.Gen2Collections, 
+            return (snapshot.HeapSizeMB, snapshot.PrivateBytesMB, snapshot.Gen2Collections,
                     snapshot.HeapAlert || snapshot.ProcessAlert || snapshot.Gen2Alert);
         }
 
@@ -211,20 +211,20 @@ namespace Telemetry
     public class MemorySnapshot
     {
         public DateTime Timestamp { get; set; }
-        
+
         // GC metrics
         public long HeapSizeMB { get; set; }
         public int Gen0Collections { get; set; }
         public int Gen1Collections { get; set; }
         public int Gen2Collections { get; set; }
         public int Gen2Delta { get; set; }
-        
+
         // Process metrics
         public long TotalMemoryMB { get; set; }
         public long WorkingSetMB { get; set; }
         public long PrivateBytesMB { get; set; }
         public long VirtualMemoryMB { get; set; }
-        
+
         // Alerts
         public bool HeapAlert { get; set; }
         public bool ProcessAlert { get; set; }

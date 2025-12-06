@@ -6,7 +6,7 @@ namespace Protection
         public double EntryPrice { get; set; }
         public double PipSize { get; set; }
         public double RiskRewardRatio { get; set; }
-    public int ConfiguredStopLossPips { get; set; } // Optional; 0 means derive purely from structure/buffer
+        public int ConfiguredStopLossPips { get; set; } // Optional; 0 means derive purely from structure/buffer
         // Optional market/context metrics (pips)
         public double AtrPips { get; set; }
         public double SpreadPips { get; set; }
@@ -19,9 +19,9 @@ namespace Protection
     {
         public int StopLossPips { get; set; }
         public int TakeProfitPips { get; set; }
-    public double StopLossPrice { get; set; }
-    public double TakeProfitPrice { get; set; }
-    public string Notes { get; set; }
+        public double StopLossPrice { get; set; }
+        public double TakeProfitPrice { get; set; }
+        public string Notes { get; set; }
     }
 
     public interface IProtectionCalculator

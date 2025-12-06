@@ -179,33 +179,33 @@ namespace Analysis.Wyckoff
         private static void EmitPhaseStats(string phase, IEnumerable<Row> rows)
         {
             var list = rows.ToList();
-            List<double> Extract(Func<Row,double?> sel) => list.Select(sel).Where(v=>v.HasValue).Select(v=>v.Value).ToList();
-            var compVals = Extract(r=>r.comp); var driftVals = Extract(r=>r.driftNorm); var widthVals = Extract(r=>r.width); var occVals = Extract(r=>r.occ);
+            List<double> Extract(Func<Row, double?> sel) => list.Select(sel).Where(v => v.HasValue).Select(v => v.Value).ToList();
+            var compVals = Extract(r => r.comp); var driftVals = Extract(r => r.driftNorm); var widthVals = Extract(r => r.width); var occVals = Extract(r => r.occ);
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
                 "{0,-22} n={1,4} comp(mean/med p10-p90)={2:0.000}/{3:0.000} {4:0.000}-{5:0.000} driftNorm(mean/med)={6:0.00}/{7:0.00} width(med)={8:0.00000} occ(mean)={9:0.00} expCountMax={10}",
                 phase, list.Count,
-                Mean(compVals), Median(compVals), Percentile(compVals,10), Percentile(compVals,90),
-                Mean(driftVals), Median(driftVals), Median(widthVals), Mean(occVals), list.Max(r=>r.expCount??0)));
+                Mean(compVals), Median(compVals), Percentile(compVals, 10), Percentile(compVals, 90),
+                Mean(driftVals), Median(driftVals), Median(widthVals), Mean(occVals), list.Max(r => r.expCount ?? 0)));
         }
 
         private static void EmitTriggerStats(string trigType, IEnumerable<Row> rows)
         {
             var list = rows.ToList();
-            List<double> Extract(Func<Row,double?> sel) => list.Select(sel).Where(v=>v.HasValue).Select(v=>v.Value).ToList();
-            var body = Extract(r=>r.trigBody); var rangeF = Extract(r=>r.trigRangeFac); var vol = Extract(r=>r.trigVolSpike);
+            List<double> Extract(Func<Row, double?> sel) => list.Select(sel).Where(v => v.HasValue).Select(v => v.Value).ToList();
+            var body = Extract(r => r.trigBody); var rangeF = Extract(r => r.trigRangeFac); var vol = Extract(r => r.trigVolSpike);
             Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
                 "Trigger {0}: n={1} body(mean/med p25)={2:0.00}/{3:0.00}/{4:0.00} rangeFac(mean/med p25)={5:0.00}/{6:0.00}/{7:0.00} volSpike(mean/med p25)={8:0.00}/{9:0.00}/{10:0.00}",
                 trigType, list.Count,
-                Mean(body), Median(body), Percentile(body,25),
-                Mean(rangeF), Median(rangeF), Percentile(rangeF,25),
-                Mean(vol), Median(vol), Percentile(vol,25)));
+                Mean(body), Median(body), Percentile(body, 25),
+                Mean(rangeF), Median(rangeF), Percentile(rangeF, 25),
+                Mean(vol), Median(vol), Percentile(vol, 25)));
         }
 
         private static void SuggestBreakoutThresholds(List<Row> trigRows)
         {
-            var body = trigRows.Where(r=>r.trigBody.HasValue).Select(r=>r.trigBody.Value).ToList();
-            var rangeF = trigRows.Where(r=>r.trigRangeFac.HasValue).Select(r=>r.trigRangeFac.Value).ToList();
-            var vol = trigRows.Where(r=>r.trigVolSpike.HasValue).Select(r=>r.trigVolSpike.Value).ToList();
+            var body = trigRows.Where(r => r.trigBody.HasValue).Select(r => r.trigBody.Value).ToList();
+            var rangeF = trigRows.Where(r => r.trigRangeFac.HasValue).Select(r => r.trigRangeFac.Value).ToList();
+            var vol = trigRows.Where(r => r.trigVolSpike.HasValue).Select(r => r.trigVolSpike.Value).ToList();
             if (body.Count < 5 || rangeF.Count < 5 || vol.Count < 5)
             {
                 Console.WriteLine("[Suggest] Not enough breakout trigger samples for robust threshold suggestions (need >=5 each).");
@@ -224,18 +224,18 @@ namespace Analysis.Wyckoff
         private static double Median(List<double> v)
         {
             if (v.Count == 0) return double.NaN;
-            var a = v.OrderBy(x=>x).ToList();
-            int m = a.Count/2; return a.Count %2==1 ? a[m] : (a[m-1]+a[m])/2.0;
+            var a = v.OrderBy(x => x).ToList();
+            int m = a.Count / 2; return a.Count % 2 == 1 ? a[m] : (a[m - 1] + a[m]) / 2.0;
         }
         private static double Percentile(List<double> v, double p)
         {
             if (v.Count == 0) return double.NaN;
-            var a = v.OrderBy(x=>x).ToList();
-            if (p <= 0) return a[0]; if (p >=100) return a[^1];
-            double rank = (p/100.0)*(a.Count-1);
+            var a = v.OrderBy(x => x).ToList();
+            if (p <= 0) return a[0]; if (p >= 100) return a[^1];
+            double rank = (p / 100.0) * (a.Count - 1);
             int lo = (int)Math.Floor(rank); int hi = (int)Math.Ceiling(rank);
-            if (lo==hi) return a[lo];
-            double f = rank - lo; return a[lo] + (a[hi]-a[lo])*f;
+            if (lo == hi) return a[lo];
+            double f = rank - lo; return a[lo] + (a[hi] - a[lo]) * f;
         }
     }
 }

@@ -25,7 +25,7 @@ namespace DataFetcher.Providers
         {
             if (_running) return;
             _running = true;
-            
+
             // JUSTIFICATION: Fire-and-forget Task.Run acceptable here because:
             // 1. BACKTEST MODE ONLY: HistoricalTickFetcher for replay testing, not production
             // 2. BACKGROUND FILE READ: CSV parsing must not block main thread

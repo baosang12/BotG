@@ -57,12 +57,12 @@ namespace BotG.RiskManager
         {
             ResetIfNewDay();
             _tradesToday++;
-            
+
             _robot.Print($"[DailyLimiter] Trade recorded: {_tradesToday}/{_maxTradesPerDay} today");
-            
+
             try
             {
-                PipelineLogger.Log("RISK", "TradeRecorded", $"Daily trades: {_tradesToday}", 
+                PipelineLogger.Log("RISK", "TradeRecorded", $"Daily trades: {_tradesToday}",
                     new System.Collections.Generic.Dictionary<string, object>
                     {
                         ["trades_today"] = _tradesToday,
@@ -97,10 +97,10 @@ namespace BotG.RiskManager
             if (limitReached)
             {
                 _robot.Print($"[DailyLimiter] LOSS LIMIT HIT! Daily P&L: {totalDailyPnL:F2} < {lossThreshold:F2}");
-                
+
                 try
                 {
-                    PipelineLogger.Log("RISK", "DailyLossLimit", "Daily loss limit reached", 
+                    PipelineLogger.Log("RISK", "DailyLossLimit", "Daily loss limit reached",
                         new System.Collections.Generic.Dictionary<string, object>
                         {
                             ["daily_pnl"] = totalDailyPnL,
@@ -123,18 +123,18 @@ namespace BotG.RiskManager
         private void ResetIfNewDay()
         {
             DateTime today = DateTime.Today;
-            
+
             if (today > _lastResetDate)
             {
                 _robot.Print($"[DailyLimiter] New day reset: {today:yyyy-MM-dd} | Previous trades: {_tradesToday}");
-                
+
                 _tradesToday = 0;
                 _lastResetDate = today;
                 _startOfDayBalance = _robot.Account.Balance;
-                
+
                 try
                 {
-                    PipelineLogger.Log("RISK", "DailyReset", "Daily limits reset", 
+                    PipelineLogger.Log("RISK", "DailyReset", "Daily limits reset",
                         new System.Collections.Generic.Dictionary<string, object>
                         {
                             ["date"] = today,
@@ -153,7 +153,7 @@ namespace BotG.RiskManager
             ResetIfNewDay();
             IsDailyLossLimitReached(out double dailyPnL);
             double lossLimit = -(_startOfDayBalance * _maxDailyLossPercent);
-            
+
             return (_tradesToday, _maxTradesPerDay, dailyPnL, lossLimit);
         }
     }

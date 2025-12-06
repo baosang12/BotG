@@ -13,7 +13,7 @@ public class PreflightCanaryTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_preflight_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             // Create sentinel file (RUN_STOP)
@@ -23,7 +23,7 @@ public class PreflightCanaryTests
             // Create valid telemetry file (fresh tick)
             var telemetryPath = Path.Combine(tempDir, "telemetry.csv");
             var freshTimestamp = DateTime.UtcNow.ToString("o");
-            await File.WriteAllTextAsync(telemetryPath, 
+            await File.WriteAllTextAsync(telemetryPath,
                 "timestamp_iso,symbol,bid,ask,tick_rate\n" +
                 $"{freshTimestamp},EURUSD,1.05000,1.05002,10.0\n");
 
@@ -32,7 +32,7 @@ public class PreflightCanaryTests
 
             // Assert
             Assert.True(sentinelExists, "Sentinel file should exist");
-            
+
             // Preflight should fail before attempting ACK/FILL tests
             // (This test validates the sentinel check logic would prevent trading)
         }
@@ -51,13 +51,13 @@ public class PreflightCanaryTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_preflight_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             // Create telemetry with stale tick (10 seconds ago)
             var telemetryPath = Path.Combine(tempDir, "telemetry.csv");
             var staleTimestamp = DateTime.UtcNow.AddSeconds(-10).ToString("o");
-            await File.WriteAllTextAsync(telemetryPath, 
+            await File.WriteAllTextAsync(telemetryPath,
                 "timestamp_iso,symbol,bid,ask,tick_rate\n" +
                 $"{staleTimestamp},EURUSD,1.05000,1.05002,10.0\n");
 
@@ -65,7 +65,7 @@ public class PreflightCanaryTests
             var lines = await File.ReadAllLinesAsync(telemetryPath);
             var lastLine = lines[^1];
             var parts = lastLine.Split(',');
-            
+
             if (DateTime.TryParse(parts[0], null, System.Globalization.DateTimeStyles.RoundtripKind, out var tickTime))
             {
                 var age = (DateTime.UtcNow - tickTime).TotalSeconds;
@@ -90,7 +90,7 @@ public class PreflightCanaryTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_preflight_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             const string expectedOrdersHeader = "event,status,reason,latency,price_requested,price_filled,order_id,side,requested_lots,filled_lots";
@@ -111,7 +111,7 @@ public class PreflightCanaryTests
             // Assert
             Assert.NotEqual(expectedOrdersHeader, ordersHeader);
             Assert.Equal(expectedRiskHeader, riskHeader);
-            
+
             // Preflight should fail on orders.csv schema mismatch
         }
         finally
