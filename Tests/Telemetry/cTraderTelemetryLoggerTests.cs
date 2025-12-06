@@ -63,12 +63,13 @@ namespace BotG.Tests.PatternLayerTelemetry
                     telemetryVersion: 4);
 
                 file = Directory.GetFiles(_logDir, "*.csv").Single();
-                Assert.True(SpinWait.SpinUntil(() => FileHasLines(file, 2), 2000), "Telemetry entry not written in time");
+                // Logger writes header + system startup row immediately; wait for extra data row (>=3 lines).
+                Assert.True(SpinWait.SpinUntil(() => FileHasLines(file, 3), 2000), "Telemetry entry not written in time");
                 logger.Flush();
             }
 
             var lines = File.ReadAllLines(file);
-            Assert.True(lines.Length >= 2);
+            Assert.True(lines.Length >= 3);
             var csvContent = string.Join(Environment.NewLine, lines);
             Assert.Contains("AccumulationScore", csvContent);
             Assert.Contains("PhaseDetected", csvContent);
