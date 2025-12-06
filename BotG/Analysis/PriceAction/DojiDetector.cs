@@ -4,7 +4,7 @@ using DataFetcher.Models;
 
 namespace Analysis.PriceAction
 {
-public class DojiDetector : ICandlePatternDetector
+    public class DojiDetector : ICandlePatternDetector
     {
         public CandlePattern Pattern => CandlePattern.Doji;
         public bool IsEnabled { get; set; } = true;

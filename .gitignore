@@ -74,11 +74,34 @@ scripts/*_log.txt
 scripts/run_*_log.txt
 scripts/.tmp_pr_backup/**
 
+# Local ops artifacts
+monitor_logs/
+_tmp/
+tmp_untracked_backups/
+BotG.zip
+build_report.txt
+temp_*.cs
+temp_*.ps1
+temp_*.yml
+temp_*.json
+temp_*.log
+temp_b64.txt
+test*.txt
+test_closed_trades.csv
+
+# Build diagnostics / cached artifacts
+BotG/obj_diag/
+Harness/obj_locked_backup/
+
+# Local backup files
+config.runtime.json.backup_*
+
 # PR NOOP trigger (used only to force a diff)
 scripts/.pr_trigger_for_pr.txt
 
 # Local runtime artifacts (keep repo clean during Gate runs)
-path_issues/
+path_issues/*
+!path_issues/reconstruct_fifo.py
 current_*.txt
 POSTMERGE_REPORT_*.md
 pr_body_*.txt

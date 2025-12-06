@@ -23,22 +23,22 @@ namespace Config
         public bool ShowInternalOrderBlocks { get; set; }
         public bool ShowFairValueGaps { get; set; }
 
-    // Lookback/threshold parameters required by detectors
-    public int BreakerBlockLookback { get; set; } = 50;
-    public int MitigationBlockLookback { get; set; } = 50;
-    public int ReversalBlockLookback { get; set; } = 50;
-    public int LiquiditySweepLookback { get; set; } = 50;
-    public int TrendlineLiquidityLookback { get; set; } = 50;
-    public int VolumeImbalanceLookback { get; set; } = 50;
+        // Lookback/threshold parameters required by detectors
+        public int BreakerBlockLookback { get; set; } = 50;
+        public int MitigationBlockLookback { get; set; } = 50;
+        public int ReversalBlockLookback { get; set; } = 50;
+        public int LiquiditySweepLookback { get; set; } = 50;
+        public int TrendlineLiquidityLookback { get; set; } = 50;
+        public int VolumeImbalanceLookback { get; set; } = 50;
 
-    public double VolumeImbalanceThreshold { get; set; } = 0.65; // 65% of volume on one side
+        public double VolumeImbalanceThreshold { get; set; } = 0.65; // 65% of volume on one side
 
-    // FVG options
-    public bool FairValueGapsAutoThreshold { get; set; } = true;
-    public double FairValueGapsExtend { get; set; } = 0.0;
+        // FVG options
+        public bool FairValueGapsAutoThreshold { get; set; } = true;
+        public double FairValueGapsExtend { get; set; } = 0.0;
 
-    // Internal OB options
-    public int InternalOrderBlocksSize { get; set; } = 5;
-    public string OrderBlockFilter { get; set; } = "Any";
+        // Internal OB options
+        public int InternalOrderBlocksSize { get; set; } = 5;
+        public string OrderBlockFilter { get; set; } = "Any";
     }
 }

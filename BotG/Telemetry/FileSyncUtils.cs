@@ -15,7 +15,9 @@ namespace Telemetry
                 {
                     fs.Seek(0, SeekOrigin.End);
                     try { fs.Flush(true); }
-                    catch { try { fs.Flush(); } catch { }
+                    catch
+                    {
+                        try { fs.Flush(); } catch { }
                     }
                 }
             }

@@ -1,3 +1,0 @@
-ORD-3720 orphan fill investigation
-orders rows: 3, closes rows: 0
-Saved ord_3720_orders.csv and ord_3720_context.csv for PR attachment

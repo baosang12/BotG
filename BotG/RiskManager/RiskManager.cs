@@ -9,8 +9,9 @@ using Bar = DataFetcher.Models.Bar;            // Data bar type for IRiskManager
 using Bot3.Core;
 using DataFetcher.Models; // added
 using Telemetry; // added
+using BotG.Runtime.Preprocessor;
 
-namespace RiskManager
+namespace BotG.RiskManager
 {
     /// <summary>
     /// Tri?n khai IRiskManager d? gi�m s�t v� ki?m so�t r?i ro cho bot.
@@ -31,25 +32,25 @@ namespace RiskManager
         private RiskSettings _settings;
         private List<Position> _openPositions = new List<Position>();
         private DateTime _lastReportTime;
-    private readonly object _sync = new object();
+        private readonly object _sync = new object();
 
-    // telemetry
-        private readonly System.Threading.Timer _snapshotTimer;
-    private AccountInfo _lastAccountInfo;
-    // testing-only equity override (used by unit tests where cAlgo AccountInfo isn't available)
-    private double? _equityOverride;
-    // optional runtime symbol reference for auto-compute of PointValuePerUnit
-    private object _symbolRef;
+        private int _snapshotIntervalSeconds = 60;
+        private AccountInfo _lastAccountInfo;
+        private IPreprocessorStrategyDataBridge? _preprocessorBridge;
+        // testing-only equity override (used by unit tests where cAlgo AccountInfo isn't available)
+        private double? _equityOverride;
+        // optional runtime symbol reference for auto-compute of PointValuePerUnit
+        private object _symbolRef;
 
         // IModule implementation from Bot3.Core
         void IModule.Initialize(BotContext ctx)
         {
             Initialize(new RiskSettings());
             TelemetryContext.InitOnce();
-            
+
             // KICKOFF: Write immediate snapshot at startup
             PersistSnapshotIfAvailable();
-            
+
             // Read risk-specific flush interval from environment or use default 60s
             int riskFlushSec = 60;
             var envRiskFlush = Environment.GetEnvironmentVariable("BOTG_RISK_FLUSH_SEC");
@@ -57,9 +58,8 @@ namespace RiskManager
             {
                 riskFlushSec = sec;
             }
-            
-            // Snapshot every riskFlushSec
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
+
+            _snapshotIntervalSeconds = riskFlushSec;
         }
         void IModule.OnBar(IReadOnlyList<cAlgo.API.Bar> bars)
         {
@@ -68,12 +68,18 @@ namespace RiskManager
         void IModule.OnTick(cAlgo.API.Tick tick)
         {
             // No-op on tick event for risk manager
-            try { TelemetryContext.Collector?.IncTick(); } catch {}
+            try { TelemetryContext.Collector?.IncTick(); } catch { }
         }
 
         public RiskManager()
         {
-            _snapshotTimer = new System.Threading.Timer(_ => PersistSnapshotIfAvailable(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            // EMERGENCY A47: timer sẽ được quản lý bởi BotGRobot thông qua MainThreadTimer
+        }
+
+        public void AttachPreprocessorBridge(IPreprocessorStrategyDataBridge? bridge)
+        {
+            _preprocessorBridge = bridge;
+            TryRefreshAccountFromBridge();
         }
 
         public void Initialize(RiskSettings settings)
@@ -127,9 +133,8 @@ namespace RiskManager
             {
                 riskFlushSec = sec;
             }
-            
-            // Start risk snapshot timer
-            _snapshotTimer?.Change(TimeSpan.FromSeconds(riskFlushSec), TimeSpan.FromSeconds(riskFlushSec));
+
+            _snapshotIntervalSeconds = riskFlushSec;
         }
 
         /// <summary>
@@ -317,6 +322,27 @@ namespace RiskManager
             }
         }
 
+        private void TryRefreshAccountFromBridge()
+        {
+            if (_preprocessorBridge == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var info = _preprocessorBridge.GetAccountInfo();
+                if (info != null)
+                {
+                    _lastAccountInfo = info;
+                }
+            }
+            catch
+            {
+                // Snapshot access failures should not block risk sizing; retain last known values.
+            }
+        }
+
         /// <summary>
         /// Expose current immutable settings snapshot for read-only usage (logging).
         /// </summary>
@@ -335,14 +361,15 @@ namespace RiskManager
         /// units = floor(riskUsd / max(eps, stopDistancePriceUnits * pointValuePerUnit))
         /// Enforces minimum 1 unit and a reasonable cap.
         /// </summary>
-    public double CalculateOrderSize(double stopDistancePriceUnits, double pointValuePerUnit)
+        public double CalculateOrderSize(double stopDistancePriceUnits, double pointValuePerUnit)
         {
             try
             {
+                TryRefreshAccountFromBridge();
                 double equity = 0.0;
                 if (_equityOverride.HasValue) equity = _equityOverride.Value;
                 else if (_lastAccountInfo != null) equity = (double)_lastAccountInfo.Equity;
-                if (equity <= 0) return 1.0;
+                if (equity <= 0) return ApplyVolumeConstraints(1.0);
 
                 // Prefer instance properties; keep existing semantics (RiskPercentPerTrade is a fraction, e.g., 0.01 for 1%)
                 double riskPercent = this.RiskPercentPerTrade;
@@ -361,7 +388,7 @@ namespace RiskManager
                 else
                 {
                     // 2) From symbol: assume TickValue is monetary value per 1 tick for 1 lot; TickSize is price units per tick
-                    // Therefore value per 1.0 price unit per 1 lot is TickValue / TickSize
+                    // Therefore value per 1.0 price unit for 1 lot is TickValue / TickSize
                     (double lotSizeSym, double tickSizeSym, double tickValueSym) = GetSymbolLotTick();
                     if (tickSizeSym > 0 && tickValueSym > 0)
                     {
@@ -379,13 +406,15 @@ namespace RiskManager
                         // clamp by settings
                         double maxLots = (_settings != null && _settings.MaxLotsPerTrade > 0) ? _settings.MaxLotsPerTrade : 10.0;
                         if (lots > maxLots) lots = maxLots;
-                        if (lots < 0) lots = 0;
+
+                        double minLots = GetSymbolMinLots();
+                        if (lots < minLots) lots = minLots;
+
                         // convert to units using symbol LotSize or default
                         double lotSize = GetSymbolLotSizeOrDefault();
                         units = lots * lotSize;
-                        try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot={tickValuePerLotPerPriceUnit:G} lotSize={lotSize:G} lots={lots:G} units={units:G}"); } catch {}
-                        if (units < 1) units = 1;
-                        return units;
+                        try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot={tickValuePerLotPerPriceUnit:G} lotSize={lotSize:G} lots={lots:G} units={units:G}"); } catch { }
+                        return ApplyVolumeConstraints(units);
                     }
                 }
 
@@ -398,25 +427,25 @@ namespace RiskManager
                     if (_settings != null && _settings.PointValuePerUnit > 0)
                     {
                         effectivePointValue = _settings.PointValuePerUnit;
-                        try { Console.WriteLine("[RiskManager] Using PointValuePerUnit from settings: " + effectivePointValue.ToString("G")); } catch {}
+                        try { Console.WriteLine("[RiskManager] Using PointValuePerUnit from settings: " + effectivePointValue.ToString("G")); } catch { }
                     }
                     else
                     {
                         effectivePointValue = 1.0;
-                        try { Console.WriteLine("[RiskManager] Using fallback PointValuePerUnit=1.0; configure Risk.PointValuePerUnit to correct broker value"); } catch {}
+                        try { Console.WriteLine("[RiskManager] Using fallback PointValuePerUnit=1.0; configure Risk.PointValuePerUnit to correct broker value"); } catch { }
                     }
                 }
                 double riskPerUnit = Math.Max(1e-8, stopDistancePriceUnits * effectivePointValue);
                 units = Math.Floor(riskUsd / riskPerUnit);
-                if (units < 1) units = 1;
                 double capUnits = 1_000_000; // safe cap for units in fallback mode
                 if (units > capUnits) units = capUnits;
-                try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot=0 lots=0 units={units:G}"); } catch {}
+                units = ApplyVolumeConstraints(units);
+                try { Console.WriteLine($"[RiskManager] Sizing: equity={equity:G} riskUsd={riskUsd:G} stopDist={stopDistancePriceUnits:G} tickValuePerLot=0 lots=0 units={units:G}"); } catch { }
                 return units;
             }
             catch
             {
-                return 1.0;
+                return ApplyVolumeConstraints(1.0);
             }
         }
 
@@ -471,16 +500,169 @@ namespace RiskManager
             return lotSize;
         }
 
+        private static double ExtractDouble(object source, params string[] propertyNames)
+        {
+            foreach (var name in propertyNames)
+            {
+                try
+                {
+                    var prop = source.GetType().GetProperty(name);
+                    if (prop == null) continue;
+                    var raw = prop.GetValue(source);
+                    if (raw == null) continue;
+                    switch (raw)
+                    {
+                        case double d: return d;
+                        case float f: return f;
+                        case decimal dec: return (double)dec;
+                        case int i: return i;
+                        case long l: return l;
+                        case short s: return s;
+                    }
+                    if (double.TryParse(Convert.ToString(raw), out var parsed))
+                    {
+                        return parsed;
+                    }
+                }
+                catch { }
+            }
+            return 0.0;
+        }
+
+        private double GetSymbolVolumeMinOrDefault(object? symbolOverride = null)
+        {
+            var symbol = symbolOverride ?? _symbolRef;
+            double min = 0.0;
+            if (symbol != null)
+            {
+                // IMPORTANT: Only trust units-based properties. Do NOT fall back to lots-based VolumeMin.
+                // Some instruments (FX) expose VolumeMin in lots (e.g., 0.01) which caused us to treat
+                // 0.01 as units and send invalid tiny volumes. We now read only VolumeInUnitsMin.
+                min = ExtractDouble(symbol, "VolumeInUnitsMin");
+                if (min <= 0)
+                {
+                    // Derive from lot size if units min isn't exposed. Assume 0.01 lot minimum.
+                    // Use symbol lot size when available; otherwise, fall back to settings.
+                    double lotSize = GetSymbolLotSizeOrDefault();
+                    if (lotSize > 0)
+                    {
+                        min = Math.Max(1.0, lotSize * 0.01);
+                    }
+                }
+            }
+
+            if (min <= 0 && _settings != null && _settings.LotSizeDefault > 0)
+            {
+                // Final fallback based on configured lot size
+                min = Math.Max(1.0, _settings.LotSizeDefault * 0.01);
+            }
+
+            if (min <= 0) min = 1.0;
+            return min;
+        }
+
+        private double GetSymbolVolumeStepOrDefault(object? symbolOverride = null)
+        {
+            var symbol = symbolOverride ?? _symbolRef;
+            double step = 0.0;
+            if (symbol != null)
+            {
+                // Same rationale as min: do not read lots-based VolumeStep.
+                step = ExtractDouble(symbol, "VolumeInUnitsStep");
+            }
+
+            // If step is not available but we have a min, use min as a safe step (common on FX: 1000/1000)
+            if (step <= 0)
+            {
+                var min = GetSymbolVolumeMinOrDefault(symbol);
+                if (min > 0) step = min;
+            }
+
+            if (step < 0) step = 0;
+            return step;
+        }
+
+        private double GetSymbolMinLots()
+        {
+            double lotSize = GetSymbolLotSizeOrDefault();
+            if (lotSize <= 0) lotSize = 1.0;
+            double minUnits = GetSymbolVolumeMinOrDefault();
+            double minLots = minUnits / lotSize;
+            if (minLots <= 0) minLots = 0.01;
+            return minLots;
+        }
+
+        private static int GetStepDecimals(double step)
+        {
+            if (step <= 0) return 4;
+            double log = Math.Log10(step);
+            int decimals = (int)Math.Ceiling(-log);
+            if (decimals < 0) decimals = 0;
+            if (decimals > 8) decimals = 8;
+            return decimals;
+        }
+
+        private double ApplyVolumeConstraints(double requestedUnits, object? symbolOverride = null)
+        {
+            double units = requestedUnits;
+            if (_settings != null)
+            {
+                var multiplier = _settings.PositionSizeMultiplier;
+                if (multiplier > 0 && Math.Abs(multiplier - 1.0) > double.Epsilon)
+                {
+                    multiplier = Math.Clamp(multiplier, 0.01, 10.0);
+                    units *= multiplier;
+                }
+            }
+            var symbol = symbolOverride ?? _symbolRef;
+
+            double minUnits = GetSymbolVolumeMinOrDefault(symbol);
+            double stepUnits = GetSymbolVolumeStepOrDefault(symbol);
+
+            if (units < minUnits)
+            {
+                units = minUnits;
+            }
+
+            if (stepUnits > 0)
+            {
+                units = Math.Round(units / stepUnits) * stepUnits;
+            }
+
+            int decimals = stepUnits > 0 ? GetStepDecimals(stepUnits) : 4;
+            units = Math.Round(units, decimals, MidpointRounding.AwayFromZero);
+
+            if (units < minUnits)
+            {
+                units = minUnits;
+            }
+
+            if (units <= 0)
+            {
+                units = 1.0;
+            }
+
+            return units;
+        }
+
         // Hook for external components to provide latest account info
         public void UpdateAccountInfo(AccountInfo info)
         {
             _lastAccountInfo = info;
         }
 
+        internal TimeSpan SnapshotInterval => TimeSpan.FromSeconds(_snapshotIntervalSeconds <= 0 ? 60 : _snapshotIntervalSeconds);
+
+        internal void CaptureSnapshotForScheduler()
+        {
+            PersistSnapshotIfAvailable();
+        }
+
         private void PersistSnapshotIfAvailable()
         {
             try
             {
+                TryRefreshAccountFromBridge();
                 var info = _lastAccountInfo;
                 if (info == null)
                 {
@@ -569,31 +751,9 @@ namespace RiskManager
         /// Accepts a cAlgo symbol (either cAlgo.API.Symbol or cAlgo.API.Internals.Symbol).
         /// Returns an integer number of units, rounded down to step and never below min.
         /// </summary>
-        public int NormalizeUnitsForSymbol(object symbol, double requestedUnits)
+        public double NormalizeUnitsForSymbol(object symbol, double requestedUnits)
         {
-            int min = 1;
-            int step = 1;
-            try
-            {
-                if (symbol != null)
-                {
-                    var t = symbol.GetType();
-                    var minProp = t.GetProperty("VolumeInUnitsMin");
-                    var stepProp = t.GetProperty("VolumeInUnitsStep");
-                    if (minProp != null) min = Convert.ToInt32(minProp.GetValue(symbol));
-                    if (stepProp != null) step = Convert.ToInt32(stepProp.GetValue(symbol));
-                }
-            }
-            catch { }
-
-            if (min <= 0) min = 1;
-            if (step <= 0) step = 1;
-
-            int units = (int)Math.Max(min, Math.Round(requestedUnits));
-            // round down to nearest step
-            units = (units / step) * step;
-            if (units < min) units = min;
-            return units;
+            return ApplyVolumeConstraints(requestedUnits, symbol);
         }
     }
 

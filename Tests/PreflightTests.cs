@@ -84,7 +84,7 @@ namespace BotG.Tests
             // Arrange
             var now = DateTime.UtcNow;
             var mockTick = new MockTickSource(willTimeout: true); // No live tick
-            
+
             // Create temp CSV with recent tick
             var tempCsv = System.IO.Path.GetTempFileName();
             var recentTick = now.AddSeconds(-2).ToString("o");

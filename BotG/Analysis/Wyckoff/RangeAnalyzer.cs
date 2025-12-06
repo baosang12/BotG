@@ -56,9 +56,9 @@ namespace Analysis.Wyckoff
         public string SpringType { get; set; } // Spring / UTAD
         // Pending validation ST expansions
         public List<ExpansionEvent> PendingValidationExpansions { get; set; } = new();
-    // Enhanced metrics for lock qualification
-    public double CoreOccupancy { get; set; } // fraction of closes inside core zone recent window
-    public bool BothSidesTested { get; set; } // at least one touch/expansion each side
+        // Enhanced metrics for lock qualification
+        public double CoreOccupancy { get; set; } // fraction of closes inside core zone recent window
+        public bool BothSidesTested { get; set; } // at least one touch/expansion each side
         // Phase / pattern probing
         public PhaseState PhaseState { get; set; } = PhaseState.ProbeInit;
         public bool PotentialMini { get; set; }
@@ -69,54 +69,54 @@ namespace Analysis.Wyckoff
         public int? DirectTriggerIndex { get; set; }
         public int? FailBreakoutIndex { get; set; }
         public int? LastExpansionIndex { get; set; }
-    public int? FirstExpansionIndex { get; set; } // first expansion index for gating
-    public int? LastSummaryIndex { get; set; } // bar index of last summary emission
-    public string LastSummaryType { get; set; } // Early/Lock/Periodic/Final
-    // Shadow scoring (Phase 1) – no behavioral impact yet
-    public double? RangeScore { get; set; }
-    public double? StructureSubScore { get; set; }
-    public double? MaturitySubScore { get; set; }
-    public double? CompressionSubScore { get; set; }
-    public double? SpringSubScore { get; set; }
-    public double? CleanlinessSubScore { get; set; }
-    public double? DriftSubScore { get; set; }
-    public double? ExpCountNorm { get; set; }
-    public double? TouchesNorm { get; set; }
-    public double? MaturityBarsNorm { get; set; }
-    public double? CompNorm { get; set; }
-    public double? DriftAbsNorm { get; set; }
-    public double? OccNorm { get; set; }
-    public double? WidthStabilityNorm { get; set; }
-    public double? CleanlinessNorm { get; set; }
-    public double? SweepClarityNorm { get; set; }
-    // Spring gating diagnostics counters
-    public int SpringGateBlockExpCount { get; set; } // times blocked due to insufficient expansions
-    public int SpringGateBlockAge { get; set; } // times blocked due to insufficient bars since first expansion
-    public int SpringGateRelaxExpActivations { get; set; } // times exp requirement relaxed
-    public int SpringGateRelaxAgeActivations { get; set; } // times age requirement relaxed
-    // Penetration diagnostics counters
-    public int PenProbeCount { get; set; } // total probes logged (spring side)
-    public int PenNearMissCount { get; set; } // probes that were within 80% of required min but not accepted
-    public int PenTooShallowCount { get; set; } // probes below required min
-    public int PenTooDeepCount { get; set; } // probes exceeding max penetration
-    public int PenPipFailCount { get; set; } // probes failing absolute pip constraints
-    // Last penetration probe detailed metrics (for structured logging)
-    public double? LastPenProbeFrac { get; set; }
-    public double? LastPenProbePips { get; set; }
-    public double? LastPenAdaptiveMinFrac { get; set; }
-    public double? LastPenMaxFrac { get; set; }
-    public double? LastPenNeededMinFrac { get; set; } // UTAD dynamic min or spring adaptive min actually used
-    public string LastPenProbeType { get; set; } // SpringSide / UTADSide
-    public string LastPenProbeClass { get; set; } // TooShallow / NearMiss / TooDeep / PipFail
-    // Derived metrics
-    public double? VolatilityCompressionInverse { get; set; }
-    public double DriftBiasNormalized { get; set; }
-    // Last trigger metadata
-    public string LastTriggerType { get; set; }
-    public string LastTriggerDirection { get; set; }
-    public double? LastTriggerBodyRatio { get; set; }
-    public double? LastTriggerRangeFactor { get; set; }
-    public double? LastTriggerVolSpike { get; set; }
+        public int? FirstExpansionIndex { get; set; } // first expansion index for gating
+        public int? LastSummaryIndex { get; set; } // bar index of last summary emission
+        public string LastSummaryType { get; set; } // Early/Lock/Periodic/Final
+                                                    // Shadow scoring (Phase 1) – no behavioral impact yet
+        public double? RangeScore { get; set; }
+        public double? StructureSubScore { get; set; }
+        public double? MaturitySubScore { get; set; }
+        public double? CompressionSubScore { get; set; }
+        public double? SpringSubScore { get; set; }
+        public double? CleanlinessSubScore { get; set; }
+        public double? DriftSubScore { get; set; }
+        public double? ExpCountNorm { get; set; }
+        public double? TouchesNorm { get; set; }
+        public double? MaturityBarsNorm { get; set; }
+        public double? CompNorm { get; set; }
+        public double? DriftAbsNorm { get; set; }
+        public double? OccNorm { get; set; }
+        public double? WidthStabilityNorm { get; set; }
+        public double? CleanlinessNorm { get; set; }
+        public double? SweepClarityNorm { get; set; }
+        // Spring gating diagnostics counters
+        public int SpringGateBlockExpCount { get; set; } // times blocked due to insufficient expansions
+        public int SpringGateBlockAge { get; set; } // times blocked due to insufficient bars since first expansion
+        public int SpringGateRelaxExpActivations { get; set; } // times exp requirement relaxed
+        public int SpringGateRelaxAgeActivations { get; set; } // times age requirement relaxed
+                                                               // Penetration diagnostics counters
+        public int PenProbeCount { get; set; } // total probes logged (spring side)
+        public int PenNearMissCount { get; set; } // probes that were within 80% of required min but not accepted
+        public int PenTooShallowCount { get; set; } // probes below required min
+        public int PenTooDeepCount { get; set; } // probes exceeding max penetration
+        public int PenPipFailCount { get; set; } // probes failing absolute pip constraints
+                                                 // Last penetration probe detailed metrics (for structured logging)
+        public double? LastPenProbeFrac { get; set; }
+        public double? LastPenProbePips { get; set; }
+        public double? LastPenAdaptiveMinFrac { get; set; }
+        public double? LastPenMaxFrac { get; set; }
+        public double? LastPenNeededMinFrac { get; set; } // UTAD dynamic min or spring adaptive min actually used
+        public string LastPenProbeType { get; set; } // SpringSide / UTADSide
+        public string LastPenProbeClass { get; set; } // TooShallow / NearMiss / TooDeep / PipFail
+                                                      // Derived metrics
+        public double? VolatilityCompressionInverse { get; set; }
+        public double DriftBiasNormalized { get; set; }
+        // Last trigger metadata
+        public string LastTriggerType { get; set; }
+        public string LastTriggerDirection { get; set; }
+        public double? LastTriggerBodyRatio { get; set; }
+        public double? LastTriggerRangeFactor { get; set; }
+        public double? LastTriggerVolSpike { get; set; }
     }
 
     public enum PhaseState
@@ -134,17 +134,17 @@ namespace Analysis.Wyckoff
     public class RangeAnalyzer
     {
         private readonly Action<string> _logger;
-    private RangeState _activeRangeState; // for structured logging
-    // Snapshot for throttled evolve logs
-    private PhaseState? _ePrevPhase;
-    private double? _ePrevWidth;
-    private double? _ePrevDrift;
-    private double? _ePrevComp;
-    private double? _ePrevOcc;
-    private int? _ePrevIndex;
+        private RangeState _activeRangeState; // for structured logging
+                                              // Snapshot for throttled evolve logs
+        private PhaseState? _ePrevPhase;
+        private double? _ePrevWidth;
+        private double? _ePrevDrift;
+        private double? _ePrevComp;
+        private double? _ePrevOcc;
+        private int? _ePrevIndex;
         public bool Verbose { get; set; } = true; // new toggle
-    // Optional structured logger: (rawLine, currentRangeState)
-    public Action<string, RangeState> StructuredLogger { get; set; }
+                                                  // Optional structured logger: (rawLine, currentRangeState)
+        public Action<string, RangeState> StructuredLogger { get; set; }
         public int WindowAfterClimax { get; set; } = 12;
         public int PivotLR { get; set; } = 2;
         public double MinRetraceFrac { get; set; } = 0.45;
@@ -156,82 +156,82 @@ namespace Analysis.Wyckoff
         public double WeakRetraceFrac { get; set; } = 0.50;
         public double MinExpansionFrac { get; set; } = 0.10;
         public double HardExpansionFrac { get; set; } = 0.30;
-    public double EscapeLockFrac { get; set; } = 1.10; // raised from 1.0 to reduce premature auto-lock on first full-width escape
-    public bool DeferSTExpansion { get; set; } = true; // only apply STBreak after validation
+        public double EscapeLockFrac { get; set; } = 1.10; // raised from 1.0 to reduce premature auto-lock on first full-width escape
+        public bool DeferSTExpansion { get; set; } = true; // only apply STBreak after validation
         public int VolRecentWindow { get; set; } = 5;
         public int VolBaseWindow { get; set; } = 8;
         public double TouchEpsilonFrac { get; set; } = 0.02;
         public int LockLookbackBars { get; set; } = 12;
-    public int MinBarsSinceP1ForLock { get; set; } = 20; // guard against very early lock
-    public int MinTouchesPerSideForLock { get; set; } = 1; // ensure both sides interacted
-    public double CoreZoneFrac { get; set; } = 0.30; // percentage of width defining central zone
-    public int CoreOccupancyWindow { get; set; } = 15; // bars lookback for occupancy calc
-    public double CoreOccupancyMin { get; set; } = 0.40; // adjusted from 0.55 to increase lock qualification early
-    // Mini / direct breakout parameters
-    public int MiniPatternBarWindowLow { get; set; } = 15;
-    public int MiniPatternBarWindowHigh { get; set; } = 25;
-    public int MiniMaxExpansionCount { get; set; } = 1;
-    public double MiniCoreOccupancyMin { get; set; } = 0.55; // adjusted from 0.70 to allow more mini patterns
-    public double MiniCompressionMax { get; set; } = 0.55;
-    public double DriftBiasBreakoutMinStd { get; set; } = 0.25; // adjusted from 0.18 to require stronger drift
-    public double DriftBiasBreakoutMinMini { get; set; } = 0.30; // adjusted from 0.25
-    public double BreakoutATRFactor { get; set; } = 1.5;
-    public double BreakoutCloseOffsetFrac { get; set; } = 0.30;
-    public int ConsecutiveDriveBars { get; set; } = 2;
-    public int EarlyCompressionLookback { get; set; } = 10;
-    public int ReevalTimeoutBars { get; set; } = 30;
-    public double BasePositionSizeFactor { get; set; } = 1.0;
-    public double MiniSizeFactor { get; set; } = 0.7;
-    public double DirectBreakoutSizeFactor { get; set; } = 0.6;
-    // Size factor mapping (can be tuned later)
-    public double FactorBaseForming { get; set; } = 1.0;
-    public double FactorPhaseB { get; set; } = 1.0;
-    public double FactorCompressionWatch { get; set; } = 0.90;
-    public double FactorPhaseC { get; set; } = 0.85;
-    public double FactorDirectMini { get; set; } = 0.60;
-    public double FactorDirectNonMini { get; set; } = 0.70;
-    public int FailBreakoutCooldownBars { get; set; } = 5;
-    public double DriftDecayTolerance { get; set; } = 0.07;
-    // Breakout quality filters
-    public double BreakoutBodyRatioMin { get; set; } = 0.55; // real body / range
-    public double BreakoutRangeFactorMin { get; set; } = 1.20; // bar range / recentAvgRange
-    public double BreakoutVolumeSpikeMin { get; set; } = 1.30; // bar volume / recentAvgVolume
-    // Spring / UTAD penetration window (adjusted defaults after diagnostics showed infeasible overlap with UTADMinPenBase)
-    public double SpringMinPenetrationFrac { get; set; } = 0.12; // was 0.16
-    public double SpringMaxPenetrationFrac { get; set; } = 0.50; // was 0.40 (must exceed UTADMinPenBase to allow UTAD candidates)
-    // Optional absolute (pip) based overrides – allow detecting small 4-8 pip wicks on wide ranges
-    public double SpringMinPenetrationPips { get; set; } = 5.0; // absolute wick allowance (pips) to enable detection of small sweeps in wide ranges
-    public double SpringMaxPenetrationPips { get; set; } = 0.0; // if >0, enforce absolute max also
-    public double PipSize { get; set; } = 0.0001; // must be set by caller (Symbol.PipSize)
-    public bool EnableFastSpringConfirm { get; set; } = true; // allow same-bar confirm if reclaim satisfied
-    public double FastConfirmReclaimFrac { get; set; } = 0.50; // fraction of penetration recovered for instant confirm
-    public int SpringConfirmationBars { get; set; } = 5; // increased for stricter confirmation
-    public double SpringReclaimFrac { get; set; } = 0.35; // adjusted from 0.25 for stricter spring confirmation
+        public int MinBarsSinceP1ForLock { get; set; } = 20; // guard against very early lock
+        public int MinTouchesPerSideForLock { get; set; } = 1; // ensure both sides interacted
+        public double CoreZoneFrac { get; set; } = 0.30; // percentage of width defining central zone
+        public int CoreOccupancyWindow { get; set; } = 15; // bars lookback for occupancy calc
+        public double CoreOccupancyMin { get; set; } = 0.40; // adjusted from 0.55 to increase lock qualification early
+                                                             // Mini / direct breakout parameters
+        public int MiniPatternBarWindowLow { get; set; } = 15;
+        public int MiniPatternBarWindowHigh { get; set; } = 25;
+        public int MiniMaxExpansionCount { get; set; } = 1;
+        public double MiniCoreOccupancyMin { get; set; } = 0.55; // adjusted from 0.70 to allow more mini patterns
+        public double MiniCompressionMax { get; set; } = 0.55;
+        public double DriftBiasBreakoutMinStd { get; set; } = 0.25; // adjusted from 0.18 to require stronger drift
+        public double DriftBiasBreakoutMinMini { get; set; } = 0.30; // adjusted from 0.25
+        public double BreakoutATRFactor { get; set; } = 1.5;
+        public double BreakoutCloseOffsetFrac { get; set; } = 0.30;
+        public int ConsecutiveDriveBars { get; set; } = 2;
+        public int EarlyCompressionLookback { get; set; } = 10;
+        public int ReevalTimeoutBars { get; set; } = 30;
+        public double BasePositionSizeFactor { get; set; } = 1.0;
+        public double MiniSizeFactor { get; set; } = 0.7;
+        public double DirectBreakoutSizeFactor { get; set; } = 0.6;
+        // Size factor mapping (can be tuned later)
+        public double FactorBaseForming { get; set; } = 1.0;
+        public double FactorPhaseB { get; set; } = 1.0;
+        public double FactorCompressionWatch { get; set; } = 0.90;
+        public double FactorPhaseC { get; set; } = 0.85;
+        public double FactorDirectMini { get; set; } = 0.60;
+        public double FactorDirectNonMini { get; set; } = 0.70;
+        public int FailBreakoutCooldownBars { get; set; } = 5;
+        public double DriftDecayTolerance { get; set; } = 0.07;
+        // Breakout quality filters
+        public double BreakoutBodyRatioMin { get; set; } = 0.55; // real body / range
+        public double BreakoutRangeFactorMin { get; set; } = 1.20; // bar range / recentAvgRange
+        public double BreakoutVolumeSpikeMin { get; set; } = 1.30; // bar volume / recentAvgVolume
+                                                                   // Spring / UTAD penetration window (adjusted defaults after diagnostics showed infeasible overlap with UTADMinPenBase)
+        public double SpringMinPenetrationFrac { get; set; } = 0.12; // was 0.16
+        public double SpringMaxPenetrationFrac { get; set; } = 0.50; // was 0.40 (must exceed UTADMinPenBase to allow UTAD candidates)
+                                                                     // Optional absolute (pip) based overrides – allow detecting small 4-8 pip wicks on wide ranges
+        public double SpringMinPenetrationPips { get; set; } = 5.0; // absolute wick allowance (pips) to enable detection of small sweeps in wide ranges
+        public double SpringMaxPenetrationPips { get; set; } = 0.0; // if >0, enforce absolute max also
+        public double PipSize { get; set; } = 0.0001; // must be set by caller (Symbol.PipSize)
+        public bool EnableFastSpringConfirm { get; set; } = true; // allow same-bar confirm if reclaim satisfied
+        public double FastConfirmReclaimFrac { get; set; } = 0.50; // fraction of penetration recovered for instant confirm
+        public int SpringConfirmationBars { get; set; } = 5; // increased for stricter confirmation
+        public double SpringReclaimFrac { get; set; } = 0.35; // adjusted from 0.25 for stricter spring confirmation
         public int FalseExpansionValidationBars { get; set; } = 3;
         public double FalseExpansionRevertFrac { get; set; } = 0.5; // price reverts >50% of expansion delta
-    // Gating & advanced controls
-    public int MinExpForUTAD { get; set; } = 2;
-    public int MinExpForSpring { get; set; } = 1;
-    public int MinBarsSinceFirstExpansionForUTAD { get; set; } = 18;
-    public int MinBarsSinceFirstExpansionForSpring { get; set; } = 10;
-    public int MinBarsInPhaseB { get; set; } = 10; // dwell requirement before PhaseC unless deep compression
-    public double CompDeepForFastC { get; set; } = 0.42;
-    public int MinPhaseBarsBeforeTimeout { get; set; } = 5; // guard against instant timeout
-    public double UTADMinPenBase { get; set; } = 0.43; // dynamic min penetration for UTAD (reduced from 0.45 after probes showed excessive TooShallow cluster)
-    public double UTADMinPenLogDecay { get; set; } = 0.05; // subtract 0.05*log1p(expCount)
-    public int SummarySuppressWindowBars { get; set; } = 2;
-    // Adaptive spring gating relaxation
-    public bool EnableAdaptiveSpringGating { get; set; } = true;
-    public int SpringGateExpBlockThreshold { get; set; } = 3; // after N exp count blocks, relax by 1
-    public int SpringGateAgeBlockThreshold { get; set; } = 3; // after N age blocks, relax by 2 bars
-    public int SpringGateRelaxExpStep { get; set; } = 1;
-    public int SpringGateRelaxAgeStep { get; set; } = 2;
-    public int SpringGateMinExpFloor { get; set; } = 0; // won't relax below this
-    public int SpringGateMinAgeFloor { get; set; } = 4; // guard minimum structural age
-    // Penetration diagnostics
-    public bool EnablePenetrationDiagnostics { get; set; } = true; // master switch
-    public double PenetrationProbeMinFrac { get; set; } = 0.05; // log probes beyond this frac of base width
-    public double PenetrationNearMissFrac { get; set; } = 0.80; // fraction of required min marking a near miss
+                                                                    // Gating & advanced controls
+        public int MinExpForUTAD { get; set; } = 2;
+        public int MinExpForSpring { get; set; } = 1;
+        public int MinBarsSinceFirstExpansionForUTAD { get; set; } = 18;
+        public int MinBarsSinceFirstExpansionForSpring { get; set; } = 10;
+        public int MinBarsInPhaseB { get; set; } = 10; // dwell requirement before PhaseC unless deep compression
+        public double CompDeepForFastC { get; set; } = 0.42;
+        public int MinPhaseBarsBeforeTimeout { get; set; } = 5; // guard against instant timeout
+        public double UTADMinPenBase { get; set; } = 0.43; // dynamic min penetration for UTAD (reduced from 0.45 after probes showed excessive TooShallow cluster)
+        public double UTADMinPenLogDecay { get; set; } = 0.05; // subtract 0.05*log1p(expCount)
+        public int SummarySuppressWindowBars { get; set; } = 2;
+        // Adaptive spring gating relaxation
+        public bool EnableAdaptiveSpringGating { get; set; } = true;
+        public int SpringGateExpBlockThreshold { get; set; } = 3; // after N exp count blocks, relax by 1
+        public int SpringGateAgeBlockThreshold { get; set; } = 3; // after N age blocks, relax by 2 bars
+        public int SpringGateRelaxExpStep { get; set; } = 1;
+        public int SpringGateRelaxAgeStep { get; set; } = 2;
+        public int SpringGateMinExpFloor { get; set; } = 0; // won't relax below this
+        public int SpringGateMinAgeFloor { get; set; } = 4; // guard minimum structural age
+                                                            // Penetration diagnostics
+        public bool EnablePenetrationDiagnostics { get; set; } = true; // master switch
+        public double PenetrationProbeMinFrac { get; set; } = 0.05; // log probes beyond this frac of base width
+        public double PenetrationNearMissFrac { get; set; } = 0.80; // fraction of required min marking a near miss
 
         public RangeAnalyzer(Action<string> logger = null)
         {
@@ -268,8 +268,8 @@ namespace Analysis.Wyckoff
             catch { /* swallow safeguard */ }
         }
 
-    // Expose the currently active (most recently analyzed/evolved) RangeState for visualization/overlay
-    public RangeState ActiveRangeState => _activeRangeState;
+        // Expose the currently active (most recently analyzed/evolved) RangeState for visualization/overlay
+        public RangeState ActiveRangeState => _activeRangeState;
 
         public RangeState AnalyzeInitialRange(IList<Bar> bars, ClimaxEvent climax)
         {
@@ -617,22 +617,26 @@ namespace Analysis.Wyckoff
                             }
                             if (rs.SpringType == "UTAD")
                             {
-                                if (expCount < MinExpForUTAD) {
+                                if (expCount < MinExpForUTAD)
+                                {
                                     gatingOk = false; rs.SpringGateBlockExpCount++; Log($"[SpringGateBlock] type=UTAD idx={i} reason=expCount({expCount}<{MinExpForUTAD})"); StructuredLogger?.Invoke("SpringGateBlock", rs);
                                     if (EnableAdaptiveSpringGating && rs.SpringGateBlockExpCount % SpringGateExpBlockThreshold == 0) { MinExpForUTAD = Math.Max(SpringGateMinExpFloor, MinExpForUTAD - SpringGateRelaxExpStep); rs.SpringGateRelaxExpActivations++; Log($"[SpringGateRelax] type=UTAD newMinExp={MinExpForUTAD}"); StructuredLogger?.Invoke("SpringGateRelax", rs); }
                                 }
-                                else if (barsSinceFirstExp < MinBarsSinceFirstExpansionForUTAD) {
+                                else if (barsSinceFirstExp < MinBarsSinceFirstExpansionForUTAD)
+                                {
                                     gatingOk = false; rs.SpringGateBlockAge++; Log($"[SpringGateBlock] type=UTAD idx={i} reason=ageFirstExp({barsSinceFirstExp}<{MinBarsSinceFirstExpansionForUTAD})"); StructuredLogger?.Invoke("SpringGateBlock", rs);
                                     if (EnableAdaptiveSpringGating && rs.SpringGateBlockAge % SpringGateAgeBlockThreshold == 0) { MinBarsSinceFirstExpansionForUTAD = Math.Max(SpringGateMinAgeFloor, MinBarsSinceFirstExpansionForUTAD - SpringGateRelaxAgeStep); rs.SpringGateRelaxAgeActivations++; Log($"[SpringGateRelax] type=UTAD newMinAge={MinBarsSinceFirstExpansionForUTAD}"); StructuredLogger?.Invoke("SpringGateRelax", rs); }
                                 }
                             }
                             else // Spring
                             {
-                                if (expCount < MinExpForSpring) {
+                                if (expCount < MinExpForSpring)
+                                {
                                     gatingOk = false; rs.SpringGateBlockExpCount++; Log($"[SpringGateBlock] type=Spring idx={i} reason=expCount({expCount}<{MinExpForSpring})"); StructuredLogger?.Invoke("SpringGateBlock", rs);
                                     if (EnableAdaptiveSpringGating && rs.SpringGateBlockExpCount % SpringGateExpBlockThreshold == 0) { MinExpForSpring = Math.Max(SpringGateMinExpFloor, MinExpForSpring - SpringGateRelaxExpStep); rs.SpringGateRelaxExpActivations++; Log($"[SpringGateRelax] type=Spring newMinExp={MinExpForSpring}"); StructuredLogger?.Invoke("SpringGateRelax", rs); }
                                 }
-                                else if (barsSinceFirstExp < MinBarsSinceFirstExpansionForSpring) {
+                                else if (barsSinceFirstExp < MinBarsSinceFirstExpansionForSpring)
+                                {
                                     gatingOk = false; rs.SpringGateBlockAge++; Log($"[SpringGateBlock] type=Spring idx={i} reason=ageFirstExp({barsSinceFirstExp}<{MinBarsSinceFirstExpansionForSpring})"); StructuredLogger?.Invoke("SpringGateBlock", rs);
                                     if (EnableAdaptiveSpringGating && rs.SpringGateBlockAge % SpringGateAgeBlockThreshold == 0) { MinBarsSinceFirstExpansionForSpring = Math.Max(SpringGateMinAgeFloor, MinBarsSinceFirstExpansionForSpring - SpringGateRelaxAgeStep); rs.SpringGateRelaxAgeActivations++; Log($"[SpringGateRelax] type=Spring newMinAge={MinBarsSinceFirstExpansionForSpring}"); StructuredLogger?.Invoke("SpringGateRelax", rs); }
                                 }
@@ -1006,28 +1010,28 @@ namespace Analysis.Wyckoff
                     }
                 }
             }
-                // After processing all bars, emit summary
-                if (rs.ExpansionEvents.Count > 0)
+            // After processing all bars, emit summary
+            if (rs.ExpansionEvents.Count > 0)
+            {
+                double maxDelta = rs.ExpansionEvents.Max(e => e.ExpansionDelta);
+                if (!(rs.LastSummaryIndex.HasValue && rs.LastUpdateIndex.HasValue && (rs.LastUpdateIndex.Value - rs.LastSummaryIndex.Value) < SummarySuppressWindowBars))
                 {
-                    double maxDelta = rs.ExpansionEvents.Max(e => e.ExpansionDelta);
-                    if (!(rs.LastSummaryIndex.HasValue && rs.LastUpdateIndex.HasValue && (rs.LastUpdateIndex.Value - rs.LastSummaryIndex.Value) < SummarySuppressWindowBars))
-                    {
-                        rs.LastSummaryIndex = rs.LastUpdateIndex;
-                        if (string.IsNullOrEmpty(rs.LastSummaryType)) rs.LastSummaryType = rs.FinalRangeLocked ? "Lock" : "Periodic";
-                        Log($"[RangeSummary] climax={rs.ClimaxIndex} P1={rs.P1Index} expCount={rs.ExpansionEvents.Count} maxDelta={maxDelta:0.00} locked={rs.FinalRangeLocked} type={rs.LastSummaryType}");
-                    }
+                    rs.LastSummaryIndex = rs.LastUpdateIndex;
+                    if (string.IsNullOrEmpty(rs.LastSummaryType)) rs.LastSummaryType = rs.FinalRangeLocked ? "Lock" : "Periodic";
+                    Log($"[RangeSummary] climax={rs.ClimaxIndex} P1={rs.P1Index} expCount={rs.ExpansionEvents.Count} maxDelta={maxDelta:0.00} locked={rs.FinalRangeLocked} type={rs.LastSummaryType}");
                 }
-                // decide evolve structured snapshot
-                bool changed = _ePrevPhase != rs.PhaseState
-                                || DiffChanged(_ePrevWidth, rs.CurrentWidth, 1e-6)
-                                || DiffChanged(_ePrevDrift, rs.DriftBias, 5e-3)
-                                || DiffChanged(_ePrevComp, rs.VolatilityCompression, 5e-3)
-                                || DiffChanged(_ePrevOcc, rs.CoreOccupancy, 5e-3)
-                                || (_ePrevIndex != rs.LastUpdateIndex && rs.LastUpdateIndex % 10 == 0);
-                if (changed)
-                {
-                    StructuredLogger?.Invoke("EvolveRangeState", rs);
-                }
+            }
+            // decide evolve structured snapshot
+            bool changed = _ePrevPhase != rs.PhaseState
+                            || DiffChanged(_ePrevWidth, rs.CurrentWidth, 1e-6)
+                            || DiffChanged(_ePrevDrift, rs.DriftBias, 5e-3)
+                            || DiffChanged(_ePrevComp, rs.VolatilityCompression, 5e-3)
+                            || DiffChanged(_ePrevOcc, rs.CoreOccupancy, 5e-3)
+                            || (_ePrevIndex != rs.LastUpdateIndex && rs.LastUpdateIndex % 10 == 0);
+            if (changed)
+            {
+                StructuredLogger?.Invoke("EvolveRangeState", rs);
+            }
         }
 
         private void RegisterExpansion(RangeState rs, int index, double newBound, double deltaFrac, string source, bool hard, double previousBound)

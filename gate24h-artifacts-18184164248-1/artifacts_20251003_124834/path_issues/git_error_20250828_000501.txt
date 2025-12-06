@@ -1,2 +1,0 @@
-Missing repository context: 'git rev-parse' failed with 'fatal: not a git repository (or any of the parent directories): .git'.
-Per the rule, no retries. Please run the commands in git_manual_run.txt from a real git clone and push the changes.

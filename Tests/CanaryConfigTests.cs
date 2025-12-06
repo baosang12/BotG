@@ -17,7 +17,7 @@ namespace BotG.Tests
         public void Env_Override_Enables_Canary()
         {
             Environment.SetEnvironmentVariable("PREFLIGHT__Canary__Enabled", "true");
-            var cfg = TelemetryConfig.Load(null);
+            var cfg = TelemetryConfig.Load(null, ensureRunFolder: true, useCache: false);
             Assert.True(cfg.Preflight.Canary.Enabled);
             Environment.SetEnvironmentVariable("PREFLIGHT__Canary__Enabled", null);
         }

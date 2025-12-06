@@ -9,7 +9,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Detects Swing Order Blocks based on last significant swing rejection.
     /// </summary>
-public class SwingOrderBlockDetector : ISmartMoneyDetector
+    public class SwingOrderBlockDetector : ISmartMoneyDetector
     {
         public SmartMoneyType Type => SmartMoneyType.SwingOrderBlock;
         public bool IsEnabled { get; set; } = true;

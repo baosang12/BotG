@@ -1,2 +1,0 @@
-total_requests,total_fills,fill_rate,latency_p50,latency_p95,latency_p99,span_hours_risk,span_hours_telemetry,total_pnl,violations_3R,violations_6R,gaps_count
-357194,357194,1.0,8.0,13.0,14.0,24.00173359027778,24.00111081611111,0.0,0,0,0

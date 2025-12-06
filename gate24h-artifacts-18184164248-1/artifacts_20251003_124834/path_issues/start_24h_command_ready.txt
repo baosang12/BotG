@@ -1,3 +1,0 @@
-mode=paper
-hours=0.25nsource=close-issue-fix
-

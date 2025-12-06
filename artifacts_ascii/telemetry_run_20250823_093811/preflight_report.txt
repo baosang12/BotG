@@ -1,9 +1,0 @@
-SMOKE_ARTIFACT_PATH=.\artifacts_ascii\telemetry_run_20250823_093811
-git branch: preflight-fix-20250823_0930 @ 1319270
-dotnet build: PASS
-dotnet test: PASS
-requests=249, fills=249, fill_rate=1
-closed_trades_count=124, total_pnl=18.4759999999296
-reconcile: orphan_fills_count=1
-disk_free_gb=202.71
-auto-fixes: updated scripts/run_smoke.ps1 (auto-drain + preflight_report), ensured reconcile and breakdown outputs

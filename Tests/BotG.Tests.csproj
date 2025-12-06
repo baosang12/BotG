@@ -13,6 +13,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="MarketRegime\MarketRegimeDetectorTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="MarketRegime\MarketRegimeDetectorTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\BotG.Tests\**\*.cs">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BotG\BotG.csproj" />
   </ItemGroup>
 </Project>

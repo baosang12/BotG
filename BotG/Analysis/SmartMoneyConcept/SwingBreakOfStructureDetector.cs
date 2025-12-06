@@ -9,7 +9,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Swing Break of Structure: phá vỡ cấu trúc swing high/low.
     /// </summary>
-public class SwingBreakOfStructureDetector : ISmartMoneyDetector
+    public class SwingBreakOfStructureDetector : ISmartMoneyDetector
     {
         public void Initialize() { }
         public void Start() { }

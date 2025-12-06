@@ -44,12 +44,12 @@ FILL,2025-01-01T10:04:00Z,1704110640000,ORD-5,EURUSD,SELL,1.0515,0.3,0.10,0.02,0
 
             // Run reconstruction
             var result = RunReconstructScript(ordersPath, outputPath);
-            
+
             Assert.True(result.Success, $"Reconstruction failed: {result.Error}");
             Assert.True(File.Exists(outputPath), "Output file was not created");
 
             var trades = ParseReconstructedTrades(outputPath);
-            
+
             // Should have 3 trades (matching the 3 sell orders)
             Assert.Equal(3, trades.Count);
 
@@ -63,7 +63,7 @@ FILL,2025-01-01T10:04:00Z,1704110640000,ORD-5,EURUSD,SELL,1.0515,0.3,0.10,0.02,0
             // Second trade should use remaining from first buy + start of second buy
             var secondTrade = trades[1];
             Assert.Equal(0.4m, secondTrade.Quantity);
-            
+
             // Third trade should use remaining from second buy
             var thirdTrade = trades[2];
             Assert.Equal(0.3m, thirdTrade.Quantity);
@@ -91,7 +91,7 @@ FILL,2025-01-01T10:02:00Z,1704110520000,ORD-3,EURUSD,BUY,1.0520,1.0,0.10,0.02,0.
             Assert.True(result.Success, $"Reconstruction failed: {result.Error}");
 
             var trades = ParseReconstructedTrades(outputPath);
-            
+
             // Should have 2 trades
             Assert.Equal(2, trades.Count);
 
@@ -131,9 +131,9 @@ FILL,2025-01-01T10:03:00Z,1704110580000,ORD-3,EURUSD,SELL,1.0510,1.0,0.10,0.02,0
             Assert.True(result.Success, $"Reconstruction failed: {result.Error}");
 
             var trades = ParseReconstructedTrades(outputPath);
-            
+
             Assert.Single(trades);
-            
+
             // Should match the chronologically first fill (ORD-1 at 10:01), not order sequence
             var trade = trades.First();
             Assert.Equal("ORD-1", trade.OpenOrderId);
@@ -171,19 +171,19 @@ FILL,2025-01-01T10:01:00Z,1704110460000,ORD-2,EURUSD,SELL,1.0600,1.0,0.50,0.20,0
             Assert.Single(trades);
 
             var trade = trades.First();
-            
+
             // Gross P&L = (1.0600 - 1.0500) * 100000 * 1.0 = 1000
             Assert.Equal(1000.00m, trade.GrossPnL);
-            
+
             // Total commission = 0.50 + 0.50 = 1.00
             Assert.Equal(1.00m, trade.Commission);
-            
+
             // Total spread = 0.20 + 0.20 = 0.40
             Assert.Equal(0.40m, trade.SpreadCost);
-            
+
             // Slippage cost = (1.0 + 0.5) pips * 0.0001 * 100000 * 1.0 = 15.00
             Assert.Equal(15.00m, trade.SlippageCost);
-            
+
             // Net P&L = 1000 - 1.00 - 0.40 - 15.00 = 983.60
             Assert.Equal(983.60m, trade.NetPnL);
         }
@@ -235,21 +235,21 @@ FILL,2025-01-01T10:01:00Z,1704110460000,ORD-2,EURUSD,SELL,1.0600,1.0,0.50,0.20,0
         {
             var trades = new List<ReconstructedTrade>();
             var lines = File.ReadAllLines(csvPath);
-            
+
             if (lines.Length < 2) return trades;
 
             var headers = lines[0].Split(',');
-            
+
             for (int i = 1; i < lines.Length; i++)
             {
                 var values = lines[i].Split(',');
                 var trade = new ReconstructedTrade();
-                
+
                 for (int j = 0; j < headers.Length && j < values.Length; j++)
                 {
                     var header = headers[j].Trim();
                     var value = values[j].Trim();
-                    
+
                     switch (header)
                     {
                         case "symbol":
@@ -290,10 +290,10 @@ FILL,2025-01-01T10:01:00Z,1704110460000,ORD-2,EURUSD,SELL,1.0600,1.0,0.50,0.20,0
                             break;
                     }
                 }
-                
+
                 trades.Add(trade);
             }
-            
+
             return trades;
         }
 

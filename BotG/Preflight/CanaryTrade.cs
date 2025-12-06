@@ -124,7 +124,7 @@ namespace BotG.Preflight
                 }
 
                 WriteProof(proofPath, payload);
-                
+
                 // Also write to wireproof for RC-EXECUTOR evidence
                 try
                 {
@@ -323,7 +323,7 @@ namespace BotG.Preflight
                 while (DateTime.UtcNow < deadline)
                 {
                     ct.ThrowIfCancellationRequested();
-                    
+
                     // JUSTIFICATION: Task.Run acceptable here because:
                     // 1. PREFLIGHT TEST CODE: Not used in production RuntimeLoop
                     // 2. SYNCHRONOUS API WRAPPER: ClosePosition is sync cAlgo API, needs Task.Run

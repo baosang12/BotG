@@ -9,7 +9,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Phát hiện Change of Character (CHoCH): dấu hiệu đảo chiều xu hướng.
     /// </summary>
-public class ChangeOfCharacterDetector : ISmartMoneyDetector
+    public class ChangeOfCharacterDetector : ISmartMoneyDetector
     {
         public SmartMoneyType Type => SmartMoneyType.InternalChangeOfCharacter;
         public bool IsEnabled { get; set; } = true;

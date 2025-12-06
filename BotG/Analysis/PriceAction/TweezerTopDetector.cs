@@ -4,7 +4,7 @@ using DataFetcher.Models;
 
 namespace Analysis.PriceAction
 {
-public class TweezerTopDetector : ICandlePatternDetector
+    public class TweezerTopDetector : ICandlePatternDetector
     {
         public CandlePattern Pattern => CandlePattern.TweezerTop;
         public bool IsEnabled { get; set; } = true;

@@ -1,8 +1,0 @@
-﻿# Replace session secrets via secure method before running
-$env:BOTG_ROOT = (Resolve-Path '.').Path
-$env:BOTG_LOG_PATH = 'D:\botg\logs'
-# Live feed + paper fills (recommended for full 24h paper run)
-$env:USE_LIVE_FEED = 'true'
-$env:USE_SIMULATION = 'true'
-# Do NOT set -UseSimulation:$false unless authorized
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_realtime_24h_supervised.ps1 -Hours 24 -SecondsPerHour 3600 -FillProbability 1.0 -UseSimulation:$true

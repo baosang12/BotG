@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BotG.Config;
 
 namespace Telemetry
 {
@@ -11,177 +12,226 @@ namespace Telemetry
         public string Mode { get; set; } = "paper"; // paper|live|sim
         public string LogPath { get; set; } = DefaultBasePath;
         public int FlushIntervalSeconds { get; set; } = 60;
-    // Dev quick-run knobs
-    public int Hours { get; set; } = 24; // Production default: 24h runs
-    public int SecondsPerHour { get; set; } = 3600; // Real-time by default
-    public int DrainSeconds { get; set; } = 30; // drain window at shutdown
-    public int GracefulShutdownWaitSeconds { get; set; } = 5; // extra wait for OS buffers
-    public bool UseSimulation { get; set; } = false; // Paper mode default (no simulation)
+        // Dev quick-run knobs
+        public int Hours { get; set; } = 24; // Production default: 24h runs
+        public int SecondsPerHour { get; set; } = 3600; // Real-time by default
+        public int DrainSeconds { get; set; } = 30; // drain window at shutdown
+        public int GracefulShutdownWaitSeconds { get; set; } = 5; // extra wait for OS buffers
+        public bool UseSimulation { get; set; } = false; // Paper mode default (no simulation)
         public string OrderLogFile { get; set; } = "orders.csv";
         public string RiskSnapshotFile { get; set; } = "risk_snapshots.csv";
         public string TelemetryFile { get; set; } = "telemetry.csv";
-    public SimulationConfig Simulation { get; set; } = new SimulationConfig();
-    public PreflightConfig Preflight { get; set; } = new PreflightConfig();
-    public ExecutionConfig Execution { get; set; } = new ExecutionConfig();
-    public AccountConfig? Account { get; set; }
-    public PaperConfig? Paper { get; set; }
-    public TradingConfig? Trading { get; set; }
-    public OpsConfig Ops { get; set; } = new OpsConfig();
-    public DebugConfig Debug { get; set; } = new DebugConfig();
+        public SimulationConfig Simulation { get; set; } = new SimulationConfig();
+        public PreflightConfig Preflight { get; set; } = new PreflightConfig();
+        public ExecutionConfig Execution { get; set; } = new ExecutionConfig();
+        public AccountConfig? Account { get; set; }
+        public PaperConfig? Paper { get; set; }
+        public TradingConfig? Trading { get; set; }
+        public OpsConfig Ops { get; set; } = new OpsConfig();
+        public DebugConfig Debug { get; set; } = new DebugConfig();
+        public StrategyRegistrySettings StrategyRegistry { get; set; } = new StrategyRegistrySettings();
+        public PreprocessorRuntimeConfig Preprocessor { get; set; } = new PreprocessorRuntimeConfig();
 
-    // Runtime, not from JSON: a per-run artifact folder under LogPath/artifacts/telemetry_run_yyyyMMdd_HHmmss
-    public string? RunFolder { get; set; }
+        // Runtime, not from JSON: a per-run artifact folder under LogPath/artifacts/telemetry_run_yyyyMMdd_HHmmss
+        public string? RunFolder { get; set; }
 
-    /// <summary>
-    /// Get initial equity from config with fallback chain:
-    /// account.initial_equity_usd → paper.initial_balance → trading.starting_balance_usd → 10000
-    /// </summary>
-    public double GetInitialEquity()
-    {
-        if (Account?.InitialEquityUsd != null && Account.InitialEquityUsd > 0)
-            return Account.InitialEquityUsd.Value;
-        if (Paper?.InitialBalance != null && Paper.InitialBalance > 0)
-            return Paper.InitialBalance.Value;
-        if (Trading?.StartingBalanceUsd != null && Trading.StartingBalanceUsd > 0)
-            return Trading.StartingBalanceUsd.Value;
-        return 10000.0; // fallback default
-    }
+        /// <summary>
+        /// Get initial equity from config with fallback chain:
+        /// account.initial_equity_usd → paper.initial_balance → trading.starting_balance_usd → 10000
+        /// </summary>
+        public double GetInitialEquity()
+        {
+            if (Account?.InitialEquityUsd != null && Account.InitialEquityUsd > 0)
+                return Account.InitialEquityUsd.Value;
+            if (Paper?.InitialBalance != null && Paper.InitialBalance > 0)
+                return Paper.InitialBalance.Value;
+            if (Trading?.StartingBalanceUsd != null && Trading.StartingBalanceUsd > 0)
+                return Trading.StartingBalanceUsd.Value;
+            return 10000.0; // fallback default
+        }
 
         public static string DefaultBasePath => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? "D:\\botg\\logs"
             : "/var/log/botg";
 
-    public static TelemetryConfig Load(string? rootHint = null)
+        private static readonly object _cacheLock = new object();
+        private static TelemetryConfig? _cachedConfig;
+        private static DateTime _cachedAtUtc;
+        private static TimeSpan _cacheTtl = TimeSpan.FromSeconds(60);
+        private static string? _cachedRunFolder;
+        private static readonly string _runFolderLog = Path.Combine(DefaultBasePath, "run_folder_debug.log");
+
+        public static TelemetryConfig Load(string? rootHint = null)
+        {
+            return LoadCore(rootHint, ensureRunFolder: true, useCache: true);
+        }
+
+        public static TelemetryConfig Load(string? rootHint, bool ensureRunFolder, bool useCache)
+        {
+            return LoadCore(rootHint, ensureRunFolder, useCache);
+        }
+
+        public static TelemetryConfig LoadForGuard()
+        {
+            return LoadCore(null, ensureRunFolder: false, useCache: false);
+        }
+
+        private static TelemetryConfig LoadCore(string? rootHint, bool ensureRunFolder, bool useCache)
         {
             try
             {
-                // Priority: ENV > file (logs > config > workspace)
-                // Step 1: Load from file (lowest priority)
-                string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
-                string searchRoot = !string.IsNullOrWhiteSpace(rootHint) ? rootHint : baseDir;
-                
-                var loadedFiles = new System.Collections.Generic.List<string>();
-                TelemetryConfig cfg = new TelemetryConfig();
-                
-                // Try multiple config locations in precedence order (later overrides earlier)
-                var configPaths = new[]
+                if (useCache)
                 {
-                    Path.Combine(baseDir, "config.runtime.json"),
-                    "D:\\botg\\config\\config.runtime.json",
-                    "D:\\botg\\logs\\config.runtime.json"
-                };
-                
-                foreach (var path in configPaths)
-                {
-                    if (File.Exists(path))
+                    TelemetryConfig? cached = null;
+                    lock (_cacheLock)
                     {
-                        try
+                        if (_cachedConfig != null && (DateTime.UtcNow - _cachedAtUtc) < _cacheTtl)
                         {
-                            var json = File.ReadAllText(path);
-                            var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
-                            {
-                                PropertyNameCaseInsensitive = true
-                            });
-                            if (loaded != null)
-                            {
-                                // Merge non-null properties
-                                if (!string.IsNullOrWhiteSpace(loaded.Mode)) cfg.Mode = loaded.Mode;
-                                if (!string.IsNullOrWhiteSpace(loaded.LogPath)) cfg.LogPath = loaded.LogPath;
-                                if (loaded.FlushIntervalSeconds > 0) cfg.FlushIntervalSeconds = loaded.FlushIntervalSeconds;
-                                if (loaded.Hours > 0) cfg.Hours = loaded.Hours;
-                                if (loaded.SecondsPerHour > 0) cfg.SecondsPerHour = loaded.SecondsPerHour;
-                                cfg.UseSimulation = loaded.UseSimulation;
-                                if (loaded.Simulation != null) cfg.Simulation = loaded.Simulation;
-                                if (loaded.Execution != null) cfg.Execution = loaded.Execution;
-                                if (loaded.Account != null) cfg.Account = loaded.Account;
-                                if (loaded.Paper != null) cfg.Paper = loaded.Paper;
-                                if (loaded.Trading != null) cfg.Trading = loaded.Trading;
-                                if (loaded.Ops != null) cfg.Ops = loaded.Ops;
-                                if (loaded.Debug != null) cfg.Debug = loaded.Debug;
-                                loadedFiles.Add(path);
-                            }
+                            cached = _cachedConfig;
                         }
-                        catch { }
+                    }
+
+                    if (cached != null)
+                    {
+                        if (ensureRunFolder && string.IsNullOrWhiteSpace(cached.RunFolder))
+                        {
+                            try { EnsureRunFolderCached(cached); } catch { }
+                        }
+
+                        return cached;
                     }
                 }
-                
-                // Step 2: ENV overrides (highest priority)
+
+                string baseDir = AppContext.BaseDirectory ?? Directory.GetCurrentDirectory();
+
+                var loadedFiles = new System.Collections.Generic.List<string>();
+                var cfg = new TelemetryConfig();
+
+                var configPaths = new[]
+                {
+                Path.Combine(baseDir, "config.runtime.json"),
+                "D:\\botg\\config\\config.runtime.json",
+                "D:\\botg\\logs\\config.runtime.json"
+            };
+
+                foreach (var path in configPaths)
+                {
+                    if (!File.Exists(path))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var json = File.ReadAllText(path);
+                        var loaded = JsonSerializer.Deserialize<TelemetryConfig>(json, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (loaded == null)
+                        {
+                            continue;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(loaded.Mode)) cfg.Mode = loaded.Mode;
+                        if (!string.IsNullOrWhiteSpace(loaded.LogPath)) cfg.LogPath = loaded.LogPath;
+                        if (loaded.FlushIntervalSeconds > 0) cfg.FlushIntervalSeconds = loaded.FlushIntervalSeconds;
+                        if (loaded.Hours > 0) cfg.Hours = loaded.Hours;
+                        if (loaded.SecondsPerHour > 0) cfg.SecondsPerHour = loaded.SecondsPerHour;
+                        cfg.UseSimulation = loaded.UseSimulation;
+                        if (loaded.Simulation != null) cfg.Simulation = loaded.Simulation;
+                        if (loaded.Execution != null) cfg.Execution = loaded.Execution;
+                        if (loaded.Account != null) cfg.Account = loaded.Account;
+                        if (loaded.Paper != null) cfg.Paper = loaded.Paper;
+                        if (loaded.Trading != null) cfg.Trading = loaded.Trading;
+                        if (loaded.Ops != null) cfg.Ops = loaded.Ops;
+                        if (loaded.Debug != null) cfg.Debug = loaded.Debug;
+                        if (loaded.Preprocessor != null) cfg.Preprocessor = loaded.Preprocessor;
+                        if (loaded.StrategyRegistry != null)
+                        {
+                            cfg.StrategyRegistry ??= new StrategyRegistrySettings();
+                            if (!string.IsNullOrWhiteSpace(loaded.StrategyRegistry.ConfigPath))
+                            {
+                                cfg.StrategyRegistry.ConfigPath = loaded.StrategyRegistry.ConfigPath;
+                            }
+
+                            cfg.StrategyRegistry.HotReloadEnabled = loaded.StrategyRegistry.HotReloadEnabled;
+
+                            if (loaded.StrategyRegistry.WatchDebounceSeconds > 0)
+                            {
+                                cfg.StrategyRegistry.WatchDebounceSeconds = loaded.StrategyRegistry.WatchDebounceSeconds;
+                            }
+                        }
+                        loadedFiles.Add(path);
+                    }
+                    catch { }
+                }
+
                 var envPath = Environment.GetEnvironmentVariable("BOTG_LOG_PATH");
-                var envMode = Environment.GetEnvironmentVariable("BOTG_MODE") 
-                           ?? Environment.GetEnvironmentVariable("Mode");
+                var envMode = Environment.GetEnvironmentVariable("BOTG_MODE")
+                               ?? Environment.GetEnvironmentVariable("Mode");
                 var envFlush = Environment.GetEnvironmentVariable("BOTG_TELEMETRY_FLUSH_SEC");
-                var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled") 
-                                 ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
+                var envSimEnabled = Environment.GetEnvironmentVariable("BOTG__Simulation__Enabled")
+                                     ?? Environment.GetEnvironmentVariable("Simulation__Enabled");
                 var envCanaryEnabled = Environment.GetEnvironmentVariable("PREFLIGHT__Canary__Enabled");
-                
+
                 var envOverrides = new System.Collections.Generic.List<string>();
-                if (!string.IsNullOrWhiteSpace(envPath)) 
+                if (!string.IsNullOrWhiteSpace(envPath))
                 {
                     cfg.LogPath = envPath!;
                     envOverrides.Add($"BOTG_LOG_PATH={envPath}");
                 }
-                if (!string.IsNullOrWhiteSpace(envMode)) 
+                if (!string.IsNullOrWhiteSpace(envMode))
                 {
                     cfg.Mode = envMode!;
                     envOverrides.Add($"Mode={envMode}");
                 }
-                if (int.TryParse(envFlush, out var sec) && sec > 0) 
+                if (int.TryParse(envFlush, out var sec) && sec > 0)
                 {
                     cfg.FlushIntervalSeconds = sec;
                     envOverrides.Add($"FlushIntervalSeconds={sec}");
                 }
-                
-                // Step 3: Simulation.Enabled with ENV override + paper default
+
                 bool simFromFile = cfg.Simulation?.Enabled ?? cfg.UseSimulation;
                 bool? simFromEnv = null;
-                if (!string.IsNullOrWhiteSpace(envSimEnabled))
+                if (!string.IsNullOrWhiteSpace(envSimEnabled) && bool.TryParse(envSimEnabled, out var envSim))
                 {
-                    if (bool.TryParse(envSimEnabled, out var envSim))
-                    {
-                        simFromEnv = envSim;
-                        envOverrides.Add($"Simulation__Enabled={envSim}");
-                    }
+                    simFromEnv = envSim;
+                    envOverrides.Add($"Simulation__Enabled={envSim}");
                 }
-                
-                // Resolve final sim value: ENV > file > (paper default=false, others=true)
+
                 bool finalSim;
                 if (simFromEnv.HasValue)
                 {
-                    finalSim = simFromEnv.Value; // ENV wins
+                    finalSim = simFromEnv.Value;
                 }
                 else
                 {
-                    // Use file value if set explicitly, otherwise default by mode
                     string mode = cfg.Mode?.ToLowerInvariant() ?? "paper";
                     finalSim = mode == "paper" ? false : simFromFile;
                 }
-                
+
                 cfg.UseSimulation = finalSim;
                 if (cfg.Simulation == null) cfg.Simulation = new SimulationConfig();
                 cfg.Simulation.Enabled = finalSim;
-                
-                // Step 4: Preflight.Canary.Enabled with ENV override (default false)
-                if (!string.IsNullOrWhiteSpace(envCanaryEnabled))
+
+                if (!string.IsNullOrWhiteSpace(envCanaryEnabled) && bool.TryParse(envCanaryEnabled, out var canaryEnabled))
                 {
-                    if (bool.TryParse(envCanaryEnabled, out var canaryEnabled))
-                    {
-                        if (cfg.Preflight == null) cfg.Preflight = new PreflightConfig();
-                        if (cfg.Preflight.Canary == null) cfg.Preflight.Canary = new CanaryConfig();
-                        cfg.Preflight.Canary.Enabled = canaryEnabled;
-                        envOverrides.Add($"Preflight__Canary__Enabled={canaryEnabled}");
-                    }
+                    if (cfg.Preflight == null) cfg.Preflight = new PreflightConfig();
+                    if (cfg.Preflight.Canary == null) cfg.Preflight.Canary = new CanaryConfig();
+                    cfg.Preflight.Canary.Enabled = canaryEnabled;
+                    envOverrides.Add($"Preflight__Canary__Enabled={canaryEnabled}");
                 }
-                
-                // Log sources for forensics
-                var sourcesLog = loadedFiles.Count > 0 
-                    ? $"Files=[{string.Join(", ", loadedFiles)}]" 
+
+                var sourcesLog = loadedFiles.Count > 0
+                    ? $"Files=[{string.Join(", ", loadedFiles)}]"
                     : "Files=[]";
-                var envLog = envOverrides.Count > 0 
-                    ? $"ENV=[{string.Join(", ", envOverrides)}]" 
+                var envLog = envOverrides.Count > 0
+                    ? $"ENV=[{string.Join(", ", envOverrides)}]"
                     : "ENV=[]";
                 Console.WriteLine($"[ECHO+] {sourcesLog}; {envLog}; Mode={cfg.Mode}; Simulation.Enabled={finalSim}");
 
-                // Ensure directory exists; fallback if access denied
                 try
                 {
                     Directory.CreateDirectory(cfg.LogPath);
@@ -201,23 +251,25 @@ namespace Telemetry
                         cfg.LogPath = tmp;
                     }
                 }
-                // create a run folder if not already set
-                try
+
+                if (ensureRunFolder)
                 {
-                    if (string.IsNullOrEmpty(cfg.RunFolder))
+                    try { EnsureRunFolderCached(cfg); } catch { }
+                }
+
+                if (useCache)
+                {
+                    lock (_cacheLock)
                     {
-                        var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-                        var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
-                        Directory.CreateDirectory(runDir);
-                        cfg.RunFolder = runDir;
+                        _cachedConfig = cfg;
+                        _cachedAtUtc = DateTime.UtcNow;
                     }
                 }
-                catch { }
+
                 return cfg;
             }
             catch
             {
-                // Fallback defaults
                 var cfg = new TelemetryConfig();
                 try
                 {
@@ -233,19 +285,97 @@ namespace Telemetry
                     }
                     catch { }
                 }
-                // assign run folder
-                try
+
+                if (ensureRunFolder)
                 {
-                    if (string.IsNullOrEmpty(cfg.RunFolder))
+                    try { EnsureRunFolderCached(cfg); } catch { }
+                }
+
+                if (useCache)
+                {
+                    lock (_cacheLock)
                     {
-                        var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-                        var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
-                        Directory.CreateDirectory(runDir);
-                        cfg.RunFolder = runDir;
+                        _cachedConfig = cfg;
+                        _cachedAtUtc = DateTime.UtcNow;
                     }
                 }
-                catch { }
+
                 return cfg;
+            }
+        }
+
+        private static void EnsureRunFolderCached(TelemetryConfig cfg)
+        {
+            lock (_cacheLock)
+            {
+                if (!string.IsNullOrWhiteSpace(cfg.RunFolder))
+                {
+                    Directory.CreateDirectory(cfg.RunFolder);
+                    _cachedRunFolder = cfg.RunFolder;
+                    LogRunFolderEvent(cfg, $"reuse-config-runfolder|{cfg.RunFolder}");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_cachedRunFolder) && Directory.Exists(_cachedRunFolder))
+                {
+                    cfg.RunFolder = _cachedRunFolder;
+                    LogRunFolderEvent(cfg, $"reuse-cached-runfolder|{_cachedRunFolder}");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_cachedRunFolder) && !Directory.Exists(_cachedRunFolder))
+                {
+                    LogRunFolderEvent(cfg, $"cached-runfolder-missing|{_cachedRunFolder}");
+                    _cachedRunFolder = null;
+                }
+
+                var runId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var runDir = Path.Combine(cfg.LogPath, "artifacts", $"telemetry_run_{runId}");
+                Directory.CreateDirectory(runDir);
+                cfg.RunFolder = runDir;
+                _cachedRunFolder = runDir;
+                LogRunFolderEvent(cfg, $"create-runfolder|{runDir}");
+            }
+        }
+
+        private static void LogRunFolderEvent(TelemetryConfig cfg, string message)
+        {
+            LogRunFolderEventInternal(message, cfg);
+        }
+
+        private static void LogRunFolderEvent(string message)
+        {
+            LogRunFolderEventInternal(message, null);
+        }
+
+        private static void LogRunFolderEventInternal(string message, TelemetryConfig? cfg)
+        {
+            try
+            {
+                var utcNow = DateTime.UtcNow.ToString("o");
+                var line = $"{utcNow}|{message}{Environment.NewLine}";
+                var dir = Path.GetDirectoryName(_runFolderLog);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir!);
+                }
+                File.AppendAllText(_runFolderLog, line);
+
+                if (cfg != null && !string.IsNullOrWhiteSpace(cfg.LogPath))
+                {
+                    try
+                    {
+                        var stack = Environment.StackTrace?.Replace(Environment.NewLine, " => ");
+                        var debugPath = Path.Combine(cfg.LogPath!, "a8_debug.log");
+                        var debugLine = $"{utcNow}|RUN_FOLDER|{message}|stack={stack}{Environment.NewLine}";
+                        File.AppendAllText(debugPath, debugLine);
+                    }
+                    catch { }
+                }
+            }
+            catch
+            {
+                // ignore logging errors
             }
         }
 
@@ -278,6 +408,9 @@ namespace Telemetry
     public class PreflightConfig
     {
         public CanaryConfig Canary { get; set; } = new CanaryConfig();
+
+        [JsonPropertyName("TTLMinutes")]
+        public int TtlMinutes { get; set; } = 10;
     }
 
     public class CanaryConfig
@@ -315,6 +448,24 @@ namespace Telemetry
 
         [JsonPropertyName("fee_roundturn_usd_per_lot")]
         public double FeeRoundturnUsdPerLot { get; set; } = 0.0;
+
+        [JsonPropertyName("fee_pips_per_roundtrip")]
+        public double FeePipsPerRoundtrip { get; set; } = 0.0;
+
+        [JsonPropertyName("fee_pips_per_side")]
+        public double FeePipsPerSide { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_long_pips_per_day")]
+        public double SwapLongPipsPerDay { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_short_pips_per_day")]
+        public double SwapShortPipsPerDay { get; set; } = 0.0;
+
+        [JsonPropertyName("swap_type")]
+        public string? SwapType { get; set; }
+
+        [JsonPropertyName("swap_triple_day")]
+        public string? SwapTripleDay { get; set; }
     }
 
     public class AccountConfig
@@ -345,5 +496,12 @@ namespace Telemetry
     {
         [JsonPropertyName("smoke_once")]
         public bool SmokeOnce { get; set; } = false; // Default: disabled
+    }
+
+    public class StrategyRegistrySettings
+    {
+        public string? ConfigPath { get; set; }
+        public bool HotReloadEnabled { get; set; } = true;
+        public double WatchDebounceSeconds { get; set; } = 2.0;
     }
 }

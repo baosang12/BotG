@@ -16,10 +16,37 @@ namespace TradeManager
         /// <param name="stopLossPips">Stop loss (pips).</param>
         /// <param name="symbol">Đối tượng Symbol từ cAlgo để lấy pip value và volume min.</param>
         /// <returns>Khối lượng lệnh (units) tối thiểu đạt broker yêu cầu.</returns>
-    public static double Calculate(double riskUsd, double stopLossPips, cAlgo.API.Internals.Symbol symbol)
+        public static double Calculate(double riskUsd, double stopLossPips, cAlgo.API.Internals.Symbol symbol)
         {
             if (symbol == null)
                 throw new ArgumentNullException(nameof(symbol));
+
+            // ========================================
+            // 🚨 BTCUSD VOLUME FIX - Friday Night 2025-11-07
+            // Bitcoin price: >$100,000 USD
+            // Fixed volume: 0.001 BTC ≈ $100 (safe for weekend run)
+            // ========================================
+            if (symbol.Name.ToUpper().Contains("BTC"))
+            {
+                // Return broker-defined minimum volume to avoid BadVolume errors
+                // BTCUSD typically uses fractional contracts (e.g. 0.01 BTC)
+                // Using the minimum ensures the order respects crypto limits
+                var safeVolume = symbol.VolumeInUnitsMin;
+
+                // Ensure volume respects broker step increments when available
+                if (symbol.VolumeStep > 0)
+                {
+                    var steps = Math.Max(1, Math.Round(safeVolume / symbol.VolumeStep));
+                    safeVolume = steps * symbol.VolumeStep;
+                }
+
+                return safeVolume;
+            }
+
+            // ========================================
+            // 📋 ORIGINAL FOREX CALCULATION (preserved)
+            // Used for EURUSD and other forex pairs
+            // ========================================
             if (stopLossPips <= 0)
                 // Invalid stop loss, return minimum volume
                 return symbol.VolumeInUnitsMin;

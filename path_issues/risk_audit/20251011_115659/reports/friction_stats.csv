@@ -1,2 +1,0 @@
-fill_rate,buy_slippage_median,buy_slippage_p95,buy_slippage_std,sell_slippage_median,sell_slippage_p95,sell_slippage_std,constant_slippage_flag,fill_100pct_flag
-0.3333333333333333,1.8594687805710576e-08,1.799247198695411e-07,2.0784861248085705e-07,-1.8594584077564483e-08,-9.803919569875538e-09,2.0768388666198254e-07,NG,OK

@@ -1,3 +1,0 @@
-﻿mode=paper
-hours=24
-source=gate2-production

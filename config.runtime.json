@@ -3,9 +3,301 @@
     "Enabled": false
   },
   "Mode": "paper",
+  "Preprocessor": {
+    "Enabled": true,
+    "UseForMultiTimeframe": true,
+    "Timeframes": ["M1", "M5", "M15"],
+    "RecentTickCapacity": 4096,
+    "BarHistoryCapacity": 100,
+    "SnapshotDebounceMs": 25,
+    "EnabledIndicators": ["SMA", "RSI", "ATR"],
+    "LogLevel": "Information",
+    "Indicators": [
+      { "Type": "SMA", "Timeframe": "M1", "Period": 14 },
+      { "Type": "RSI", "Timeframe": "M5", "Period": 14 },
+      { "Type": "ATR", "Timeframe": "M15", "Period": 14 }
+    ]
+  },
+  "StrategyRegistry": {
+    "ConfigPath": "D:\\botg\\strategy_registry.json",
+    "HotReloadEnabled": true,
+    "WatchDebounceSeconds": 2.0
+  },
+  "Ops": {
+    "enable_trading": true
+  },
   "Preflight": {
     "Canary": {
       "Enabled": false
+    },
+    "TTLMinutes": 60
+  },
+  "FlushIntervalSeconds": 2,
+  "StrategyCoordination": {
+    "MinimumConfidenceThreshold": 0.12,
+    "MinimumConfidence": 0.12,
+    "MinimumTradeInterval": "00:15:00",
+    "MaxPositionsPerSymbol": 1,
+    "MaxSignalsPerSymbol": 1,
+    "CooldownPenalty": 0.05,
+    "EnableConflictResolution": true,
+    "EnableTimeBasedFiltering": true,
+    "PreventOppositeSignals": true,
+    "AdaptiveConfidence": {
+      "Enabled": true,
+      "Overrides": {
+        "Trending": 0.1,
+        "Ranging": 0.12,
+        "Volatile": 0.15,
+        "Calm": 0.08,
+        "Uncertain": 0.12
+      }
+    },
+    "CooldownRecovery": {
+      "Enabled": false,
+      "MaxCooldownBlocksPerHour": 10,
+      "CooldownRecoveryRate": 0.1,
+      "MaximumRecoveryReduction": 0.8,
+      "MinimumPenaltyMultiplier": 0.2,
+      "LongDroughtHours": 2.0,
+      "DroughtPenaltyMultiplier": 0.5
+    },
+    "DroughtAdaptive": {
+      "Enabled": true,
+      "WindowMinutes": 720,
+      "ReductionPerWindow": 0.05,
+      "MaximumReduction": 0.15,
+      "MinimumFloor": 0.12
+    },
+    "StrategyWeights": {
+      "SmaCrossoverStrategy": 1.0,
+      "RsiReversalStrategy": 3.0,
+      "BreakoutStrategy": 2.0,
+      "Ema200BreakoutStrategy": 1.5,
+      "PriceActionStrategy": 2.0
+    },
+    "EnableBayesianFusion": true,
+    "Fusion": {
+      "Method": "BayesianProbability",
+      "MinimumConfidenceThreshold": 0.62,
+      "LookbackPeriodForPerformance": 400,
+      "VotingConsensusMargin": 0.15,
+      "BayesianPrior": 0.55,
+      "EvidenceFloor": 0.1,
+      "EvidenceCeiling": 0.9,
+      "StrategyWeights": {
+        "BreakoutStrategy": 1.0,
+        "Ema200BreakoutStrategy": 0.8,
+        "RsiReversalStrategy": 0.75,
+        "PriceActionStrategy": 0.65
+      }
+    }
+  },
+  "ExitProfiles": {
+    "DefaultProfile": "scalping_conservative",
+    "StrategyOverrides": {
+      "Breakout": "breakout_aggressive",
+      "RsiStrategy": "mean_reversion",
+      "TrendFollowing": "trend_following_trailing",
+      "Ema200Breakout": "ema200_swing"
+    },
+    "SymbolOverrides": {
+      "XAUUSD": "gold_swing"
+    },
+    "Profiles": {
+      "scalping_conservative": {
+        "StopLossPips": 15,
+        "TakeProfitPips": 30,
+        "InitialRiskPips": 15,
+        "RiskRewardRatio": 2.0,
+        "BreakevenTriggerRMultiple": 0.75,
+        "BreakevenFeePips": 0.6,
+        "MultiLevelTrailingEnabled": true,
+        "TrailingLevels": [
+          { "TriggerR": 1.0, "StopOffsetR": 0.5 },
+          { "TriggerR": 1.5, "StopOffsetR": 1.0 },
+          { "TriggerR": 2.0, "StopOffsetR": 1.5 }
+        ],
+        "TrailingDynamicTriggerR": 2.0,
+        "TrailingDynamicOffsetR": 0.5,
+        "TrailingHysteresisR": 0.05,
+        "TrailingCooldownSeconds": 1.0
+      },
+      "breakout_aggressive": {
+        "StopLossPips": 25,
+        "InitialRiskPips": 25,
+        "RiskRewardRatio": 2.5,
+        "TakeProfitPips": 60,
+        "BreakevenTriggerRMultiple": 0.5,
+        "BreakevenFeePips": 0.8,
+        "MultiLevelTrailingEnabled": true,
+        "TrailingLevels": [
+          { "TriggerR": 0.75, "StopOffsetR": 0.25 },
+          { "TriggerR": 1.5, "StopOffsetR": 0.75 },
+          { "TriggerR": 2.25, "StopOffsetR": 1.25 }
+        ],
+        "TrailingDynamicTriggerR": 1.75,
+        "TrailingDynamicOffsetR": 0.4,
+        "TrailingHysteresisR": 0.03,
+        "TrailingCooldownSeconds": 0.5
+      },
+      "mean_reversion": {
+        "StopLossPips": 20,
+        "InitialRiskPips": 20,
+        "RiskRewardRatio": 1.0,
+        "TakeProfitPips": 20,
+        "BreakevenTriggerRMultiple": 1.0,
+        "BreakevenFeePips": 0.4,
+        "MultiLevelTrailingEnabled": false,
+        "TrailingStopPips": 15
+      },
+      "gold_swing": {
+        "StopLossPips": 300,
+        "InitialRiskPips": 300,
+        "RiskRewardRatio": 1.8,
+        "TakeProfitPips": 540,
+        "BreakevenTriggerRMultiple": 0.6,
+        "BreakevenFeePips": 1.2,
+        "MultiLevelTrailingEnabled": true,
+        "TrailingLevels": [
+          { "TriggerR": 0.8, "StopOffsetR": 0.3 },
+          { "TriggerR": 1.2, "StopOffsetR": 0.6 },
+          { "TriggerR": 2.0, "StopOffsetR": 1.0 }
+        ],
+        "TrailingDynamicTriggerR": 2.5,
+        "TrailingDynamicOffsetR": 0.75,
+        "TrailingHysteresisR": 0.05,
+        "TrailingCooldownSeconds": 2.0
+      },
+      "trend_following_trailing": {
+        "StopLossPips": 15,
+        "InitialRiskPips": 15,
+        "RiskRewardRatio": 4.0,
+        "TakeProfitPips": 60,
+        "BreakevenTriggerRMultiple": 1.3,
+        "BreakevenFeePips": 0.5,
+        "MultiLevelTrailingEnabled": true,
+        "TrailingLevels": [
+          { "TriggerR": 1.2, "StopOffsetR": 0.6 },
+          { "TriggerR": 2.0, "StopOffsetR": 1.2 },
+          { "TriggerR": 3.0, "StopOffsetR": 2.1 },
+          { "TriggerR": 4.0, "StopOffsetR": 3.2 }
+        ],
+        "TrailingDynamicTriggerR": 3.5,
+        "TrailingDynamicOffsetR": 0.8,
+        "TrailingHysteresisR": 0.05,
+        "TrailingCooldownSeconds": 1.5
+      },
+      "ema200_swing": {
+        "StopLossPips": 50,
+        "InitialRiskPips": 50,
+        "RiskRewardRatio": 3.0,
+        "TakeProfitPips": 150,
+        "BreakevenTriggerRMultiple": 0.9,
+        "BreakevenFeePips": 1.0,
+        "MultiLevelTrailingEnabled": true,
+        "TrailingLevels": [
+          { "TriggerR": 1.0, "StopOffsetR": 0.5 },
+          { "TriggerR": 2.0, "StopOffsetR": 1.2 },
+          { "TriggerR": 3.0, "StopOffsetR": 2.2 }
+        ],
+        "TrailingDynamicTriggerR": 2.5,
+        "TrailingDynamicOffsetR": 0.7,
+        "TrailingHysteresisR": 0.05,
+        "TrailingCooldownSeconds": 1.2
+      }
+    }
+  },
+  "RegimeConfiguration": {
+    "AdxTrendThreshold": 20.0,
+    "AdxRangeThreshold": 15.0,
+    "VolatilityThreshold": 1.2,
+    "CalmThreshold": 0.8,
+    "MinimumRegimeConfidence": 0.3
+  },
+  "MarketRegimeProfiles": {
+    "Trending": {
+      "DisplayName": "Trending Market",
+      "Recommendation": "Ưu tiên chiến lược bám xu hướng",
+      "RiskMultiplier": 1.0,
+      "MinimumConfidence": 0.65,
+      "StrategyTags": [
+        "trend",
+        "ema",
+        "sma",
+        "momentum",
+        "macd"
+      ],
+      "PreferredStrategies": [
+        "SmaCrossoverStrategy",
+        "EmaCrossoverStrategy",
+        "TrendFollowingStrategy",
+        "MomentumStrategy"
+      ]
+    },
+    "Ranging": {
+      "DisplayName": "Ranging Market",
+      "Recommendation": "Chiến lược thuận theo vùng giá",
+      "RiskMultiplier": 0.95,
+      "MinimumConfidence": 0.6,
+      "StrategyTags": [
+        "range",
+        "rsi",
+        "stochastic",
+        "mean"
+      ],
+      "PreferredStrategies": [
+        "RsiReversionStrategy",
+        "StochasticStrategy",
+        "RangeTradingStrategy",
+        "MeanReversionStrategy"
+      ]
+    },
+    "Volatile": {
+      "DisplayName": "High Volatility",
+      "Recommendation": "Giảm khối lượng hoặc tạm dừng giao dịch",
+      "RiskMultiplier": 0.5,
+      "MinimumConfidence": 0.7,
+      "StrategyTags": [
+        "breakout",
+        "volatility",
+        "atr",
+        "bollinger"
+      ],
+      "PreferredStrategies": [
+        "BreakoutStrategy",
+        "VolatilityStrategy",
+        "AtrExpansionStrategy",
+        "BollingerBreakoutStrategy"
+      ]
+    },
+    "Calm": {
+      "DisplayName": "Calm Market",
+      "Recommendation": "Tăng cường scalping & breakout anticipation",
+      "RiskMultiplier": 1.2,
+      "MinimumConfidence": 0.55,
+      "StrategyTags": [
+        "scalp",
+        "scalping",
+        "vwap",
+        "arbitrage",
+        "marketmaking"
+      ],
+      "PreferredStrategies": [
+        "ScalpingStrategy",
+        "VwapStrategy",
+        "MarketMakingStrategy"
+      ]
+    },
+    "Uncertain": {
+      "DisplayName": "Uncertain Conditions",
+      "Recommendation": "Giữ trạng thái thận trọng, chờ tín hiệu rõ ràng",
+      "RiskMultiplier": 0.7,
+      "MinimumConfidence": 0.5,
+      "AllowFallbackToAll": true,
+      "PreferredStrategies": []
     }
   }
 }
+
+

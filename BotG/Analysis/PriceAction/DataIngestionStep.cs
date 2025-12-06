@@ -23,7 +23,7 @@ namespace Analysis.PriceAction
             _ema = ema;
             _vwap = vwap;
             // If no steps specified, enable all; otherwise check if this step is enabled
-            _enabled = config.EnabledSteps == null || config.EnabledSteps.Contains(nameof(DataIngestionStep).Replace("Step",""));
+            _enabled = config.EnabledSteps == null || config.EnabledSteps.Contains(nameof(DataIngestionStep).Replace("Step", ""));
         }
 
         public void Execute(IDictionary<string, IList<Bar>> multiTfBars,

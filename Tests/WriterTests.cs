@@ -15,7 +15,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "test.csv");
@@ -51,7 +51,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "concurrent.csv");
@@ -63,7 +63,7 @@ public class WriterTests
             // Act - open file for reading while appending
             using var readStream = new FileStream(testFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(readStream);
-            
+
             var firstLine = reader.ReadLine();
             Assert.Equal("id,data", firstLine);
 
@@ -86,7 +86,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "encoding.csv");
@@ -112,7 +112,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "escape.csv");
@@ -139,7 +139,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "orders.csv");
@@ -166,7 +166,7 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "risk_snapshots.csv");
@@ -193,11 +193,11 @@ public class WriterTests
         // Arrange
         var tempDir = Path.Combine(Path.GetTempPath(), $"botg_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
-        
+
         try
         {
             var testFile = Path.Combine(tempDir, "orders.csv");
-            
+
             // Create file with wrong header and old data
             File.WriteAllLines(testFile, new[] {
                 "phase,timestamp_iso,action,symbol",  // Wrong header

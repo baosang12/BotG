@@ -37,7 +37,8 @@ namespace Analysis.Wyckoff
         /// <returns>SecondaryTestEvent hoặc null nếu không tìm thấy</returns>
         public SecondaryTestEvent DetectST(IList<Bar> bars, ClimaxEvent climax, AREvent ar)
         {
-            if (bars == null || climax == null || ar == null) {
+            if (bars == null || climax == null || ar == null)
+            {
                 _logger?.Invoke($"[SecondaryTestDetector] Input bars, climax, or ar is null. bars: {(bars == null ? "null" : bars.Count.ToString())}, climax: {(climax == null ? "null" : climax.Index.ToString())}, ar: {(ar == null ? "null" : ar.Index.ToString())}");
                 return null;
             }

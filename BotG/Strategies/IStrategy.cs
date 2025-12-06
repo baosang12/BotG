@@ -1,20 +1,30 @@
-using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Strategies
 {
     /// <summary>
-    /// Interface cho các chiến lược, nhận dữ liệu đã xử lý và phát event tín hiệu giao dịch.
+    /// Defines the contract for pluggable trading strategies composed within the strategy pipeline.
     /// </summary>
-    public interface IStrategy<TSignal>
+    public interface IStrategy
     {
-        /// <summary>
-        /// Event phát tín hiệu mua/bán/thoát.
-        /// </summary>
-        event EventHandler<TSignal> SignalGenerated;
+        /// <summary>Display name used in logs, telemetry, and reports.</summary>
+        string Name { get; }
 
         /// <summary>
-        /// Đánh giá dữ liệu để tạo tín hiệu giao dịch.
+        /// Evaluates the latest market data and returns a trading signal when actionable criteria are met.
+        /// Returning null indicates no action should be taken for the current tick.
         /// </summary>
-        void Evaluate(object data);
+        /// <param name="data">Snapshot of market data and derived indicators.</param>
+        /// <param name="ct">Cancellation token propagated from the pipeline for cooperative shutdown.</param>
+        /// <returns>Actionable signal or null when holding position.</returns>
+        Task<Signal?> EvaluateAsync(MarketData data, CancellationToken ct);
+
+        /// <summary>
+        /// Derives a risk score for the provided market context. The pipeline uses this to gate trade execution.
+        /// </summary>
+        /// <param name="context">Aggregated market and account context.</param>
+        /// <returns>Risk score with gating metadata.</returns>
+        RiskScore CalculateRisk(MarketContext context);
     }
 }

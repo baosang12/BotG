@@ -31,7 +31,7 @@ namespace BotG.Preflight
         {
             var sw = Stopwatch.StartNew();
             bool gotLiveTick = await _tickSource.WaitForNextTickAsync(TimeSpan.FromSeconds(3), ct);
-            
+
             string source;
             double ageSec;
 
@@ -78,8 +78,8 @@ namespace BotG.Preflight
                     return 999.0;
 
                 // Parse timestamp (ISO 8601 or similar)
-                if (DateTime.TryParse(parts[0], CultureInfo.InvariantCulture, 
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, 
+                if (DateTime.TryParse(parts[0], CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                     out var tickTime))
                 {
                     return (_serverTime() - tickTime).TotalSeconds;

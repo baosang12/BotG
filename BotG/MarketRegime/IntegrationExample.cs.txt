@@ -1,0 +1,346 @@
+using System;
+using cAlgo.API;
+using BotG.MarketRegime;
+
+/// <summary>
+/// Example integration of Market Regime Detector into BotGRobot.
+/// Shows recommended usage patterns for Strategy Router (MoE architecture).
+/// </summary>
+public partial class BotGRobot : Robot
+{
+    // Add this field to existing BotGRobot class
+    private MarketRegimeDetector _regimeDetector;
+
+    /// <summary>
+    /// INTEGRATION POINT 1: Initialize detector in OnStart().
+    /// Add this code to existing OnStart() method after other initializations.
+    /// </summary>
+    private void InitializeRegimeDetector()
+    {
+        try
+        {
+            // Option A: Use default configuration (recommended for initial deployment)
+            _regimeDetector = new MarketRegimeDetector(this);
+            Print("[REGIME] Detector initialized with default configuration");
+
+            /* Option B: Custom configuration for specific symbol/strategy needs
+            var config = new RegimeConfiguration
+            {
+                AdxTrendThreshold = 30.0,    // Stricter trend requirement
+                AdxRangeThreshold = 15.0,    // Tighter ranging definition
+                VolatilityThreshold = 2.0,   // Higher volatility bar
+                CalmThreshold = 0.4,         // Stricter calm definition
+                LookbackPeriod = 100,        // More historical context
+                AdxPeriod = 14,              // Standard
+                AtrPeriod = 14,              // Standard
+                BollingerPeriod = 20,        // Standard
+                BollingerDeviations = 2.0    // Standard
+            };
+            _regimeDetector = new MarketRegimeDetector(this, config);
+            Print("[REGIME] Detector initialized with custom configuration");
+            */
+        }
+        catch (Exception ex)
+        {
+            Print($"[REGIME:ERROR] Failed to initialize: {ex.Message}");
+            // Bot can continue without regime detection (graceful degradation)
+        }
+    }
+
+    /// <summary>
+    /// INTEGRATION POINT 2: Use detector in OnBar() for regime-aware strategy routing.
+    /// Add this code to existing OnBar() method before strategy evaluation.
+    /// </summary>
+    private void EvaluateWithRegimeAwareness()
+    {
+        if (_regimeDetector == null)
+        {
+            // Fallback: Run strategies without regime filtering
+            EvaluateStrategiesNormally();
+            return;
+        }
+
+        try
+        {
+            // Analyze current market regime
+            var regime = _regimeDetector.AnalyzeCurrentRegime();
+
+            // Route strategy execution based on regime
+            switch (regime)
+            {
+                case MarketRegime.Trending:
+                    // Strong directional movement: Use trend-following strategies
+                    Print("[STRATEGY] Trending regime detected - using momentum strategies");
+                    EvaluateTrendStrategies();
+                    break;
+
+                case MarketRegime.Ranging:
+                    // Sideways movement: Use mean-reversion strategies
+                    Print("[STRATEGY] Ranging regime detected - using mean-reversion strategies");
+                    EvaluateRangeStrategies();
+                    break;
+
+                case MarketRegime.Volatile:
+                    // High volatility: Reduce risk or stand aside
+                    Print("[STRATEGY] Volatile regime detected - reducing position sizes");
+                    EvaluateWithReducedRisk();
+                    break;
+
+                case MarketRegime.Calm:
+                    // Low volatility: Scalping or breakout anticipation
+                    Print("[STRATEGY] Calm regime detected - scalping opportunities");
+                    EvaluateScalpingStrategies();
+                    break;
+
+                case MarketRegime.Uncertain:
+                    // Mixed signals: Conservative approach
+                    Print("[STRATEGY] Uncertain regime - waiting for clearer signals");
+                    // Optionally execute only highest-confidence strategies
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Print($"[REGIME:ERROR] Evaluation failed: {ex.Message}");
+            // Fallback to normal strategy evaluation
+            EvaluateStrategiesNormally();
+        }
+    }
+
+    /// <summary>
+    /// INTEGRATION POINT 3: Filter strategies by regime compatibility.
+    /// Modify existing strategy pipeline to respect regime classification.
+    /// </summary>
+    private void EvaluateTrendStrategies()
+    {
+        // Example: Execute only trend-following strategies
+        // - SMA Crossover
+        // - MACD
+        // - Momentum indicators
+        
+        // Integrate with existing strategy evaluation logic
+        if (_strategies != null)
+        {
+            foreach (var strategy in _strategies)
+            {
+                // Check if strategy is trend-compatible (implement this in each strategy)
+                if (IsTrendStrategy(strategy.Name))
+                {
+                    var signal = strategy.EvaluateAsync(null, default).GetAwaiter().GetResult();
+                    if (signal != null)
+                    {
+                        // Execute signal with normal risk parameters
+                        ProcessSignal(signal);
+                    }
+                }
+            }
+        }
+    }
+
+    private void EvaluateRangeStrategies()
+    {
+        // Example: Execute only mean-reversion strategies
+        // - RSI Reversal
+        // - Bollinger Band bounces
+        // - Stochastic oversold/overbought
+        
+        if (_strategies != null)
+        {
+            foreach (var strategy in _strategies)
+            {
+                if (IsRangeStrategy(strategy.Name))
+                {
+                    var signal = strategy.EvaluateAsync(null, default).GetAwaiter().GetResult();
+                    if (signal != null)
+                    {
+                        ProcessSignal(signal);
+                    }
+                }
+            }
+        }
+    }
+
+    private void EvaluateWithReducedRisk()
+    {
+        // Example: Reduce position sizes by 50% or avoid trading
+        // Update risk parameters before strategy evaluation
+        
+        if (_strategies != null)
+        {
+            foreach (var strategy in _strategies)
+            {
+                var signal = strategy.EvaluateAsync(null, default).GetAwaiter().GetResult();
+                if (signal != null)
+                {
+                    // Execute with 50% normal position size
+                    ProcessSignalWithReducedRisk(signal, 0.5);
+                }
+            }
+        }
+    }
+
+    private void EvaluateScalpingStrategies()
+    {
+        // Example: Execute scalping strategies with tight stops
+        // - Small pip targets (5-10 pips)
+        // - Tight stop losses
+        // - High frequency
+        
+        if (_strategies != null)
+        {
+            foreach (var strategy in _strategies)
+            {
+                if (IsScalpingStrategy(strategy.Name))
+                {
+                    var signal = strategy.EvaluateAsync(null, default).GetAwaiter().GetResult();
+                    if (signal != null)
+                    {
+                        ProcessSignal(signal);
+                    }
+                }
+            }
+        }
+    }
+
+    private void EvaluateStrategiesNormally()
+    {
+        // Fallback: Execute all strategies without regime filtering
+        if (_strategies != null)
+        {
+            foreach (var strategy in _strategies)
+            {
+                var signal = strategy.EvaluateAsync(null, default).GetAwaiter().GetResult();
+                if (signal != null)
+                {
+                    ProcessSignal(signal);
+                }
+            }
+        }
+    }
+
+    // Helper methods (implement based on your strategy naming conventions)
+    private bool IsTrendStrategy(string name)
+    {
+        return name.Contains("SMA") || name.Contains("MACD") || name.Contains("Momentum");
+    }
+
+    private bool IsRangeStrategy(string name)
+    {
+        return name.Contains("RSI") || name.Contains("Bollinger") || name.Contains("Stochastic");
+    }
+
+    private bool IsScalpingStrategy(string name)
+    {
+        return name.Contains("Scalp") || name.Contains("Quick");
+    }
+
+    private void ProcessSignal(object signal)
+    {
+        // Integrate with existing signal processing logic
+        // This is a placeholder; replace with actual implementation
+    }
+
+    private void ProcessSignalWithReducedRisk(object signal, double riskMultiplier)
+    {
+        // Integrate with existing risk management
+        // Reduce position size by riskMultiplier (e.g., 0.5 = 50% normal size)
+    }
+
+    /// <summary>
+    /// INTEGRATION POINT 4: Optional performance monitoring.
+    /// Track regime detector performance and regime distribution.
+    /// </summary>
+    private void MonitorRegimePerformance()
+    {
+        if (_regimeDetector == null) return;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var regime = _regimeDetector.AnalyzeCurrentRegime();
+        stopwatch.Stop();
+
+        // Log performance metrics
+        Print($"[PERF] Regime analysis: {stopwatch.ElapsedMilliseconds}ms (regime: {regime})");
+
+        // Expected: < 50ms on modern hardware
+        if (stopwatch.ElapsedMilliseconds > 100)
+        {
+            Print($"[PERF:WARNING] Regime analysis slow: {stopwatch.ElapsedMilliseconds}ms");
+        }
+
+        // Track regime distribution (implement counter/histogram logic)
+        // This helps understand market conditions over time
+        IncrementRegimeCounter(regime);
+    }
+
+    private void IncrementRegimeCounter(MarketRegime regime)
+    {
+        // Implement regime distribution tracking
+        // Example: Store counts in dictionary, log hourly summaries
+    }
+}
+
+/// <summary>
+/// COMPLETE INTEGRATION EXAMPLE:
+/// Shows full OnStart() and OnBar() integration with existing code.
+/// </summary>
+public class CompleteBotGIntegration : Robot
+{
+    private MarketRegimeDetector _regimeDetector;
+
+    protected override void OnStart()
+    {
+        // ... existing initialization code ...
+
+        // Initialize regime detector (ADD THIS)
+        try
+        {
+            _regimeDetector = new MarketRegimeDetector(this);
+            Print("[REGIME] Detector ready");
+        }
+        catch (Exception ex)
+        {
+            Print($"[REGIME:ERROR] Init failed: {ex.Message}");
+        }
+
+        // ... rest of initialization ...
+    }
+
+    protected override void OnBar()
+    {
+        // ... existing pre-processing ...
+
+        // Regime-aware strategy routing (ADD THIS)
+        if (_regimeDetector != null)
+        {
+            try
+            {
+                var regime = _regimeDetector.AnalyzeCurrentRegime();
+                RouteStrategiesByRegime(regime);
+            }
+            catch (Exception ex)
+            {
+                Print($"[REGIME:ERROR] {ex.Message}");
+                // Fallback to normal execution
+                ExecuteStrategiesNormally();
+            }
+        }
+        else
+        {
+            // Regime detector not available
+            ExecuteStrategiesNormally();
+        }
+
+        // ... existing post-processing ...
+    }
+
+    private void RouteStrategiesByRegime(MarketRegime regime)
+    {
+        // Implement strategy routing logic
+        Print($"[STRATEGY] Routing for regime: {regime}");
+    }
+
+    private void ExecuteStrategiesNormally()
+    {
+        // Existing strategy execution logic
+    }
+}

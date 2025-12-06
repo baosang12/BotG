@@ -4,7 +4,8 @@ using System.Globalization;
 using System.Threading;
 using Telemetry;
 using DataFetcher.Models;
-using RiskManager;
+using RiskManager = BotG.RiskManager;
+using RiskSettings = BotG.RiskManager.RiskSettings;
 using System.Collections.Generic;
 using Connectivity;
 using Connectivity.Synthetic;
@@ -37,7 +38,8 @@ class Program
 
         // Init telemetry and write run metadata with extra context
         TelemetryContext.InitOnce(cfg);
-        var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg, new {
+        var runDir = RunInitializer.EnsureRunFolderAndMetadata(cfg, new
+        {
             sim_seed = 42,
             seconds = (int?)null,
             seconds_per_hour = cfg.SecondsPerHour,
@@ -95,7 +97,7 @@ class Program
         }
 
         // Simulate ticks/signals/orders
-    var collector = TelemetryContext.Collector!;
+        var collector = TelemetryContext.Collector!;
         var start = DateTime.UtcNow;
         var duration = TimeSpan.FromSeconds(60); // use 60s if environment is constrained
         if (args.Length > 0 && int.TryParse(args[0], out var sec0) && sec0 > 0) duration = TimeSpan.FromSeconds(sec0);
@@ -109,9 +111,9 @@ class Program
         int i = 0;
         var rng = new Random(42); // deterministic
         double fillProb = cfg.Simulation?.FillProbability ?? 1.0;
-    // simple queues to pair buy/sell for closed trades
-    var buyStack = new List<(string orderId, DateTime ts, double size, double price)>();
-    var sellStack = new List<(string orderId, DateTime ts, double size, double price)>();
+        // simple queues to pair buy/sell for closed trades
+        var buyStack = new List<(string orderId, DateTime ts, double size, double price)>();
+        var sellStack = new List<(string orderId, DateTime ts, double size, double price)>();
         double midPrice = 100.0;
         while (DateTime.UtcNow - start < duration)
         {
@@ -148,12 +150,12 @@ class Program
                         double pipValue = 0.0001; // simplistic default
                         var (entryAdj, exitAdj) = Execution.FeeCalculator.ComputeSpreadAdjustments(cfg, pipValue);
                         double adjEntry = b.price + entryAdj; // buy worse
-                        double adjExit  = s.price + exitAdj;  // sell worse
+                        double adjExit = s.price + exitAdj;  // sell worse
                         double gross = (adjExit - adjEntry) * 1.0;
                         // Fee based on exit notional (approx)
                         // Use PointValuePerUnit if set in RiskSettings; default to 1.0
                         double pvu = 1.0;
-                        try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                        try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                         double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
                         double net = gross - fee;
                         TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, s.orderId, b.ts, s.ts, "BUY-SELL", 1.0, b.price, s.price, net, fee, symbol, gross);
@@ -165,8 +167,8 @@ class Program
             i++;
         }
 
-    // Graceful drain at end: try to pair any remaining side within a short window
-    int pendingBefore = buyStack.Count + sellStack.Count;
+        // Graceful drain at end: try to pair any remaining side within a short window
+        int pendingBefore = buyStack.Count + sellStack.Count;
         var drainUntil = DateTime.UtcNow.AddSeconds(5);
         while ((buyStack.Count > 0 || sellStack.Count > 0) && DateTime.UtcNow < drainUntil)
         {
@@ -183,15 +185,15 @@ class Program
                 double adjExit = fakeSellPrice + exitAdj;
                 double gross = (adjExit - adjEntry) * 1.0;
                 double pvu = 1.0;
-                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
-        PublishQuote(syntheticMd, symbol, fakeSellPrice, 0.0006);
-        TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
-        // Also log the synthetic exit order lifecycle to ensure latency_ms is derivable
-    TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "REQUEST", "drain", symbol);
-    TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "ACK", "drain", symbol);
-    TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", symbol);
+                PublishQuote(syntheticMd, symbol, fakeSellPrice, 0.0006);
+                TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, "DRAIN-SELL", b.ts, now, "BUY-SELL", 1.0, b.price, fakeSellPrice, net, fee, "drain_close", gross);
+                // Also log the synthetic exit order lifecycle to ensure latency_ms is derivable
+                TelemetryContext.OrderLogger?.LogV2("REQUEST", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "REQUEST", "drain", symbol);
+                TelemetryContext.OrderLogger?.LogV2("ACK", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, null, null, null, 1, null, "ACK", "drain", symbol);
+                TelemetryContext.OrderLogger?.LogV2("FILL", "DRAIN-SELL", "DRAIN-SELL", "Sell", "SELL", "Market", fakeSellPrice, null, fakeSellPrice, null, null, 1, 1, "FILL", "drain", symbol);
             }
             else if (sellStack.Count > 0 && buyStack.Count == 0)
             {
@@ -205,7 +207,7 @@ class Program
                 double adjExit = s.price + exitAdj;
                 double gross = (adjExit - adjEntry) * 1.0;
                 double pvu = 1.0;
-                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
                 PublishQuote(syntheticMd, symbol, fakeBuyPrice, 0.0006);
@@ -225,14 +227,14 @@ class Program
                 double adjExit = s.price + exitAdj;
                 double gross = (adjExit - adjEntry) * 1.0;
                 double pvu = 1.0;
-                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, TelemetryContext.Config, pvu);
                 double net = gross - fee;
                 TelemetryContext.ClosedTrades?.Append($"T-DRAIN-{b.orderId}", b.orderId, s.orderId, b.ts, DateTime.UtcNow, "BUY-SELL", 1.0, b.price, s.price, net, fee, "drain_match", gross);
             }
         }
 
-    // Drain: close any leftover positions by issuing synthetic opposing fills
+        // Drain: close any leftover positions by issuing synthetic opposing fills
         try
         {
             if (buyStack.Count > 0 || sellStack.Count > 0)
@@ -256,7 +258,7 @@ class Program
                 double adjExit = exec + exitAdj;
                 double gross = (adjExit - adjEntry) * 1.0;
                 double pvu = 1.0;
-                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
                 double net = gross - fee;
                 TelemetryContext.ClosedTrades?.Append($"T-{oid}", b.orderId, oid, b.ts, closeTs, "BUY-SELL", 1.0, b.price, exec, net, fee, "drain", gross);
@@ -277,7 +279,7 @@ class Program
                 double adjExit = exec - exitAdj;
                 double gross = (adjExit - adjEntry) * 1.0;
                 double pvu = 1.0;
-                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch {}
+                try { pvu = Math.Max(1e-9, new RiskManager.RiskManager().GetSettings().PointValuePerUnit); } catch { }
                 double fee = Execution.FeeCalculator.ComputeFee((adjEntry + adjExit) / 2.0, 1.0, cfg, pvu);
                 double net = gross - fee;
                 TelemetryContext.ClosedTrades?.Append($"T-{oid}", s.orderId, oid, s.ts, closeTs, "SELL-BUY", 1.0, s.price, exec, net, fee, "drain", gross);
@@ -308,7 +310,7 @@ class Program
                     ["pending_after_drain"] = pendingAfter
                 };
                 root["drain_metrics"] = drain;
-                File.WriteAllText(metaPath, root.ToJsonString(new System.Text.Json.JsonSerializerOptions{ WriteIndented = true }));
+                File.WriteAllText(metaPath, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
             }
         }
         catch { }
@@ -322,9 +324,9 @@ class Program
             Positions = 1
         });
 
-    // Allow time for a flush tick and ensure final writes have time to hit disk
-    int waitMs = Math.Max(500, (int)(TelemetryContext.Config.GracefulShutdownWaitSeconds * 1000));
-    Thread.Sleep(waitMs);
+        // Allow time for a flush tick and ensure final writes have time to hit disk
+        int waitMs = Math.Max(500, (int)(TelemetryContext.Config.GracefulShutdownWaitSeconds * 1000));
+        Thread.Sleep(waitMs);
         // Final fsync to make sure core files are on disk before exit
         try
         {
@@ -364,14 +366,16 @@ class Program
                 rm2.SetSymbolReference(fake2);
                 rm2.SetEquityOverrideForTesting(equity);
                 double lotSizeForOut = rm2.GetSettings().LotSizeDefault;
-                try {
+                try
+                {
                     var lsProp = fake2.GetType().GetProperty("LotSize");
                     if (lsProp != null)
                     {
                         var v = lsProp.GetValue(fake2);
                         if (v != null) lotSizeForOut = Convert.ToDouble(v);
                     }
-                } catch {}
+                }
+                catch { }
 
                 var results = new System.Collections.Generic.List<object>();
                 foreach (var f in fills)
@@ -386,16 +390,26 @@ class Program
                     double stopDist = Math.Abs(entry - stop);
                     double theoreticalUnits = 0;
                     double theoreticalLots = 0;
-                    if (stopDist > 0) {
+                    if (stopDist > 0)
+                    {
                         theoreticalUnits = rm2.CalculateOrderSize(stopDist, 0.0); // uses lot-based path and clamps internally
                         theoreticalLots = lotSizeForOut > 0 ? theoreticalUnits / lotSizeForOut : 0;
                     }
-                    results.Add(new {
-                        orderId, entry, stopLoss = (double?) (stop > 0 ? stop : (double?)null), stopDistance = stopDist,
-                        equity_used = equity, theoretical_lots = theoreticalLots, theoretical_units = theoreticalUnits, requestedSize = requested, filledSize = filled, slippage
+                    results.Add(new
+                    {
+                        orderId,
+                        entry,
+                        stopLoss = (double?)(stop > 0 ? stop : (double?)null),
+                        stopDistance = stopDist,
+                        equity_used = equity,
+                        theoretical_lots = theoreticalLots,
+                        theoretical_units = theoreticalUnits,
+                        requestedSize = requested,
+                        filledSize = filled,
+                        slippage
                     });
                 }
-                var json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions{ WriteIndented = true });
+                var json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 Console.WriteLine(json);
                 var outPath = System.IO.Path.Combine(runDir, "size_comparison.json");
                 File.WriteAllText(outPath, json);

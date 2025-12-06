@@ -8,7 +8,7 @@ namespace Analysis.SmartMoneyConcept
     /// <summary>
     /// Detects Equal Highs where last two highs are within a small threshold.
     /// </summary>
-public class EqualHighsDetector : ISmartMoneyDetector
+    public class EqualHighsDetector : ISmartMoneyDetector
     {
         public SmartMoneyType Type => SmartMoneyType.EqualHighs;
         public bool IsEnabled { get; set; } = true;

@@ -15,10 +15,10 @@ namespace Telemetry
         private double _closedPnl = 0.0;
         private double? _sessionStartEquity = null;
         private double _sessionPeakEquity = 0.0;
-        
+
         // Time-aware closed P&L tracking (A/B-LEDGER-001)
         private readonly List<(DateTime closeTime, double pnl)> _pendingClosedPnl = new List<(DateTime, double)>();
-        
+
         // Paper mode equity model fields
         private double? _initialBalance = null;
         private readonly bool _isPaperMode;
@@ -37,7 +37,12 @@ namespace Telemetry
         {
             if (!File.Exists(_filePath))
             {
-                File.AppendAllText(_filePath, "timestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure" + Environment.NewLine);
+                // A9: Enhanced header with portfolio metrics
+                var header = "timestamp_utc,equity,balance,open_pnl,closed_pnl,margin,free_margin,drawdown,R_used,exposure," +
+                             "long_exposure,short_exposure,net_exposure,largest_pos_pnl,largest_pos_pct," +
+                             "most_exposed_symbol,most_exposed_volume,total_positions,long_positions,short_positions" +
+                             Environment.NewLine;
+                File.AppendAllText(_filePath, header);
             }
         }
 
@@ -52,7 +57,7 @@ namespace Telemetry
                 _pendingClosedPnl.Add((closeTimeUtc, pnl));
             }
         }
-        
+
         /// <summary>
         /// Legacy method for backward compatibility (immediate application)
         /// Applies P&L directly without pending queue
@@ -65,13 +70,21 @@ namespace Telemetry
             }
         }
 
-        public void Persist(AccountInfo info)
+        public void Persist(AccountInfo info, IEnumerable<PositionSnapshot>? positions = null)
         {
+            // A8 DEBUG: Log entry to Persist()
+            try
+            {
+                var debugLog = Path.Combine(Path.GetDirectoryName(_filePath) ?? ".", "a8_persist_debug.log");
+                File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] Persist() CALLED, info={(info == null ? "NULL" : "NOT NULL")}, positions={(positions == null ? "NULL" : positions.Count().ToString())}\n");
+            }
+            catch { }
+
             try
             {
                 if (info == null) return;
                 var ts = DateTime.UtcNow;
-                
+
                 // Initialize balance on first persist
                 if (!_initialBalance.HasValue)
                 {
@@ -94,12 +107,12 @@ namespace Telemetry
                 double equity;
                 double openPnl;
                 double closedPnlSnapshot; // Renamed to avoid conflict
-                
+
                 lock (_lock)
                 {
                     closedPnlSnapshot = _closedPnl;
                 }
-                
+
                 if (_isPaperMode)
                 {
                     // Paper mode: compute balance_model and equity_model
@@ -114,7 +127,7 @@ namespace Telemetry
                     equity = info.Equity;
                     openPnl = equity - balance;
                 }
-                
+
                 double usedMargin = info.Margin;
                 double freeMargin = equity - usedMargin;
 
@@ -135,6 +148,18 @@ namespace Telemetry
 
                 double exposure = 0.0;
 
+                // A9: Calculate portfolio metrics from positions
+                PortfolioMetrics portfolioMetrics;
+                if (positions != null && positions.Any())
+                {
+                    portfolioMetrics = PortfolioMetrics.Calculate(positions.ToArray(), equity);
+                }
+                else
+                {
+                    // No positions - use zero metrics
+                    portfolioMetrics = new PortfolioMetrics();
+                }
+
                 var line = string.Join(",",
                     ts.ToString("o", CultureInfo.InvariantCulture),
                     equity.ToString(CultureInfo.InvariantCulture),
@@ -145,15 +170,42 @@ namespace Telemetry
                     freeMargin.ToString(CultureInfo.InvariantCulture),
                     drawdown.ToString(CultureInfo.InvariantCulture),
                     rUsed.ToString(CultureInfo.InvariantCulture),
-                    exposure.ToString(CultureInfo.InvariantCulture)
+                    exposure.ToString(CultureInfo.InvariantCulture),
+                    portfolioMetrics.ToCsvRow() // A9: Append portfolio metrics
                 );
+
+                // A8 DEBUG: Log before file write
+                try
+                {
+                    var debugLog = Path.Combine(Path.GetDirectoryName(_filePath) ?? ".", "a8_persist_debug.log");
+                    File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] About to write CSV line: {line.Substring(0, Math.Min(50, line.Length))}...\n");
+                }
+                catch { }
 
                 lock (_lock)
                 {
                     File.AppendAllText(_filePath, line + Environment.NewLine);
                 }
+
+                // A8 DEBUG: Log after successful write
+                try
+                {
+                    var debugLog = Path.Combine(Path.GetDirectoryName(_filePath) ?? ".", "a8_persist_debug.log");
+                    File.AppendAllText(debugLog, $"[{DateTime.UtcNow:o}] CSV write SUCCESS\n");
+                }
+                catch { }
             }
-            catch { /* swallow for safety */ }
+            catch (Exception ex)
+            {
+                // A8 DEBUG: Log exception instead of swallowing silently
+                try
+                {
+                    var logPath = Path.Combine(Path.GetDirectoryName(_filePath) ?? ".", "risk_snapshot_errors.log");
+                    var errorMsg = $"[{DateTime.UtcNow:o}] RiskSnapshotPersister.Persist() failed: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n\n";
+                    File.AppendAllText(logPath, errorMsg);
+                }
+                catch { /* Ultimate fallback - don't crash if logging fails */ }
+            }
         }
 
         private static double SanitizeNonNegative(double value)

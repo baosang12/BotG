@@ -3,7 +3,7 @@ using Bar = DataFetcher.Models.Bar;
 using Position = cAlgo.API.Position;
 using TradeResult = cAlgo.API.TradeResult;
 
-namespace RiskManager
+namespace BotG.RiskManager
 {
     /// <summary>
     /// <summary>

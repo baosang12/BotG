@@ -27,13 +27,13 @@ namespace Analysis.SmartMoneyConcept
             if (prev.Close < prev.Open && last.Close > last.Open
                 && last.Close < prev.Open && last.Open > prev.Close)
             {
-                signal = new SmartMoneySignal { Type=Type, Time= last.OpenTime, IsBullish=true };
+                signal = new SmartMoneySignal { Type = Type, Time = last.OpenTime, IsBullish = true };
                 return true;
             }
             if (prev.Close > prev.Open && last.Close < last.Open
                 && last.High < prev.Close && last.Open < prev.Open)
             {
-                signal = new SmartMoneySignal { Type=Type, Time= last.OpenTime, IsBullish=false };
+                signal = new SmartMoneySignal { Type = Type, Time = last.OpenTime, IsBullish = false };
                 return true;
             }
             return false;

@@ -20,7 +20,9 @@ namespace Telemetry
                     cfg.RunFolder = runDir;
                 }
                 var metaPath = Path.Combine(runDir!, "run_metadata.json");
-                if (!File.Exists(metaPath))
+
+                // FORCE CREATE metadata - ignore File.Exists to fix restart loop
+                // if (!File.Exists(metaPath))
                 {
                     string commit = Environment.GetEnvironmentVariable("GIT_COMMIT") ?? string.Empty;
                     try
@@ -57,7 +59,13 @@ namespace Telemetry
                             {
                                 ["fee_per_trade"] = cfg.Execution?.FeePerTrade,
                                 ["fee_percent"] = cfg.Execution?.FeePercent,
-                                ["spread_pips"] = cfg.Execution?.SpreadPips
+                                ["spread_pips"] = cfg.Execution?.SpreadPips,
+                                ["fee_pips_per_roundtrip"] = cfg.Execution?.FeePipsPerRoundtrip,
+                                ["fee_pips_per_side"] = cfg.Execution?.FeePipsPerSide,
+                                ["swap_long_pips_per_day"] = cfg.Execution?.SwapLongPipsPerDay,
+                                ["swap_short_pips_per_day"] = cfg.Execution?.SwapShortPipsPerDay,
+                                ["swap_type"] = cfg.Execution?.SwapType,
+                                ["swap_triple_day"] = cfg.Execution?.SwapTripleDay
                             },
                             ["log_path"] = cfg.LogPath,
                             ["hours"] = cfg.Hours,
@@ -81,10 +89,20 @@ namespace Telemetry
                         catch { }
                     }
 
-                    TelemetryContext.InvokeMetadataHook(meta);
-                    File.WriteAllText(metaPath, meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    try
+                    {
+                        TelemetryContext.InvokeMetadataHook(meta);
+                        File.WriteAllText(metaPath, meta.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    }
+                    catch (Exception ex)
+                    {
+                        LogRunInitializerError(cfg, ex, "write_metadata");
+                        throw;
+                    }
                 }
-                else if (extra != null)
+
+                // Handle extra metadata update separately
+                if (extra != null && File.Exists(metaPath))
                 {
                     // Merge/append the provided extra fields into existing run_metadata.json under the "extra" property
                     try
@@ -105,9 +123,29 @@ namespace Telemetry
                 }
                 return runDir!;
             }
+            catch (Exception ex)
+            {
+                LogRunInitializerError(cfg, ex, "ensure_run_folder");
+                return cfg.LogPath;
+            }
+        }
+
+        private static void LogRunInitializerError(TelemetryConfig cfg, Exception ex, string stage)
+        {
+            try
+            {
+                var basePath = string.IsNullOrWhiteSpace(cfg.LogPath) ? AppContext.BaseDirectory : cfg.LogPath;
+                if (string.IsNullOrWhiteSpace(basePath))
+                {
+                    basePath = Path.GetTempPath();
+                }
+                var logPath = Path.Combine(basePath, "run_init_error.log");
+                var message = $"[{DateTime.UtcNow:o}] stage={stage} error={ex}\n";
+                File.AppendAllText(logPath, message);
+            }
             catch
             {
-                return cfg.LogPath;
+                // final guard: never throw from logging helper
             }
         }
     }

@@ -4,7 +4,7 @@ using DataFetcher.Models;
 
 namespace Analysis.PriceAction
 {
-public class PinBarDetector : ICandlePatternDetector
+    public class PinBarDetector : ICandlePatternDetector
     {
         public CandlePattern Pattern => CandlePattern.PinBarBullish;
         public bool IsEnabled { get; set; } = true;

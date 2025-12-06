@@ -34,7 +34,8 @@ namespace Analysis.Wyckoff
         /// <returns>RetestConfirmationEvent hoặc null nếu không tìm thấy</returns>
         public RetestConfirmationEvent DetectRetest(IList<Bar> bars, StrengthSignalEvent breakout)
         {
-            if (bars == null || breakout == null) {
+            if (bars == null || breakout == null)
+            {
                 _logger?.Invoke($"[RetestConfirmationDetector] Input bars or breakout is null. bars: {(bars == null ? "null" : bars.Count.ToString())}, breakout: {(breakout == null ? "null" : breakout.Index.ToString())}");
                 return null;
             }

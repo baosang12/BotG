@@ -1,0 +1,128 @@
+{
+  "Version": "1.0",
+  "Enabled": true,
+  "FeatureFlags": {
+    "UseStructureLayer": true,
+    "UseMALayer": true,
+    "UseMomentumLayer": true,
+    "UsePatternLayer": true,
+    "EnableTelemetry": true
+  },
+  "PatternTelemetry": {
+    "EnablePatternLogging": true,
+    "LogDirectory": "d:\\botg\\logs\\patternlayer\\",
+    "EnableConsoleOutput": true,
+    "LogProcessingTime": true,
+    "SampleRate": 1,
+    "EnableDebugMode": false,
+    "DebugSampleRate": 10,
+    "DebugMinScoreThreshold": 30.0,
+    "DebugIncludeDetectorDetails": true,
+    "DebugIncludeRawMetrics": false
+  },
+  "LayerWeights": {
+    "Structure": 0.35,
+    "MovingAverages": 0.25,
+    "Momentum": 0.20,
+    "Patterns": 0.20
+  },
+  "TimeframeWeights": {
+    "Daily": 0.40,
+    "H4": 0.30,
+    "H1": 0.20,
+    "M15": 0.10
+  },
+  "Hysteresis": {
+    "LayerSpecific": true,
+    "RequiredConfirmations": 3,
+    "MaxWhipsawPerHour": 2
+  },
+  "Thresholds": {
+    "StrongBullish": 70.0,
+    "Bullish": 55.0,
+    "NeutralBullish": 45.0,
+    "Range": 40.0,
+    "NeutralBearish": 25.0,
+    "Bearish": 10.0
+  },
+  "PatternLayer": {
+    "Liquidity": {
+      "Enabled": true,
+      "Weight": 0.30
+    },
+    "BreakoutQuality": {
+      "Enabled": true,
+      "Weight": 0.20,
+      "Parameters": {
+        "Breakout": {
+          "SwingLookback": 5,
+          "ConfirmationBars": 4,
+          "MinBodyRatio": 0.55,
+          "TargetBodyRatio": 0.85,
+          "MinRangeFactor": 1.10,
+          "TargetRangeFactor": 1.80,
+          "MinVolumeSpike": 1.25,
+          "TargetVolumeSpike": 1.80,
+          "LevelBufferAtrMultiplier": 0.25,
+          "MomentumLookback": 5,
+          "MomentumRocThreshold": 3.0
+        },
+        "Retest": {
+          "RequireRetest": false,
+          "RetestWindow": 5,
+          "MinDepthFraction": 0.382,
+          "MaxDepthFraction": 0.618,
+          "IdealDepthMin": 0.40,
+          "IdealDepthMax": 0.55,
+          "VolumeDropThreshold": 0.80
+        },
+        "FollowThrough": {
+          "EvaluationWindow": 6,
+          "MinExtensionAtr": 0.75,
+          "StrongExtensionAtr": 1.60,
+          "FailureGivebackFraction": 0.55
+        },
+        "Scoring": {
+          "Baseline": 50.0,
+          "BreakoutWeight": 25.0,
+          "RetestWeight": 15.0,
+          "FollowThroughWeight": 20.0,
+          "ConfidenceBase": 0.55,
+          "ConfidenceBreakoutWeight": 0.12,
+          "ConfidenceRetestWeight": 0.08,
+          "ConfidenceFollowThroughWeight": 0.12,
+          "RetestDeepPenalty": 15.0,
+          "RetestShallowPenalty": 5.0,
+          "RetestMissingPenalty": 10.0,
+          "FailurePenalty": 30.0
+        },
+        "DataRequirements": {
+          "PrimaryTimeFrame": "H1",
+          "ConfirmationTimeFrame": "H4",
+          "AnalysisBars": 160,
+          "MinimumBars": 120,
+          "HigherTimeframeBars": 60,
+          "HigherTimeframeMinBars": 20,
+          "HigherTimeframeSlopeWindow": 5,
+          "AtrPeriod": 14,
+          "VolumeLookback": 20,
+          "RangeLookback": 20,
+          "MomentumDistanceFloor": 0.0005
+        }
+      }
+    },
+    "AccumulationDistribution": {
+      "Enabled": true,
+      "Weight": 0.20,
+      "Parameters": {
+        "LookbackBars": 60,
+        "TrendSlopeThreshold": 0.0005,
+        "VolumeRatioThreshold": 0.1,
+        "RangeNarrowThreshold": 0.8,
+        "RangeWideThreshold": 1.2,
+        "SrProximityFactor": 0.3,
+        "PrimaryTimeFrame": "H1"
+      }
+    }
+  }
+}

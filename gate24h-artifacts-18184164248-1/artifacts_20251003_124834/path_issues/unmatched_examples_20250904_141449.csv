@@ -1,4 +1,0 @@
-﻿order_id,timestamp_iso,symbol,side,size_requested,price_requested,status,likely_root_cause,notes
-ORD-UNMATCHED-1,2025-08-30T04:05:20.000Z,EURUSD,Buy,1,100.0000,REQUEST,missing_close,"Có order request nhưng không có close entry tương ứng"
-ORD-UNMATCHED-2,2025-08-30T04:05:21.000Z,EURUSD,Sell,1,100.0500,FILL,id_encoding,"Order ID có thể bị lỗi encoding hoặc normalization"
-ORD-MISSING-CLOSE-3,2025-08-30T04:05:22.000Z,EURUSD,Buy,1,100.1000,ACK,partial_fill_gap,"Order đã ACK nhưng fill không đầy đủ hoặc không ghi nhận đúng"

@@ -72,7 +72,7 @@ namespace Analysis.Wyckoff
             signal.HasFairValueGap = false;
             signal.IsInDiscountZone = (this.SOSorUT != null && !this.SOSorUT.IsUT && this.AR != null && this.SOSorUT.Price < this.AR.Price);
             signal.HasVolumeSpike = false;
-            signal.ConfirmationCount = new[]{this.Climax!=null,this.AR!=null,this.ST!=null,this.SOSorUT!=null,this.LPSorLPSY!=null}.Count(x=>x);
+            signal.ConfirmationCount = new[] { this.Climax != null, this.AR != null, this.ST != null, this.SOSorUT != null, this.LPSorLPSY != null }.Count(x => x);
             signal.Action = (this.SOSorUT != null && !this.SOSorUT.IsUT) ? Strategies.TradeAction.Buy : (this.SOSorUT != null && this.SOSorUT.IsUT) ? Strategies.TradeAction.Sell : Strategies.TradeAction.None;
             signal.Price = this.SOSorUT?.Price ?? 0;
             signal.StopLoss = this.LPSorLPSY?.Price;
@@ -90,7 +90,7 @@ namespace Analysis.Wyckoff
         private readonly StrengthSignalDetector _strengthDetector;
         private readonly LPSDetector _lpsDetector;
         private readonly RangeAnalyzer _rangeAnalyzer; // new analyzer
-    private RangeJsonLogger _rangeJsonLogger;
+        private RangeJsonLogger _rangeJsonLogger;
 
         private readonly Action<string> _logger;
 
@@ -174,8 +174,8 @@ namespace Analysis.Wyckoff
             return result;
         }
 
-    // Expose range analyzer instance (read-only) for external adaptive resets
-    public RangeAnalyzer RangeAnalyzerInstance => _rangeAnalyzer;
+        // Expose range analyzer instance (read-only) for external adaptive resets
+        public RangeAnalyzer RangeAnalyzerInstance => _rangeAnalyzer;
 
         // Incremental update: if prior RangeState exists and climax known, evolve only
         public void EvolveRange(IList<Bar> bars, WyckoffPatternResult result)
@@ -184,8 +184,8 @@ namespace Analysis.Wyckoff
             _rangeAnalyzer.EvolveRangeState(bars, result.RangeState);
         }
 
-    // Expose current active RangeState (for overlay drawing). Returns null if none initialized yet.
-    public RangeState CurrentRangeState => _rangeAnalyzer?.ActiveRangeState;
+        // Expose current active RangeState (for overlay drawing). Returns null if none initialized yet.
+        public RangeState CurrentRangeState => _rangeAnalyzer?.ActiveRangeState;
 
         // Expose direct range init for a given climax (used by backfill to iterate multiple climaxes)
         public RangeState AnalyzeRangeForClimax(IList<Bar> bars, ClimaxEvent climax)

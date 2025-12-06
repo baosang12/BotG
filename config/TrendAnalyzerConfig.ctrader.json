@@ -1,0 +1,79 @@
+{
+  "Description": "cTrader-specific configuration cho telemetry PatternLayer",
+  "Version": "1.0.0",
+  "LastUpdated": "2025-12-03",
+  "FeatureFlags": {
+    "UsePatternLayer": true,
+    "UseStructureLayer": true,
+    "UseMALayer": true,
+    "UseMomentumLayer": true,
+    "EnableTelemetry": true,
+    "EnableDetailedLogging": true,
+    "EnablePerformanceMonitoring": true
+  },
+  "PatternTelemetry": {
+    "EnablePatternLogging": true,
+    "LogPatternScores": true,
+    "LogPatternFlags": true,
+    "LogProcessingTime": true,
+    "SampleRate": 1,
+    "LogDirectory": "d:\\botg\\logs\\patternlayer\\",
+    "EnableConsoleOutput": true,
+    "MinScoreThreshold": 0.0,
+    "MaxScoreThreshold": 100.0,
+    "EnableDebugMode": true,
+    "DebugSampleRate": 5,
+    "DebugMinScoreThreshold": 50.0,
+    "DebugIncludeDetectorDetails": true,
+    "DebugIncludeRawMetrics": false
+  },
+  "LayerWeights": {
+    "Structure": 0.25,
+    "MovingAverages": 0.25,
+    "Momentum": 0.20,
+    "Patterns": 0.30
+  },
+  "PatternLayer": {
+    "Liquidity": {
+      "Enabled": true,
+      "Weight": 0.30
+    },
+    "BreakoutQuality": {
+      "Enabled": true,
+      "Weight": 0.20,
+      "Parameters": {
+        "SwingWindow": 5,
+        "MinBreakoutATR": 0.5,
+        "BreakoutTolerancePct": 0.001,
+        "RetestShallowThreshold": 0.382,
+        "RetestDeepThreshold": 0.618,
+        "RetestWindowBars": 5,
+        "FailurePenalty": 30.0,
+        "RetestDeepPenalty": 15.0,
+        "RetestShallowPenalty": 5.0,
+        "RetestMissingPenalty": 10.0,
+        "StrongFollowThroughBars": 3,
+        "UseMomentumConfirmation": true,
+        "MinBarsRequired": 20
+      }
+    }
+  },
+  "Performance": {
+    "AnalysisTimeWarningMs": 10.0,
+    "MemoryWarningBytes": 10485760,
+    "EnableRealTimeMetrics": true
+  },
+  "Logging": {
+    "Level": "Information",
+    "FileRotation": {
+      "MaxFileSizeMB": 10,
+      "MaxFiles": 5,
+      "CompressOldFiles": true
+    },
+    "ConsoleColors": {
+      "LiquidityGrab": "Yellow",
+      "CleanBreakout": "Green",
+      "FailedBreakout": "Red"
+    }
+  }
+}

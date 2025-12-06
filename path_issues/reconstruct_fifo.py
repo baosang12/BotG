@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Reconstruct FIFO closed trades from orders.csv fills with comprehensive P&L calculation.
-
 Outputs a complete CSV with symbol-aware FIFO matching, commission/spread/slippage costs,
 and optional MAE/MFE calculation from OHLC bars.
 """
@@ -84,11 +83,11 @@ def parse_args() -> argparse.Namespace:
 def load_metadata(path: Optional[str]) -> RunMetadata:
     if not path or not Path(path).exists():
         return RunMetadata()
-    
+
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         return RunMetadata(
             mode=data.get("mode", "paper"),
             simulation_enabled=data.get("simulation", {}).get("enabled", False),
@@ -103,11 +102,11 @@ def load_metadata(path: Optional[str]) -> RunMetadata:
 def load_bars(bars_dir: Optional[str], symbol: str, start_ms: int, end_ms: int) -> List[BarData]:
     if not bars_dir:
         return []
-    
+
     bars_path = Path(bars_dir) / f"{symbol.lower()}_bars.csv"
     if not bars_path.exists():
         return []
-    
+
     bars = []
     try:
         with open(bars_path, 'r', encoding='utf-8') as f:
@@ -125,7 +124,7 @@ def load_bars(bars_dir: Optional[str], symbol: str, start_ms: int, end_ms: int) 
                     ))
     except (FileNotFoundError, ValueError, KeyError):
         pass
-    
+
     return bars
 
 
@@ -133,29 +132,26 @@ def calculate_mae_mfe(bars: List[BarData], open_price: Decimal, side: str) -> Tu
     """Calculate Maximum Adverse/Favorable Excursion in pips"""
     if not bars:
         return Decimal('NaN'), Decimal('NaN')
-    
+
     is_long = side.upper() in ('BUY', 'LONG')
     mae = Decimal('0')  # Most adverse (negative) excursion
     mfe = Decimal('0')  # Most favorable (positive) excursion
-    
+
     for bar in bars:
         if is_long:
-            # For long: adverse is when price goes below open, favorable when above
             adverse_excursion = min(Decimal('0'), bar.low - open_price)
             favorable_excursion = max(Decimal('0'), bar.high - open_price)
         else:
-            # For short: adverse is when price goes above open, favorable when below
             adverse_excursion = min(Decimal('0'), open_price - bar.high)
             favorable_excursion = max(Decimal('0'), open_price - bar.low)
-        
+
         mae = min(mae, adverse_excursion)
         mfe = max(mfe, favorable_excursion)
-    
-    # Convert to pips (assuming 1 pip = 0.0001 for most pairs)
+
     pip_size = Decimal('0.0001')
     mae_pips = mae / pip_size
     mfe_pips = mfe / pip_size
-    
+
     return mae_pips, mfe_pips
 
 
@@ -191,7 +187,7 @@ def normalize_order_id(order_id: Optional[str]) -> str:
     if not order_id:
         return ""
     token = str(order_id).strip()
-    token = token.lstrip("T-")  # trade_closes.log prefixes orders with T-
+    token = token.lstrip("T-")
     return token.lower()
 
 
@@ -214,11 +210,10 @@ def parse_epoch_ms(value: Optional[str]) -> Optional[int]:
     text = str(value).strip()
     if not text:
         return None
-    # Numeric fast-path
     try:
         if text.isdigit():
             num = int(text)
-            if num > 10_000_000_000:  # already ms
+            if num > 10_000_000_000:
                 return num
             return num * 1000
         num_dec = Decimal(text)
@@ -227,7 +222,6 @@ def parse_epoch_ms(value: Optional[str]) -> Optional[int]:
         return int((num_dec * Decimal(1000)).to_integral_value(rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError):
         pass
-    # ISO fallback
     try:
         iso_norm = text.replace("Z", "+00:00")
         dt = datetime.fromisoformat(iso_norm)
@@ -266,14 +260,13 @@ def read_fills(orders_path: Path, fill_phase: str) -> List[Fill]:
         price_col = pick_column(
             fieldnames,
             [
-                "execPrice", "price_filled", "price", "fill_price", "executionPrice", 
-                "fillPrice", "executed_price"
+                "execPrice", "price_filled", "price", "fill_price", "executionPrice", "fillPrice", "executed_price"
             ],
         )
         volume_col = pick_column(
             fieldnames,
             [
-                "filledSize", "size_filled", "size", "volume", "requestedVolume", 
+                "filledSize", "size_filled", "size", "volume", "requestedVolume",
                 "quantity", "theoretical_units", "theoretical_lots", "requested_lots"
             ],
         )
@@ -289,12 +282,9 @@ def read_fills(orders_path: Path, fill_phase: str) -> List[Fill]:
                 "timestamp_iso", "fill_time", "fill_timestamp", "event_time", "timestamp"
             ],
         )
-        
-        # Cost columns
         commission_col = pick_column(fieldnames, ["commission", "fee", "brokerage_fee"])
         spread_col = pick_column(fieldnames, ["spread_cost", "spread", "bid_ask_spread_cost"])
         slippage_col = pick_column(fieldnames, ["slippage_pips", "slippage", "price_slippage_pips"])
-
         for row in reader:
             if phase_col:
                 phase = str(row.get(phase_col, "")).strip().upper()
@@ -344,7 +334,6 @@ def read_fills(orders_path: Path, fill_phase: str) -> List[Fill]:
             if epoch_ms is None and iso_col and row.get(iso_col):
                 epoch_ms = parse_epoch_ms(row.get(iso_col))
             if epoch_ms is None:
-                # search fallback iso-friendly columns
                 for candidate in ("timestamp_iso", "fill_time", "timestamp"):
                     if candidate in row and row[candidate]:
                         epoch_ms = parse_epoch_ms(row[candidate])
@@ -354,14 +343,12 @@ def read_fills(orders_path: Path, fill_phase: str) -> List[Fill]:
                 continue
 
             iso = epoch_to_iso(epoch_ms)
-            
-            # Extract cost components
+
             commission = safe_decimal(row.get(commission_col, ""))
             spread_cost = safe_decimal(row.get(spread_col, ""))
             slippage_pips = safe_decimal(row.get(slippage_col, ""))
-            
-            fills.append(Fill(symbol, side, volume, price, epoch_ms, iso, order_id, commission, spread_cost, slippage_pips))
 
+            fills.append(Fill(symbol, side, volume, price, epoch_ms, iso, order_id, commission, spread_cost, slippage_pips))
     fills.sort(key=lambda f: f.epoch_ms)
     return fills
 
@@ -380,7 +367,6 @@ def quantize_float(value: float, places: int = 6) -> str:
 
 
 def reconstruct(fills: List[Fill]) -> List[Tuple[Fill, Fill, Decimal]]:
-    # Symbol-aware FIFO queues
     longs: Dict[str, Deque[Fill]] = defaultdict(deque)
     shorts: Dict[str, Deque[Fill]] = defaultdict(deque)
     results: List[Tuple[Fill, Fill, Decimal]] = []
@@ -392,7 +378,7 @@ def reconstruct(fills: List[Fill]) -> List[Tuple[Fill, Fill, Decimal]]:
             while volume_left > EPSILON and shorts[symbol]:
                 open_fill = shorts[symbol][0]
                 take = open_fill.volume if open_fill.volume <= volume_left else volume_left
-                pnl = (open_fill.price - fill.price) * take  # short pnl = open - close
+                pnl = (open_fill.price - fill.price) * take
                 results.append((open_fill.clone_with_volume(take), fill.clone_with_volume(take), pnl))
                 open_fill.volume -= take
                 volume_left -= take
@@ -405,7 +391,7 @@ def reconstruct(fills: List[Fill]) -> List[Tuple[Fill, Fill, Decimal]]:
             while volume_left > EPSILON and longs[symbol]:
                 open_fill = longs[symbol][0]
                 take = open_fill.volume if open_fill.volume <= volume_left else volume_left
-                pnl = (fill.price - open_fill.price) * take  # long pnl = close - open
+                pnl = (fill.price - open_fill.price) * take
                 results.append((open_fill.clone_with_volume(take), fill.clone_with_volume(take), pnl))
                 open_fill.volume -= take
                 volume_left -= take
@@ -417,11 +403,10 @@ def reconstruct(fills: List[Fill]) -> List[Tuple[Fill, Fill, Decimal]]:
     return results
 
 
-def build_rows(matches: List[Tuple[Fill, Fill, Decimal]], closes_lookup: Dict[str, CloseLogEntry], 
-               metadata: RunMetadata, bars_dir: Optional[str]) -> List[Dict[str, str]]:
+def build_rows(matches: List[Tuple[Fill, Fill, Decimal]], closes_lookup: Dict[str, CloseLogEntry], metadata: RunMetadata, bars_dir: Optional[str]) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
     seq = 1
-    
+
     for open_fill, close_fill, base_pnl in matches:
         close_epoch = close_fill.epoch_ms
         open_epoch = open_fill.epoch_ms
@@ -436,27 +421,21 @@ def build_rows(matches: List[Tuple[Fill, Fill, Decimal]], closes_lookup: Dict[st
         else:
             timestamp_iso = close_fill.iso
 
-        # Enhanced P&L calculation
         symbol = close_fill.symbol
         point_value = metadata.point_value_per_lot.get(symbol, metadata.default_point_value)
-        
-        # P&L = (price_diff * point_value * qty * direction) - costs
         is_long = open_fill.side == "BUY"
         price_diff = close_fill.price - open_fill.price
-        if not is_long:  # Short position
+        if not is_long:
             price_diff = -price_diff
-        
+
         gross_pnl = price_diff * point_value * open_fill.volume
         total_commission = open_fill.commission + close_fill.commission
         total_spread = open_fill.spread_cost + close_fill.spread_cost
-        
-        # Convert slippage pips to currency (assuming 1 pip = point_value * 0.0001)
+
         pip_value = point_value * Decimal("0.0001")
         slippage_cost = (open_fill.slippage_pips + close_fill.slippage_pips) * pip_value * open_fill.volume
-        
         net_pnl = gross_pnl - total_commission - total_spread - slippage_cost
-        
-        # MAE/MFE calculation
+
         bars = load_bars(bars_dir, symbol, open_epoch, close_epoch)
         mae_pips, mfe_pips = calculate_mae_mfe(bars, open_fill.price, open_fill.side)
 
@@ -509,7 +488,7 @@ def main() -> int:
 
     metadata = load_metadata(args.meta)
     fills = read_fills(orders_path, args.fill_phase)
-    
+
     if not fills:
         write_output(output_path, [])
         print("WARNING: No fills found in orders.csv; wrote empty reconstruction file")
@@ -520,7 +499,6 @@ def main() -> int:
     rows = build_rows(matches, closes_lookup, metadata, args.bars_dir)
     write_output(output_path, rows)
 
-    # Summary statistics
     total_pnl = sum(Decimal(row["pnl_currency"]) for row in rows)
     print(f"SUCCESS: Reconstructed {len(rows)} closed trades -> {output_path}")
     print(f"Total P&L: {quantize(total_pnl, 2)} currency units")

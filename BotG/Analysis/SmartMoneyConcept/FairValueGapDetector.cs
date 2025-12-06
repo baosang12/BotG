@@ -21,14 +21,14 @@ namespace Analysis.SmartMoneyConcept
             if (_cfg.FairValueGapsAutoThreshold ? gap >= Math.Abs(prev.Close - prev.Open)
                                                 : gap >= _cfg.FairValueGapsExtend)
             {
-                signal = new SmartMoneySignal { Type=Type, Time=last.OpenTime, IsBullish=true };
+                signal = new SmartMoneySignal { Type = Type, Time = last.OpenTime, IsBullish = true };
                 return true;
             }
             gap = prev.Low - last.High;
             if (_cfg.FairValueGapsAutoThreshold ? gap >= Math.Abs(prev.Close - prev.Open)
                                                 : gap >= _cfg.FairValueGapsExtend)
             {
-                signal = new SmartMoneySignal { Type=Type, Time=last.OpenTime, IsBullish=false };
+                signal = new SmartMoneySignal { Type = Type, Time = last.OpenTime, IsBullish = false };
                 return true;
             }
             return false;

@@ -3,7 +3,20 @@
 # Solution: Start timer in Initialize() method
 
 $ErrorActionPreference = "Stop"
-$repo = "D:\OneDrive\TAILIU~1\cAlgo\Sources\Robots\BotG"
+$repoCandidates = @()
+$primaryRepo = Join-Path $env:USERPROFILE "Documents\cAlgo\Sources\Robots\BotG"
+if (Test-Path $primaryRepo) { $repoCandidates += $primaryRepo }
+$legacyRepo = "D:\OneDrive\TAILIU~1\cAlgo\Sources\Robots\BotG"
+if (Test-Path $legacyRepo) { $repoCandidates += $legacyRepo }
+if (Test-Path "D:\OneDrive") {
+    $repoCandidates += (Get-ChildItem "D:\OneDrive" -Directory | ForEach-Object {
+        $p = Join-Path $_.FullName "cAlgo\Sources\Robots\BotG"
+        if (Test-Path $p) { $p }
+        $p2 = Join-Path $_.FullName "cAlgo\Sources\Robots\BotG\BotG"
+        if (Test-Path $p2) { $p2 }
+    })
+}
+$repo = ($repoCandidates | Select-Object -First 1)
 if (-not (Test-Path "$repo\BotG.sln")) {
     throw "Not in BotG repo root"
 }

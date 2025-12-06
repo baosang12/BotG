@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trend-analyzer-config
+  namespace: botg-staging
+  labels:
+    app: analysis-module
+    deployment: patternlayer-phase1
+data:
+  TrendAnalyzerConfig.json: |
+    {
+      "FeatureFlags": {
+        "UsePatternLayer": true,
+        "UseMomentumLayer": true,
+        "UseMovingAverageLayer": true,
+        "UseStructureLayer": true
+      },
+      "LayerWeights": {
+        "Structure": 0.40,
+        "MovingAverages": 0.30,
+        "Momentum": 0.20,
+        "Patterns": 0.10
+      },
+      "PatternLayer": {
+        "Liquidity": {
+          "Enabled": true,
+          "Weight": 0.3,
+          "Parameters": {
+            "SwingWindow": 5,
+            "TolerancePct": 0.001,
+            "MinBarsForAnalysis": 20
+          }
+        },
+        "BreakoutQuality": {
+          "Enabled": true,
+          "Weight": 0.2,
+          "Parameters": {
+            "SwingWindow": 5,
+            "MinBreakoutATR": 0.5,
+            "BreakoutTolerancePct": 0.001,
+            "RetestShallowThreshold": 0.382,
+            "RetestDeepThreshold": 0.618,
+            "RetestWindowBars": 5,
+            "FailurePenalty": 30.0,
+            "RetestDeepPenalty": 15.0,
+            "RetestShallowPenalty": 5.0,
+            "RetestMissingPenalty": 10.0,
+            "StrongFollowThroughBars": 3,
+            "UseMomentumConfirmation": true,
+            "MinBarsRequired": 20
+          }
+        }
+      },
+      "Telemetry": {
+        "LogPatternScores": true,
+        "LogPatternFlags": true,
+        "LogProcessingTime": true,
+        "SampleRate": 0.1
+      }
+    }

@@ -7,7 +7,7 @@ namespace Analysis.PriceAction
     /// <summary>
     /// Step to identify market structure: swings, breakout, and change of character.
     /// </summary>
-public class MarketStructureStep : IPriceActionStep
+    public class MarketStructureStep : IPriceActionStep
     {
         public void Execute(IDictionary<string, IList<Bar>> multiTfBars,
                             IList<Bar> currentBars,

@@ -1,7 +1,0 @@
-﻿timestamp,metric,value
-2025-09-19T14:15:51.4961211+07:00,ticks_processed,450
-2025-09-19T14:15:51.4961211+07:00,signals_generated,8
-2025-09-19T14:15:51.4961211+07:00,orders_requested,3
-2025-09-19T14:15:51.4961211+07:00,orders_filled,3
-2025-09-19T14:15:51.4961211+07:00,smc_bos_bull_detected,2
-2025-09-19T14:15:51.4961211+07:00,smc_fvg_bullish_detected,5

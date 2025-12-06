@@ -12,7 +12,7 @@ namespace DataFetcher.Caching
         private Dictionary<TimeFrame, CircularBuffer<Bar>> cache = new();
         private int _bufferSize;
 
-        public BarCache(int bufferSize = 500)
+        public BarCache(int bufferSize = 100) // EMERGENCY: reduced from 500 to 100
         {
             _bufferSize = bufferSize;
         }

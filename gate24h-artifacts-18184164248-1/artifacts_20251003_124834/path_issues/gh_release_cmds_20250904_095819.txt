@@ -1,3 +1,0 @@
-﻿# GitHub CLI Commands for Release 20250904_095819
-gh pr create --title "chore(postrun): finalize run artifacts 20250904_095819" --body-file path_issues/postrun_analysis_20250904_095819.md --label "postrun,ops"
-gh release create "postrun-20250904_095819" --title "Postrun 20250904_095819" --notes-file path_issues/postrun_analysis_20250904_095819.md --draft path_issues/postrun_artifacts_20250904_095819.zip

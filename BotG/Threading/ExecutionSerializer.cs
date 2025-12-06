@@ -41,7 +41,7 @@ namespace BotG.Threading
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ExecutionSerializer));
-            
+
             if (operation == null)
                 throw new ArgumentNullException(nameof(operation));
 
@@ -84,7 +84,7 @@ namespace BotG.Threading
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ExecutionSerializer));
-            
+
             if (operation == null)
                 throw new ArgumentNullException(nameof(operation));
 
@@ -125,7 +125,7 @@ namespace BotG.Threading
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(ExecutionSerializer));
-            
+
             if (operation == null)
                 throw new ArgumentNullException(nameof(operation));
 
